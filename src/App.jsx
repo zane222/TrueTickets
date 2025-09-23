@@ -775,6 +775,8 @@ function CustomerView({ id, goTo }) {
 function NewCustomer({ goTo, customerId }) {
     const api = useApi();
     const [form, setForm] = useState({ first_name: "", last_name: "", business_name: "", phone: "", email: "" });
+    const [additionalPhones, setAdditionalPhones] = useState([]);
+    const [applying, setApplying] = useState(false);
     const formatPhoneLive = (value) => {
         const d = (value || "").replace(/\D/g, "");
         const a = d.slice(0, 3);
@@ -784,6 +786,7 @@ function NewCustomer({ goTo, customerId }) {
         if (d.length <= 6) return `${a}-${b}`;
         return `${a}-${b}-${c}`;
     };
+    const sanitizePhone = (value) => (value || "").replace(/\D/g, "");
     // Prefill from URL query params if present
     useEffect(() => {
         try {
@@ -805,24 +808,125 @@ function NewCustomer({ goTo, customerId }) {
             try {
                 const d = await api.get(`/customers/${customerId}`);
                 const c = d.customer || d;
+                // Prefer mobile if present, else phone
+                const basePhone = (c.mobile && String(c.mobile).trim()) ? c.mobile : (c.phone || "");
                 setForm({
                     first_name: c.firstname || c.first_name || "",
                     last_name: c.lastname || c.last_name || "",
                     business_name: c.business_name || c.business || "",
-                    phone: formatPhoneLive(c.phone || c.mobile || ""),
+                    phone: formatPhoneLive(basePhone || ""),
                     email: c.email || "",
                 });
+                // Load additional phones
+                try {
+                    const dp = await api.get(`/customers/${customerId}/phones`);
+                    const arr = (dp && (dp.phones || dp)) || [];
+                    const numbers = Array.isArray(arr) ? arr.map(p => p?.number || p).filter(Boolean) : [];
+                    if (numbers.length > 0) {
+                        // Use first as primary, rest as additional
+                        const primary = numbers[0];
+                        setForm(prev => ({ ...prev, phone: formatPhoneLive(primary) }));
+                        const rest = numbers.slice(1).map(n => formatPhoneLive(n));
+                        setAdditionalPhones(rest);
+                    }
+                } catch { /* optional endpoint; ignore errors */ }
             } catch (e) { console.error(e); }
         })();
     }, [customerId]);
     const [saving, setSaving] = useState(false);
+
+    // Helpers for phone syncing and reordering
+    async function getPhonesOnServer(id) {
+        const dp = await api.get(`/customers/${id}/phones`);
+        const arr = (dp && (dp.phones || dp)) || [];
+        return Array.isArray(arr) ? arr : [];
+    }
+    async function deletePhones(id, phones) {
+        if (!phones || phones.length === 0) return;
+        await Promise.all(
+            phones.map(p => {
+                const pid = p?.id ?? p?.phone_id;
+                if (!pid) return Promise.resolve();
+                return api.del(`/customers/${id}/phones/${pid}`).catch(() => {});
+            })
+        );
+    }
+    async function postPhones(id, numbers) {
+        if (!numbers || numbers.length === 0) return;
+        for (const num of numbers) {
+            try {
+                await api.post(`/customers/${id}/phones`, { number: num, primary: true });
+            } catch (e) { /* best-effort; continue */ }
+        }
+    }
+    async function makeCorrectPhoneBeFirst(id, selected) {
+        try {
+            const phones = await getPhonesOnServer(id);
+            const first = phones?.[0];
+            if (!first) return; // nothing to order
+            if ((first.number || "") === selected) return; // already first
+            const targetIdx = phones.findIndex(p => (p.number || "") === selected);
+            if (targetIdx === -1) return; // target not present
+            // Delete current first and target, then post target then old first, then recurse
+            const oldFirstId = first.id;
+            const targetId = phones[targetIdx].id;
+            await api.del(`/customers/${id}/phones/${oldFirstId}`).catch(() => {});
+            await api.del(`/customers/${id}/phones/${targetId}`).catch(() => {});
+            await api.post(`/customers/${id}/phones`, { number: selected, primary: true }).catch(() => {});
+            await api.post(`/customers/${id}/phones`, { number: first.number, primary: true }).catch(() => {});
+            // Re-check until selected is first
+            return makeCorrectPhoneBeFirst(id, selected);
+        } catch {
+            // swallow and return
+        }
+    }
+
     async function save() {
         setSaving(true);
         try {
             const sanitized = { ...form, phone: (form.phone || "").replace(/\D/g, "") };
             let d;
             if (customerId) {
-                d = await api.put(`/customers/${customerId}`, { customer: sanitized });
+                // Edit flow with phone reordering
+                if ((sanitized.first_name || "").replace(/\u200B/g, "").trim() === "") {
+                    window.alert("You may have not entered the first name");
+                    setSaving(false);
+                    return;
+                }
+                if ((sanitized.phone || "").length !== 10) {
+                    window.alert("You may have typed the phone number wrong");
+                    setSaving(false);
+                    return;
+                }
+                if (applying) { setSaving(false); return; }
+                setApplying(true);
+                try {
+                    await api.put(`/customers/${customerId}`, { customer: sanitized });
+                    // Build current phones: main + additional valid ones (10 digits)
+                    const currentPhones = [];
+                    const mainDigits = sanitizePhone(form.phone);
+                    if (mainDigits.length === 10) currentPhones.push(mainDigits);
+                    additionalPhones.forEach(p => {
+                        const d = sanitizePhone(p);
+                        if (d.length === 10) currentPhones.push(d);
+                    });
+                    // Distinct
+                    const distinct = Array.from(new Set(currentPhones));
+                    // Delete old phones and post new ones
+                    const old = await getPhonesOnServer(customerId);
+                    await deletePhones(customerId, old || []);
+                    await postPhones(customerId, distinct);
+                    // Reorder to make main first
+                    await makeCorrectPhoneBeFirst(customerId, mainDigits);
+                    // Navigate to view
+                    goTo(`/$${customerId}`);
+                } catch (e) {
+                    window.alert("Customer not edited because: " + (e?.message || e));
+                } finally {
+                    setApplying(false);
+                    setSaving(false);
+                }
+                return;
             } else {
                 d = await api.post(`/customers`, { customer: sanitized });
             }
@@ -836,35 +940,69 @@ function NewCustomer({ goTo, customerId }) {
                 <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                     {customerId ? "Edit Customer" : "New Customer"}
                 </div>
-                {["first_name", "last_name", "business_name", "phone", "email"].map(k => (
+                {["first_name", "last_name", "business_name"].map(k => (
                     <div key={k} className="space-y-2">
-                        <label className="text-sm font-medium capitalize" style={{color:'var(--md-sys-color-on-surface)'}}>{k.replace('_', ' ')}</label>
+                        <label className="text-sm font-medium capitalize">{k.replace('_', ' ')}</label>
                         <input
                             className="md-input"
                             value={form[k]}
-                            onChange={e => {
-                                const v = e.target.value;
-                                if (k === 'phone') {
-                                    setForm({ ...form, phone: formatPhoneLive(v) });
-                                } else {
-                                    setForm({ ...form, [k]: v });
-                                }
-                            }}
-                            inputMode={k === 'phone' ? 'numeric' : undefined}
-                            autoComplete={k === 'phone' ? 'tel' : undefined}
+                            onChange={e => setForm({ ...form, [k]: e.target.value })}
                         />
                     </div>
                 ))}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">Phone</label>
+                    <input
+                        className="md-input"
+                        value={form.phone}
+                        onChange={e => setForm({ ...form, phone: formatPhoneLive(e.target.value) })}
+                        inputMode={'numeric'}
+                        autoComplete={'tel'}
+                    />
+                    {additionalPhones.map((p, idx) => (
+                        <div key={idx}>
+                            <input
+                                className="md-input"
+                                value={p}
+                                onChange={e => {
+                                    const v = e.target.value;
+                                    setAdditionalPhones(prev => prev.map((x, i) => i === idx ? formatPhoneLive(v) : x));
+                                }}
+                                inputMode={'numeric'}
+                                autoComplete={'tel'}
+                            />
+                        </div>
+                    ))}
+                    <div>
+                        <button
+                            type="button"
+                            className="md-btn-surface elev-1 text-xs"
+                            onClick={() => setAdditionalPhones([...additionalPhones, ""]) }
+                        >
+                            + Add another phone
+                        </button>
+                    </div>
+                </div>
+                <div className="space-y-2">
+                    <label className="text-sm font-medium">email</label>
+                    <input
+                        className="md-input"
+                        value={form.email}
+                        onChange={e => setForm({ ...form, email: e.target.value })}
+                        autoComplete={'email'}
+                    />
+                </div>
                 <div className="flex justify-end gap-3 pt-4">
                     <button
                         onClick={() => goTo(customerId ? `/$${customerId}` : '/')}
                         className="md-btn-surface elev-1"
+                        disabled={saving || applying}
                     >
                         Cancel
                     </button>
                     <button
                         onClick={save}
-                        disabled={saving}
+                        disabled={saving || applying}
                         className="md-btn-primary elev-1 disabled:opacity-80"
                     >
                         {saving ? "Saving…" : (customerId ? "Update" : "Create")}
