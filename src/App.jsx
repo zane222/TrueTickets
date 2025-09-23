@@ -32,10 +32,8 @@ const STATUSES = [
     "Ready",
     "Resolved",
 ];
-const DEVICES = ["Phone", "Tablet", "Laptop", "Desktop", "All in one", "Watch", "Console", "Other"];
-const HOW_LONG = ["30 min", "45 min", "2 hours", "4 hours", "1-2 days"];
+const DEVICES = ["Phone", "Tablet", "Watch", "Console", "Laptop", "Desktop", "All in one", "Other"];
 const ITEMS_LEFT = ["Charger", "Case", "Controller", "Other"];
-const COLORS = ["Purple", "Orange", "Black", "Gray", "White", "Yellow", "Pink", "Blue", "Brown", "Green", "Red", "Silver", "Gold", "Rose Gold"];
 
 const STATUS_MAP = {
     "New": "Diagnosing",
@@ -262,35 +260,35 @@ function TicketCard({
  *************************/
 function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings }) {
     return (
-        <div className="sticky top-0 z-30 w-full bg-gradient-to-r from-slate-900/95 via-slate-800/95 to-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 shadow-lg">
-            <div className="mx-auto max-w-7xl px-6 py-4 flex items-center gap-4">
+        <div className="sticky top-0 z-30 w-full material-app-bar backdrop-blur-md">
+            <div className="mx-auto max-w-7xl px-6 py-4 flex items-center gap-4">{/* larger again */}
                 <button
                     onClick={onHome}
-                    className="text-xl font-bold tracking-wide text-white/95 flex-1 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent hover:from-blue-300 hover:to-purple-300 transition-all duration-200 text-left cursor-pointer"
+                    className="text-xl font-bold tracking-wide flex-1 text-left cursor-pointer"
                 >
                     True Tickets - Computer and Cellphone Inc
                 </button>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                     <button
                         onClick={onSearchClick}
                         title="Search"
-                        className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500/50 transition-all duration-200 hover:scale-105 shadow-md"
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-11 h-11 rounded-full"
                     >
-                        <Search className="w-5 h-5 text-slate-300" />
+                        <Search className="w-5.5 h-5.5" />
                     </button>
                     <button
                         onClick={onNewCustomer}
                         title="New Customer"
-                        className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 border border-emerald-500/20 transition-all duration-200 hover:scale-105 shadow-md"
+                        className="md-btn-primary elev-2 inline-flex items-center justify-center w-11 h-11 rounded-full"
                     >
-                        <UserPlus className="w-5 h-5 text-white" />
+                        <UserPlus className="w-5.5 h-5.5" />
                     </button>
                     <button
                         onClick={onSettings}
                         title="Settings"
-                        className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500/50 transition-all duration-200 hover:scale-105 shadow-md"
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-11 h-11 rounded-full"
                     >
-                        <Settings className="w-5 h-5 text-slate-300" />
+                        <Settings className="w-5.5 h-5.5" />
                     </button>
                 </div>
             </div>
@@ -301,24 +299,24 @@ function SettingsModal({ open, onClose }) {
     const api = useApi();
     if (!open) return null;
     return (
-        <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-lg rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-600/50 shadow-2xl p-8 space-y-6 text-white">
-                <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-lg md-card p-8 space-y-6">
+                <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                     Settings
                 </div>
                 <div className="space-y-3">
-                    <label className="block text-sm font-medium text-slate-300">RepairShopr Base URL</label>
+                    <label className="block text-sm font-medium">RepairShopr Base URL</label>
                     <input
-                        className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                        className="md-input"
                         value={api.baseUrl}
                         onChange={(e) => api.setBaseUrl(e.target.value)}
                         placeholder="https://Cacell.repairshopr.com/api/v1"
                     />
                 </div>
                 <div className="space-y-3">
-                    <label className="block text-sm font-medium text-slate-300">API Key (Authorization header)</label>
+                    <label className="block text-sm font-medium">API Key (Authorization header)</label>
                     <input
-                        className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                        className="md-input"
                         value={api.apiKey}
                         onChange={(e) => api.setApiKey(e.target.value)}
                         placeholder="api_key"
@@ -327,7 +325,7 @@ function SettingsModal({ open, onClose }) {
                 <div className="flex justify-end gap-3 pt-4">
                     <button
                         onClick={onClose}
-                        className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                        className="md-btn-surface elev-1"
                     >
                         Close
                     </button>
@@ -397,23 +395,23 @@ function SearchModal({ open, onClose, goTo }) {
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6">
-            <div className="w-full max-w-6xl h-[80vh] rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-600/50 shadow-2xl p-8 space-y-6 text-white flex flex-col">
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+            <div className="w-full max-w-6xl h-[80vh] md-card p-8 space-y-6 flex flex-col">
                 <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                    <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                         Search Tickets
                     </div>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleNewCustomer}
                             title="New Customer"
-                            className="inline-flex items-center justify-center h-8 px-3 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 border border-emerald-500/30 text-white text-sm font-medium transition-all duration-200"
+                            className="md-btn-primary elev-1"
                         >
                             New Customer
                         </button>
                         <button
                             onClick={onClose}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600/50 transition-all duration-200"
+                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-8 h-8 p-0"
                         >
                             ×
                         </button>
@@ -426,34 +424,34 @@ function SearchModal({ open, onClose, goTo }) {
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Search tickets..."
-                        className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-lg backdrop-blur-sm"
+                        className="md-input pl-10"
                         autoFocus
                     />
-                    <Search className="w-5 h-5 absolute left-4 top-4 text-slate-400" />
+                    <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
                 {/* Results */}
-                <div className="rounded-2xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-xl backdrop-blur-sm overflow-hidden flex-1 overflow-y-auto">
-                    <div className="grid grid-cols-12 text-xs uppercase tracking-wider text-slate-400 px-6 py-4 bg-slate-800/30 border-b border-slate-600/30">
+                <div className="md-card overflow-hidden flex-1 overflow-y-auto">
+                    <div className="grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3" style={{color:'var(--md-sys-color-on-surface)'}}>
                         <div className="col-span-2 font-semibold">Number</div>
                         <div className="col-span-5 font-semibold">Subject</div>
                         <div className="col-span-2 font-semibold">Status</div>
                         <div className="col-span-3 font-semibold">Customer</div>
                     </div>
-                    <div className="divide-y divide-slate-700/30">
+                    <div className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
                         {loading && (
-                            <div className="flex items-center justify-center p-8 text-sm gap-3 text-slate-300">
+                            <div className="flex items-center justify-center p-6 text-sm gap-3">
                                 <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
                                 <span className="font-medium">Searching...</span>
                             </div>
                         )}
                         {!loading && results.length === 0 && search.trim() && (
-                            <div className="flex items-center justify-center p-8 text-sm text-slate-400">
+                            <div className="flex items-center justify-center p-6 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
                                 No tickets found for "{search}"
                             </div>
                         )}
                         {!loading && !search.trim() && (
-                            <div className="flex items-center justify-center p-8 text-sm text-slate-400">
+                            <div className="flex items-center justify-center p-6 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
                                 Start typing to search tickets...
                             </div>
                         )}
@@ -464,16 +462,12 @@ function SearchModal({ open, onClose, goTo }) {
                                     initial={{ opacity: 0, y: 4 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     onClick={() => { onClose(); goTo(`/&${t.id}`); }}
-                                    className="grid grid-cols-12 w-full text-left hover:bg-slate-700/30 px-6 py-4 transition-all duration-200 hover:shadow-lg group"
+                                    className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
                                 >
-                                    <div className="col-span-2 font-mono text-slate-200 font-medium">#{t.number ?? t.id}</div>
-                                    <div className="col-span-5 truncate text-white font-medium group-hover:text-blue-300 transition-colors">{t.subject}</div>
-                                    <div className="col-span-2">
-                                        <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-slate-700/50 text-slate-200 border border-slate-600/50 shadow-sm">
-                                            {convertStatus(t.status)}
-                                        </span>
-                                    </div>
-                                    <div className="col-span-3 truncate text-slate-300">{t.customer?.business_and_full_name ?? t.customer?.fullname}</div>
+                                    <div className="col-span-2 font-mono">#{t.number ?? t.id}</div>
+                                    <div className="col-span-5 truncate">{t.subject}</div>
+                                    <div className="col-span-2 truncate">{convertStatus(t.status)}</div>
+                                    <div className="col-span-3 truncate">{t.customer?.business_and_full_name ?? t.customer?.fullname}</div>
                                 </motion.button>
                             ))}
                     </div>
@@ -518,18 +512,15 @@ function TicketListView({ goTo }) {
 
     return (
         <div className="mx-auto max-w-7xl px-6 py-6">
-            <div className="flex items-center gap-3 mb-6">
-                <div className="text-sm text-slate-400 font-medium">Status filter:</div>
+            <div className="flex items-center gap-3 mb-4">
+                <div className="text-sm" style={{color:'var(--md-sys-color-on-surface)'}}>Status filter:</div>
                 <div className="flex flex-wrap gap-2">
                     {STATUSES.map((s, i) => (
                         <button
                             key={s}
                             onClick={() => toggleStatus(s)}
-                            className={cx("px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 shadow-md border",
-                                statusHidden.has(s)
-                                    ? "bg-slate-700/30 text-slate-500 border-slate-600/30"
-                                    : "bg-slate-800/80 text-slate-200 border-slate-600/50 shadow-lg hover:shadow-xl"
-                            )}
+                            className={cx("md-chip",
+                                statusHidden.has(s) ? "" : "md-chip--on")}
                         >
                             {s}
                         </button>
@@ -537,7 +528,7 @@ function TicketListView({ goTo }) {
                 </div>
             </div>
             <div className="flex items-center gap-3 mb-6">
-                <div className="text-sm text-slate-400 font-medium">Device filter:</div>
+                <div className="text-sm" style={{color:'var(--md-sys-color-on-surface)'}}>Device filter:</div>
                 <div className="flex flex-wrap gap-2">
                     {DEVICES.map((d, i) => {
                         const isSelected = selectedDevices.has(i);
@@ -551,12 +542,7 @@ function TicketListView({ goTo }) {
                                         return next;
                                     });
                                 }}
-                                className={cx(
-                                    "px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 shadow-md border",
-                                    isSelected
-                                        ? "bg-slate-800/80 text-slate-200 border-slate-600/50 shadow-lg hover:shadow-xl"
-                                        : "bg-slate-700/30 text-slate-500 border-slate-600/30"
-                                )}
+                                className={cx("md-chip", isSelected ? "md-chip--on" : "")}
                             >
                                 {d || "Other"}
                             </button>
@@ -565,19 +551,19 @@ function TicketListView({ goTo }) {
                 </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm overflow-hidden">
-                <div className="grid grid-cols-12 text-xs uppercase tracking-wider text-slate-400 px-6 py-4 bg-slate-800/30 border-b border-slate-600/30">
-                    <div className="col-span-2 font-semibold">Number</div>
-                    <div className="col-span-4 font-semibold">Subject</div>
+            <div className="md-card overflow-hidden">
+                <div className="grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3" style={{color:'var(--md-sys-color-on-surface)'}}>
+                    <div className="col-span-1 font-semibold">Number</div>
+                    <div className="col-span-5 font-semibold">Subject</div>
                     <div className="col-span-2 font-semibold">Status</div>
                     <div className="col-span-1 font-semibold">Device</div>
                     <div className="col-span-1 font-semibold">Created</div>
                     <div className="col-span-2 font-semibold">Customer</div>
                 </div>
-                <div ref={listRef} className="divide-y divide-slate-700/30">
+                <div ref={listRef} className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
                     <AnimatePresence>
                         {(items || [])
-                            .filter(t => !convertStatus(t.status) || !statusHidden.has(convertStatus(t.status)))
+                            .filter(t => !convertStatus(t.status) || !statusHidden.has(convertStatus(t.status))) // filter out devices with a status that isn't selected
                             .filter(t => {
                                 // Default behavior: if none selected, show all
                                 if (!selectedDevices || selectedDevices.size === 0) return true;
@@ -594,24 +580,20 @@ function TicketListView({ goTo }) {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0 }}
                                     onClick={() => goTo(`/&${t.id}`)}
-                                    className="grid grid-cols-12 w-full text-left hover:bg-slate-700/30 px-6 py-4 transition-all duration-200 hover:shadow-lg group"
+                                    className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
                                 >
-                                    <div className="col-span-2 font-mono text-slate-200 font-medium">#{t.number ?? t.id}</div>
-                                    <div className="col-span-4 truncate text-white font-medium group-hover:text-blue-300 transition-colors">{t.subject}</div>
-                                    <div className="col-span-2">
-                                        <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-700/50 text-slate-200 border border-slate-600/50 shadow-sm">
-                                            {convertStatus(t.status)}
-                                        </span>
-                                    </div>
-                                    <div className="col-span-1 truncate text-slate-300">{t.device_type || "Other"}</div>
-                                    <div className="col-span-1 text-slate-400">{fmtDate(t.created_at)}</div>
-                                    <div className="col-span-2 truncate text-slate-300">{t.customer?.business_and_full_name ?? t.customer?.fullname}</div>
+                                    <div className="col-span-1 truncate">#{t.number ?? t.id}</div>
+                                    <div className="col-span-5 truncate">{t.subject}</div>
+                                    <div className="col-span-2 truncate">{convertStatus(t.status)}</div>
+                                    <div className="col-span-1 truncate">{t.device_type || "Other"}</div>
+                                    <div className="col-span-1 truncate">{fmtDate(t.created_at)}</div>
+                                    <div className="col-span-2 truncate">{t.customer?.business_and_full_name ?? t.customer?.fullname}</div>
                                 </motion.button>
                             ))}
                     </AnimatePresence>
                 </div>
                 {loading && (
-                    <div className="flex items-center justify-center p-8 text-sm gap-3 text-slate-300">
+                    <div className="flex items-center justify-center p-6 text-sm gap-3">
                         <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
                         <span className="font-medium">Loading…</span>
                     </div>
@@ -621,11 +603,11 @@ function TicketListView({ goTo }) {
             <div className="flex justify-between items-center mt-6">
                 <button
                     onClick={() => fetchTickets(false)}
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-600 hover:to-slate-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 border border-slate-600/50"
+                    className="md-btn-surface elev-1"
                 >
                     Load more
                 </button>
-                <div className="text-xs text-slate-500 font-medium">
+                <div className="text-xs font-medium" style={{color:'var(--md-sys-color-outline)'}}>
                     Hotkeys: H (home), S (search), N (new customer)
                 </div>
             </div>
@@ -634,7 +616,7 @@ function TicketListView({ goTo }) {
 }
 
 /*************************
- * Customer View / New Customer
+ * Customer View
  *************************/
 function CustomerView({ id, goTo }) {
     const api = useApi();
@@ -666,22 +648,22 @@ function CustomerView({ id, goTo }) {
     return (
         <div className="mx-auto max-w-6xl px-6 py-6 grid md:grid-cols-3 gap-8">
             <div className="md:col-span-2 space-y-6">
-                <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-8">
-                    <div className="text-2xl font-bold text-white mb-2">{c.business_and_full_name || c.fullname}</div>
-                    <div className="text-slate-300 mb-1">{c.email}</div>
-                    <div className="text-slate-300">{formatPhone(c.phone || c.mobile)}</div>
+                <div className="md-card p-8">
+                    <div className="text-2xl font-bold mb-2">{c.business_and_full_name || c.fullname}</div>
+                    <div className="mb-1" style={{color:'var(--md-sys-color-outline)'}}>{c.email}</div>
+                    <div style={{color:'var(--md-sys-color-outline)'}}>{formatPhone(c.phone || c.mobile)}</div>
                 </div>
                 <div className="flex gap-4">
                     <button
                         onClick={() => goTo(`/$${id}?newticket`)}
-                        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                        className="md-btn-primary elev-1 inline-flex items-center gap-2"
                     >
                         <Plus className="w-5 h-5" />
                         New Ticket
                     </button>
                     <button
                         onClick={() => goTo(`/$${id}?edit`)}
-                        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                        className="md-btn-surface elev-1 inline-flex items-center gap-2"
                     >
                         <ExternalLink className="w-5 h-5" />
                         Edit
@@ -689,42 +671,37 @@ function CustomerView({ id, goTo }) {
                 </div>
 
                 {/* Tickets List */}
-                <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm">
-                    <div className="px-6 py-4 border-b border-slate-600/30 text-white font-semibold">Tickets</div>
-                    <div className="grid grid-cols-12 text-xs uppercase tracking-wider text-slate-400 px-6 py-4 bg-slate-800/30 border-b border-slate-600/30">
+                <div className="md-card">
+                    <div className="px-6 py-4 font-semibold">Tickets</div>
+                    <div className="grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3">
                         <div className="col-span-2 font-semibold">Number</div>
                         <div className="col-span-4 font-semibold">Subject</div>
                         <div className="col-span-2 font-semibold">Status</div>
                         <div className="col-span-1 font-semibold">Device</div>
                         <div className="col-span-1 font-semibold">Created</div>
                     </div>
-                    <div className="divide-y divide-slate-700/30">
+                    <div className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
                         {(tickets || []).map(t => (
                             <button
                                 key={t.id}
                                 onClick={() => goTo(`/&${t.id}`)}
-                                className="grid grid-cols-12 w-full text-left hover:bg-slate-700/30 px-6 py-4 transition-all duration-200 hover:shadow-lg group"
+                                className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
                             >
-                                <div className="col-span-2 font-mono text-slate-200 font-medium">#{t.number ?? t.id}</div>
-                                <div className="col-span-4 truncate text-white font-medium group-hover:text-blue-300 transition-colors">{t.subject}</div>
-                                <div className="col-span-2">
-                                    <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-700/50 text-slate-200 border border-slate-600/50 shadow-sm">
-                                        {convertStatus(t.status)}
-                                    </span>
-                                </div>
-                                <div className="col-span-1 truncate text-slate-300">{t.device_type || "Other"}</div>
-                                <div className="col-span-1 text-slate-400">{fmtDate(t.created_at)}</div>
-                                <div className="col-span-2 truncate text-slate-300">{t.customer?.business_and_full_name ?? t.customer?.fullname}</div>
+                                <div className="col-span-2 font-mono">#{t.number ?? t.id}</div>
+                                <div className="col-span-4 truncate">{t.subject}</div>
+                                <div className="col-span-2 truncate">{convertStatus(t.status)}</div>
+                                <div className="col-span-1 truncate">{t.device_type || "Other"}</div>
+                                <div className="col-span-1 truncate">{fmtDate(t.created_at)}</div>
                             </button>
                         ))}
                         {tLoading && (
-                            <div className="flex items-center justify-center p-8 text-sm gap-3 text-slate-300">
+                            <div className="flex items-center justify-center p-6 text-sm gap-3">
                                 <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
                                 <span className="font-medium">Loading…</span>
                             </div>
                         )}
                         {!tLoading && tickets.length === 0 && (
-                            <div className="flex items-center justify-center p-8 text-sm text-slate-400">
+                            <div className="flex items-center justify-center p-6 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
                                 No tickets yet.
                             </div>
                         )}
@@ -733,7 +710,7 @@ function CustomerView({ id, goTo }) {
                         <div className="px-6 py-4">
                             <button
                                 onClick={loadMoreTickets}
-                                className="px-4 py-2 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-white text-sm border border-slate-600/50"
+                                className="md-btn-surface elev-1 text-sm"
                             >
                                 Load more
                             </button>
@@ -742,10 +719,10 @@ function CustomerView({ id, goTo }) {
                 </div>
             </div>
             <div className="space-y-6">
-                <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-6">
-                    <div className="text-lg font-semibold text-white mb-4">Notes</div>
+                <div className="md-card p-6">
+                    <div className="text-lg font-semibold mb-4">Notes</div>
                     <textarea
-                        className="w-full h-32 px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                        className="md-textarea h-32"
                         placeholder="Customer notes…"
                     />
                 </div>
@@ -753,6 +730,10 @@ function CustomerView({ id, goTo }) {
         </div>
     );
 }
+
+/*************************
+ * New Customer
+ *************************/
 function NewCustomer({ goTo, customerId }) {
     const api = useApi();
     const [form, setForm] = useState({ first_name: "", last_name: "", phone: "", email: "" });
@@ -801,15 +782,15 @@ function NewCustomer({ goTo, customerId }) {
     }
     return (
         <div className="mx-auto max-w-2xl px-6 py-6">
-            <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-8 space-y-6">
-                <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            <div className="md-card p-8 space-y-6">
+                <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                     {customerId ? "Edit Customer" : "New Customer"}
                 </div>
                 {['first_name', 'last_name', 'phone', 'email'].map(k => (
                     <div key={k} className="space-y-2">
-                        <label className="text-sm font-medium text-slate-300 capitalize">{k.replace('_', ' ')}</label>
+                        <label className="text-sm font-medium capitalize" style={{color:'var(--md-sys-color-on-surface)'}}>{k.replace('_', ' ')}</label>
                         <input
-                            className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                            className="md-input"
                             value={form[k]}
                             onChange={e => setForm({ ...form, [k]: e.target.value })}
                         />
@@ -819,7 +800,7 @@ function NewCustomer({ goTo, customerId }) {
                     <button
                         onClick={save}
                         disabled={saving}
-                        className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-600 disabled:to-slate-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 disabled:hover:scale-100"
+                        className="md-btn-primary elev-1 disabled:opacity-80"
                     >
                         {saving ? "Saving…" : (customerId ? "Update" : "Create")}
                     </button>
@@ -830,7 +811,7 @@ function NewCustomer({ goTo, customerId }) {
 }
 
 /*************************
- * Ticket View / Edit / New
+ * Ticket View
  *************************/
 function TicketView({ id, goTo }) {
     const api = useApi();
@@ -895,21 +876,21 @@ function TicketView({ id, goTo }) {
             <div className="flex justify-end gap-4 mb-6">
                 <button
                     onClick={() => goTo(`/$${t.customer?.id || t.customer_id}`)}
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                    className="md-btn-surface elev-1 inline-flex items-center gap-2"
                 >
                     <User className="w-5 h-5" />
                     View Customer
                 </button>
                 <button
                     onClick={generatePDF}
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                    className="md-btn-surface elev-1 inline-flex items-center gap-2"
                 >
                     <Printer className="w-5 h-5" />
                     Print PDF
                 </button>
                 <button
                     onClick={() => goTo(`/&${t.id}?edit`)}
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                    className="md-btn-primary elev-1 inline-flex items-center gap-2"
                 >
                     <Edit className="w-5 h-5" />
                     Edit Ticket
@@ -934,7 +915,7 @@ function TicketView({ id, goTo }) {
 
                     {/* Status buttons */}
                     <div className="space-y-3" style={{ width: "323px" }}>
-                        <p className="text-sm font-semibold text-slate-200">Status:</p>
+                        <p className="text-sm font-semibold">Status:</p>
                         <div className="flex flex-col gap-2">
                             {STATUSES.map((s, i) => {
                                 const active = convertStatus(t.status) === s;
@@ -951,10 +932,7 @@ function TicketView({ id, goTo }) {
                                                 console.error(err);
                                             }
                                         }}
-                                        className={`px-4 py-3 rounded-xl text-sm font-semibold text-left transition-all duration-200 hover:scale-105 shadow-lg border ${active
-                                                ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent shadow-xl"
-                                                : "bg-slate-800/50 text-slate-300 border-slate-600/50 hover:text-white hover:bg-slate-700/50 hover:shadow-xl hover:border-slate-500/50"
-                                            }`}
+                                        className={`${active ? 'md-btn-primary' : 'md-btn-surface'} text-left`}
                                     >
                                         {s}
                                     </button>
@@ -966,8 +944,8 @@ function TicketView({ id, goTo }) {
 
                 {/* RIGHT SIDE: Comments */}
                 <aside className="col-span-12 lg:col-start-7 lg:col-span-6">
-                    <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-6">
-                        <div className="text-lg font-semibold mb-4 text-white">Comments</div>
+                    <div className="md-card p-6">
+                        <div className="text-lg font-semibold mb-4">Comments</div>
                         <CommentsBox ticketId={t.id} />
                     </div>
                 </aside>
@@ -992,26 +970,28 @@ function CommentsBox({ ticketId }) {
             <textarea
                 value={text}
                 onChange={e => setText(e.target.value)}
-                className="w-full h-24 px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                className="md-textarea h-24"
                 placeholder="Write a comment…"
             />
             <button
                 onClick={create}
-                className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                className="w-full md-btn-primary elev-1"
             >
                 Create Comment
             </button>
-            <div className="divide-y divide-slate-700/30">
+            <div className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
                 {loading && (
-                    <div className="flex items-center justify-center py-4 text-sm text-slate-400">
+                    <div className="flex items-center justify-center py-4 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
                         <Loader2 className="w-4 h-4 animate-spin mr-2" />
                         Loading…
                     </div>
                 )}
                 {(list || []).map(c => (
-                    <div key={c.id} className="py-4 text-sm">
-                        <div className="text-slate-200 whitespace-pre-wrap leading-relaxed">{c.body || c.comment || ''}</div>
-                        <div className="text-xs text-slate-500 mt-2 font-medium">{fmtDateAndTime(c.created_at)}</div>
+                    <div key={c.id} className="py-3">
+                        <div className="md-row-box p-3">
+                            <div className="text-xs mb-2" style={{color:'var(--md-sys-color-outline)'}}>{fmtDateAndTime(c.created_at)}</div>
+                            <div className="whitespace-pre-wrap leading-relaxed">{c.body || c.comment || ''}</div>
+                        </div>
                     </div>
                 ))}
             </div>
@@ -1019,6 +999,9 @@ function CommentsBox({ ticketId }) {
     );
 }
 
+/*************************
+ * Ticket Edit / New
+ *************************/
 function TicketEditor({ ticketId, customerId, goTo }) {
     const api = useApi();
     const [pre, setPre] = useState(null);
@@ -1026,93 +1009,54 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     const [subject, setSubject] = useState("");
     const [password, setPassword] = useState("");
     const [deviceIdx, setDeviceIdx] = useState(0);
-    const [colorIdx, setColorIdx] = useState(-1);
-    const [howLongIdx, setHowLongIdx] = useState(0);
+    const [timeEstimate, setTimeEstimate] = useState("");
     const [itemsLeft, setItemsLeft] = useState([]);
-    // removed needDataIdx
     const [saving, setSaving] = useState(false);
 
-    useEffect(() => {
-        (async () => {
-            try {
-                if (ticketId) {
-                    const d = await api.get(`/tickets/${ticketId}`);
-                    const t = d.ticket || d;
-                    setPre(t);
-                    setSubject(t.subject || "");
-                    setPassword(t.password || "");
-                    setDeviceIdx(DEVICES.indexOf(t.device_type) || 0);
-                    setColorIdx(COLORS.indexOf(t.color) || -1);
-                    {
-                        const diffMin = t.promised_by ? Math.round((new Date(t.promised_by) - new Date(t.created_at)) / 60000) : 0;
-                        const idx = HOW_LONG_MIN.indexOf(diffMin);
-                        setHowLongIdx(idx >= 0 && HOW_LONG[idx] ? idx : 0);
-                    }
-                    setItemsLeft(t.items_left || []);
-                    // removed needDataIdx
-                }
-                else if (customerId) {
-                    const d = await api.get(`/customers/${customerId}`);
-                    setPre(d.customer || d);
-                }
-            } catch (e) { console.error(e); } finally { setLoading(false); }
-        })();
-    }, [ticketId, customerId, deviceIdx]);
 
-    function toggleProblem(i) { setProblems(p => p.includes(i) ? p.filter(x => x !== i) : [...p, i]); }
     function toggleItem(name) { setItemsLeft(xs => xs.includes(name) ? xs.filter(x => x !== name) : [...xs, name]); }
 
     async function save() {
         setSaving(true);
         try {
-            const arrival = new Date();
-            const promised = HOW_LONG_MIN[howLongIdx] ? new Date(arrival.getTime() + HOW_LONG_MIN[howLongIdx] * 60000) : arrival;
-
             const payload = {
                 ticket: {
-                    subject: subject || buildSubject(),
+                    subject: subject,
                     customer_id: customerId || pre?.customer_id || pre?.id,
                     password,
                     device_type: DEVICES[deviceIdx],
-                    color: colorIdx >= 0 ? COLORS[colorIdx] : "",
-                    // need_data removed
-                    promised_by: promised.toISOString(),
+                    promised_by: timeEstimate,
                     items_left: itemsLeft
                 }
             };
             let out;
-            if (ticketId) out = await api.put(`/tickets/${ticketId}`, payload);
-            else out = await api.post(`/tickets`, payload);
-            const t = out.ticket || out;
-            goTo(`/&${t.id}`);
+            if (ticketId) out = await api.put(`/tickets/${ticketId}`, payload); // update the ticket
+            else out = await api.post(`/tickets`, payload); // create the ticket
+            const idOfNewlyCreatedOrUpdatedTicket = (out.ticket || out).id;
+            goTo(`/&${idOfNewlyCreatedOrUpdatedTicket}`);
         } catch (e) { console.error(e); } finally { setSaving(false); }
-    }
-
-    function buildSubject() {
-        const bits = [colorIdx >= 0 ? COLORS[colorIdx] : null].filter(Boolean);
-        return bits.join(" ");
     }
 
     if (loading) return <Loading />;
 
     return (
         <div className="mx-auto max-w-4xl px-6 py-6">
-            <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-8 space-y-6">
+            <div className="md-card p-8 space-y-6">
                 <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                    <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                         {ticketId ? "Edit Ticket" : "New Ticket"}
                     </div>
                     <div className="flex gap-3">
                         <button
                             onClick={() => goTo(ticketId ? `/&${ticketId}` : '/')}
-                            className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+                            className="md-btn-surface elev-1"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={save}
                             disabled={saving}
-                            className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-600 disabled:to-slate-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 disabled:hover:scale-100"
+                            className="md-btn-primary elev-1 disabled:opacity-80"
                         >
                             {saving ? "Saving…" : "Save"}
                         </button>
@@ -1121,9 +1065,9 @@ function TicketEditor({ ticketId, customerId, goTo }) {
 
                 {/* Subject spanning both columns */}
                 <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-300">Subject</label>
+                    <label className="text-sm font-medium">Subject</label>
                     <input
-                        className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                        className="md-input"
                         value={subject}
                         onChange={e => setSubject(e.target.value)}
                         placeholder="Enter ticket subject..."
@@ -1136,27 +1080,24 @@ function TicketEditor({ ticketId, customerId, goTo }) {
 
                         {/* Password */}
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Password</label>
+                            <label className="text-sm font-medium">Password</label>
                             <input
-                                className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                                className="md-input"
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
-                                placeholder="Device password (optional)"
+                                placeholder="Device password"
                             />
                         </div>
 
                         {/* Items Left (moved to left side) */}
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Items Left</label>
+                            <label className="text-sm font-medium">Items Left</label>
                             <div className="flex flex-wrap gap-2">
                                 {ITEMS_LEFT.map((item, i) => item && (
                                     <button
                                         key={i}
                                         onClick={() => toggleItem(item)}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${itemsLeft.includes(item)
-                                                ? "bg-slate-700 text-white border-slate-500"
-                                                : "bg-slate-800/50 text-slate-300 border-slate-600/50 hover:bg-slate-700/50"
-                                            }`}
+                                        className={`md-chip ${itemsLeft.includes(item) ? 'md-chip--on' : ''}`}
                                     >
                                         {item}
                                     </button>
@@ -1168,14 +1109,13 @@ function TicketEditor({ ticketId, customerId, goTo }) {
 
                     {/* Device Information */}
                     <div className="space-y-6">
-
                         {/* Device Type - single select radio-style pills */}
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Device Type</label>
+                            <label className="text-sm font-medium">Device Type</label>
                             <div
                                 role="radiogroup"
                                 aria-label="Device Type"
-                                className="rounded-xl border border-slate-600/50 bg-slate-800/40 p-2 flex flex-wrap gap-2"
+                                className="p-2 flex flex-wrap gap-2"
                             >
                                 {DEVICES.map((d, i) => {
                                     const active = deviceIdx === i;
@@ -1185,114 +1125,28 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                             role="radio"
                                             aria-checked={active}
                                             onClick={() => { setDeviceIdx(i); setProblems([]); }}
-                                            className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold transition-all duration-200 border focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${active
-                                                    ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent shadow-md"
-                                                    : "bg-transparent text-slate-300 border-slate-600/60 hover:bg-slate-700/40"
-                                                }`}
+                                            className={`inline-flex items-center gap-2 md-chip ${active ? 'md-chip--on' : ''}`}
                                         >
                                             <span
                                                 aria-hidden
-                                                className={`w-2.5 h-2.5 rounded-full ${active ? "bg-white" : "border border-slate-400"}`}
+                                                className={`w-2.5 h-2.5 rounded-full ${active ? "bg-white" : "border"}`}
                                             />
                                             <span>{d || "Other"}</span>
                                         </button>
                                     );
                                 })}
                             </div>
-                            <div className="text-[11px] text-slate-400">Choose one</div>
                         </div>
 
-
-                        {/* Color */}
+                        {/* Estimated Time - text input */}
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Color</label>
-                            <div className="flex flex-wrap gap-3">
-                                {COLORS.map((color, i) => {
-                                    let colorStyle = {};
-
-                                    // Special textures for metallic colors
-                                    if (color.toLowerCase() === "silver") {
-                                        colorStyle = {
-                                            background: "linear-gradient(135deg, #c0c0c0 0%, #a8a8a8 25%, #d3d3d3 50%, #b8b8b8 75%, #c0c0c0 100%)",
-                                            boxShadow: "inset 0 1px 2px rgba(255,255,255,0.3), inset 0 -1px 2px rgba(0,0,0,0.2)"
-                                        };
-                                    } else if (color.toLowerCase() === "gold") {
-                                        colorStyle = {
-                                            background: "linear-gradient(135deg, #ffd700 0%, #ffed4e 25%, #ffd700 50%, #b8860b 75%, #ffd700 100%)",
-                                            boxShadow: "inset 0 1px 2px rgba(255,255,255,0.4), inset 0 -1px 2px rgba(0,0,0,0.3)"
-                                        };
-                                    } else if (color.toLowerCase() === "rose gold") {
-                                        colorStyle = {
-                                            background: "linear-gradient(135deg, #e8b4b8 0%, #f4a6ab 25%, #e8b4b8 50%, #d4a5a9 75%, #e8b4b8 100%)",
-                                            boxShadow: "inset 0 1px 2px rgba(255,255,255,0.3), inset 0 -1px 2px rgba(0,0,0,0.2)"
-                                        };
-                                    } else {
-                                        // Regular colors
-                                        const colorMap = {
-                                            "purple": "#8b5cf6",
-                                            "orange": "#f97316",
-                                            "black": "#000000",
-                                            "gray": "#6b7280",
-                                            "white": "#ffffff",
-                                            "yellow": "#eab308",
-                                            "pink": "#ec4899",
-                                            "blue": "#3b82f6",
-                                            "brown": "#a3a3a3",
-                                            "green": "#22c55e",
-                                            "red": "#ef4444"
-                                        };
-                                        colorStyle = {
-                                            backgroundColor: colorMap[color.toLowerCase()] || "#6b7280"
-                                        };
-                                    }
-
-                                    return (
-                                        <button
-                                            key={i}
-                                            onClick={() => setColorIdx(i)}
-                                            className={`w-8 h-8 rounded-full border-2 transition-all duration-200 ${colorIdx === i
-                                                    ? "border-white ring-2 ring-blue-400"
-                                                    : "border-slate-600 hover:border-slate-400"
-                                                }`}
-                                            style={colorStyle}
-                                            title={color}
-                                        />
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Time Estimate - single select radio-style pills (no "No estimate") */}
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Estimated Time</label>
-                            <div
-                                role="radiogroup"
-                                aria-label="Estimated Time"
-                                className="rounded-xl border border-slate-600/50 bg-slate-800/40 p-2 flex flex-wrap gap-2"
-                            >
-                                {HOW_LONG.map((h, i) => ({ h, i })).filter(x => x.h).map(({ h, i }) => {
-                                    const active = howLongIdx === i;
-                                    return (
-                                        <button
-                                            key={i}
-                                            role="radio"
-                                            aria-checked={active}
-                                            onClick={() => setHowLongIdx(i)}
-                                            className={`inline-flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold transition-all duration-200 border focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${active
-                                                    ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent shadow-md"
-                                                    : "bg-transparent text-slate-300 border-slate-600/60 hover:bg-slate-700/40"
-                                                }`}
-                                        >
-                                            <span
-                                                aria-hidden
-                                                className={`w-2.5 h-2.5 rounded-full ${active ? "bg-white" : "border border-slate-400"}`}
-                                            />
-                                            <span>{h}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <div className="text-[11px] text-slate-400">Choose one</div>
+                            <label className="text-sm font-medium">Estimated Time</label>
+                            <input
+                                className="md-input"
+                                value={timeEstimate}
+                                onChange={e => setTimeEstimate(e.target.value)}
+                                placeholder="e.g. 30 min, 2 hours, Call by: 11th"
+                            />
                         </div>
                     </div>
                 </div>
@@ -1324,7 +1178,7 @@ export default function App() {
 
     return (
         <ApiProvider>
-            <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+            <div className="min-h-screen material-surface">
                 <TopBar
                     onHome={() => navigate("/")}
                     onSearchClick={() => setShowSearch(true)}
