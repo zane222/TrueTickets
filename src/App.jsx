@@ -93,6 +93,24 @@ function formatPhone(num = "") {
     return num; // fallback: return as-is if not 10 digits
 }
 
+// Match C# GetPassword logic
+function getTicketPassword(ticket) {
+    try {
+        const typeId = ticket?.ticket_type_id;
+        const props = ticket?.properties || {};
+        const invalid = new Set(["n", "na", "n/a", "none"]);
+        const norm = (s) => (typeof s === 'string' ? s.toLowerCase().trim() : "");
+        if (typeId === 9818 || typeId === 9836) {
+            const v = norm(props.Password);
+            if (v && !invalid.has(v)) return props.Password;
+        } else if (typeId === 9801) {
+            const v = norm(props.passwordForPhone);
+            if (v && !invalid.has(v)) return props.passwordForPhone;
+        }
+        return "";
+    } catch { return ""; }
+}
+
 function useHotkeys(map) {
     useEffect(() => {
         function onKey(e) {
@@ -626,6 +644,16 @@ function CustomerView({ id, goTo }) {
     const [tPage, setTPage] = useState(1);
     const [tLoading, setTLoading] = useState(false);
     const [tHasMore, setTHasMore] = useState(true);
+    const passwords = useMemo(() => {
+        try {
+            const set = new Set();
+            (tickets || []).forEach(t => {
+                const p = (getTicketPassword(t) || "").trim();
+                if (p) set.add(p);
+            });
+            return Array.from(set);
+        } catch { return []; }
+    }, [tickets]);
     useEffect(() => { (async () => { try { const d = await api.get(`/customers/${id}`); setC(d.customer || d); } catch (e) { console.error(e); } finally { setLoading(false); } })(); }, [id]);
     useEffect(() => { setTickets([]); setTPage(1); setTHasMore(true); }, [id]);
     async function loadMoreTickets() {
@@ -677,8 +705,8 @@ function CustomerView({ id, goTo }) {
                         <div className="col-span-2 font-semibold">Number</div>
                         <div className="col-span-4 font-semibold">Subject</div>
                         <div className="col-span-2 font-semibold">Status</div>
-                        <div className="col-span-1 font-semibold">Device</div>
-                        <div className="col-span-1 font-semibold">Created</div>
+                        <div className="col-span-2 font-semibold">Device</div>
+                        <div className="col-span-2 font-semibold">Created</div>
                     </div>
                     <div className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
                         {(tickets || []).map(t => (
@@ -687,11 +715,11 @@ function CustomerView({ id, goTo }) {
                                 onClick={() => goTo(`/&${t.id}`)}
                                 className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
                             >
-                                <div className="col-span-2 font-mono">#{t.number ?? t.id}</div>
+                                <div className="col-span-2 truncate">#{t.number ?? t.id}</div>
                                 <div className="col-span-4 truncate">{t.subject}</div>
                                 <div className="col-span-2 truncate">{convertStatus(t.status)}</div>
-                                <div className="col-span-1 truncate">{t.device_type || "Other"}</div>
-                                <div className="col-span-1 truncate">{fmtDate(t.created_at)}</div>
+                                <div className="col-span-2 truncate">{t.device_type || "Other"}</div>
+                                <div className="col-span-2 truncate">{fmtDate(t.created_at)}</div>
                             </button>
                         ))}
                         {tLoading && (
@@ -719,6 +747,16 @@ function CustomerView({ id, goTo }) {
                 </div>
             </div>
             <div className="space-y-6">
+                {passwords && passwords.length > 0 && (
+                    <div className="md-card p-6">
+                        <div className="text-lg font-semibold mb-2">Previously used passwords</div>
+                        <div className="text-sm" style={{color:'var(--md-sys-color-outline)'}}>
+                            {passwords.map((p, i) => (
+                                <div key={i}>{p}</div>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 <div className="md-card p-6">
                     <div className="text-lg font-semibold mb-4">Notes</div>
                     <textarea
@@ -736,7 +774,16 @@ function CustomerView({ id, goTo }) {
  *************************/
 function NewCustomer({ goTo, customerId }) {
     const api = useApi();
-    const [form, setForm] = useState({ first_name: "", last_name: "", phone: "", email: "" });
+    const [form, setForm] = useState({ first_name: "", last_name: "", business_name: "", phone: "", email: "" });
+    const formatPhoneLive = (value) => {
+        const d = (value || "").replace(/\D/g, "");
+        const a = d.slice(0, 3);
+        const b = d.slice(3, 6);
+        const c = d.slice(6, 10);
+        if (d.length <= 3) return a;
+        if (d.length <= 6) return `${a}-${b}`;
+        return `${a}-${b}-${c}`;
+    };
     // Prefill from URL query params if present
     useEffect(() => {
         try {
@@ -745,6 +792,7 @@ function NewCustomer({ goTo, customerId }) {
             setForm(f => ({
                 first_name: q.get("first_name") ?? f.first_name,
                 last_name: q.get("last_name") ?? f.last_name,
+                business_name: q.get("business_name") ?? f.business_name,
                 phone: q.get("phone") ?? f.phone,
                 email: q.get("email") ?? f.email,
             }));
@@ -758,9 +806,10 @@ function NewCustomer({ goTo, customerId }) {
                 const d = await api.get(`/customers/${customerId}`);
                 const c = d.customer || d;
                 setForm({
-                    first_name: c.first_name || "",
-                    last_name: c.last_name || "",
-                    phone: c.phone || c.mobile || "",
+                    first_name: c.firstname || c.first_name || "",
+                    last_name: c.lastname || c.last_name || "",
+                    business_name: c.business_name || c.business || "",
+                    phone: formatPhoneLive(c.phone || c.mobile || ""),
                     email: c.email || "",
                 });
             } catch (e) { console.error(e); }
@@ -770,11 +819,12 @@ function NewCustomer({ goTo, customerId }) {
     async function save() {
         setSaving(true);
         try {
+            const sanitized = { ...form, phone: (form.phone || "").replace(/\D/g, "") };
             let d;
             if (customerId) {
-                d = await api.put(`/customers/${customerId}`, { customer: form });
+                d = await api.put(`/customers/${customerId}`, { customer: sanitized });
             } else {
-                d = await api.post(`/customers`, { customer: form });
+                d = await api.post(`/customers`, { customer: sanitized });
             }
             const c = d.customer || d;
             goTo(`/$${c.id}`);
@@ -786,17 +836,32 @@ function NewCustomer({ goTo, customerId }) {
                 <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                     {customerId ? "Edit Customer" : "New Customer"}
                 </div>
-                {['first_name', 'last_name', 'phone', 'email'].map(k => (
+                {["first_name", "last_name", "business_name", "phone", "email"].map(k => (
                     <div key={k} className="space-y-2">
                         <label className="text-sm font-medium capitalize" style={{color:'var(--md-sys-color-on-surface)'}}>{k.replace('_', ' ')}</label>
                         <input
                             className="md-input"
                             value={form[k]}
-                            onChange={e => setForm({ ...form, [k]: e.target.value })}
+                            onChange={e => {
+                                const v = e.target.value;
+                                if (k === 'phone') {
+                                    setForm({ ...form, phone: formatPhoneLive(v) });
+                                } else {
+                                    setForm({ ...form, [k]: v });
+                                }
+                            }}
+                            inputMode={k === 'phone' ? 'numeric' : undefined}
+                            autoComplete={k === 'phone' ? 'tel' : undefined}
                         />
                     </div>
                 ))}
                 <div className="flex justify-end gap-3 pt-4">
+                    <button
+                        onClick={() => goTo(customerId ? `/$${customerId}` : '/')}
+                        className="md-btn-surface elev-1"
+                    >
+                        Cancel
+                    </button>
                     <button
                         onClick={save}
                         disabled={saving}
@@ -903,7 +968,7 @@ function TicketView({ id, goTo }) {
                     {/* Ticket Card - Scaled up */}
                     <div ref={ticketCardRef} className="transform scale-147 origin-top-left bg-white rounded-md shadow-lg pt-1 pl-2 pb-[2px]">
                         <TicketCard
-                            password={t.password || ""}
+                            password={getTicketPassword(t)}
                             ticketNumber={t.number ?? t.id}
                             subject={t.subject}
                             itemsLeft={(t.items_left || []).join(", ")}
@@ -946,7 +1011,7 @@ function TicketView({ id, goTo }) {
                 <aside className="col-span-12 lg:col-start-7 lg:col-span-6">
                     <div className="md-card p-6">
                         <div className="text-lg font-semibold mb-4">Comments</div>
-                        <CommentsBox ticketId={t.id} />
+                        <CommentsBox ticketId={t.id} comments={t.comments} />
                     </div>
                 </aside>
             </div>
@@ -954,17 +1019,16 @@ function TicketView({ id, goTo }) {
     );
 }
 
-function CommentsBox({ ticketId }) {
+function CommentsBox({ ticketId, comments }) {
     const api = useApi();
     const [text, setText] = useState("");
     const [list, setList] = useState([]);
-    const [loading, setLoading] = useState(false);
-    async function load() { setLoading(true); try { const d = await api.get(`/tickets/${ticketId}/comments`); setList(d.comments || d || []); } catch (e) { console.error(e); } finally { setLoading(false); } }
-    async function create() { try { await api.post(`/tickets/${ticketId}/comment`, { body: text }); setText(""); load(); } catch (e) { console.error(e); } }
     useEffect(() => {
-        load(); // initial
-        // eslint-disable-next-line
-    }, [ticketId]);
+        setList(comments);
+    }, [comments]);
+
+    async function create() { try { await api.post(`/tickets/${ticketId}/comment`, { body: text }); setText(""); goTo(`/&${ticketId}`); } catch (e) { console.error(e); } }
+
     return (
         <div className="space-y-4">
             <textarea
@@ -979,19 +1043,25 @@ function CommentsBox({ ticketId }) {
             >
                 Create Comment
             </button>
-            <div className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
-                {loading && (
-                    <div className="flex items-center justify-center py-4 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Loading…
-                    </div>
-                )}
-                {(list || []).map(c => (
-                    <div key={c.id} className="py-3">
-                        <div className="md-row-box p-3">
-                            <div className="text-xs mb-2" style={{color:'var(--md-sys-color-outline)'}}>{fmtDateAndTime(c.created_at)}</div>
-                            <div className="whitespace-pre-wrap leading-relaxed">{c.body || c.comment || ''}</div>
+            <div className="space-y-3">
+                {(list || []).filter(c => {
+                    const b = (c.body ?? c.comment ?? '').trim();
+                    return b !== 'Ticket marked as Pre-Diagnosed.';
+                }).map(c => (
+                    <div key={c.id} className="md-row-box p-3 text-sm relative">
+                        {/* Top bar details: tech + time (left), SMS (right) */}
+                        <div className="absolute inset-x-3 top-2 flex items-center justify-between text-[11px]" style={{color:'var(--md-sys-color-outline)'}}>
+                            <div className="flex items-center gap-3">
+                                {c.tech ? (<span>{c.tech}</span>) : null}
+                                <span>{fmtDateAndTime(c.created_at)}</span>
+                            </div>
+                            {typeof c.hidden === 'boolean' && c.hidden === false ? (
+                                <span>Probably SMS</span>
+                            ) : <span />}
                         </div>
+
+                        {/* Body */}
+                        <div className="whitespace-pre-wrap leading-relaxed pt-5">{c.body || c.comment || ''}</div>
                     </div>
                 ))}
             </div>
