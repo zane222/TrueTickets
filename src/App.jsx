@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState, createContext, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Settings, Plus, Loader2, Printer, UserPlus, ExternalLink } from "lucide-react";
+import { Search, Settings, Plus, Loader2, Printer, UserPlus, ExternalLink, Edit } from "lucide-react";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 /**
  * Mini-RepairShopr — Full React + Tailwind (Dark Theme)
@@ -32,14 +34,14 @@ const STATUSES = [
   "Resolved",
 ];
 const STATUS_COLORS = [
-  "#2DB490",
-  "#1E793E",
-  "#1E4679",
-  "#B6B72E",
-  "#35B2D4",
-  "#7B1F20",
-  "#2CB04F",
-  "#D4AF35",
+  "#10B981", // Diagnosing - Emerald
+  "#059669", // Finding Price - Emerald Dark
+  "#3B82F6", // Approval Needed - Blue
+  "#F59E0B", // Waiting for Parts - Amber
+  "#8B5CF6", // Waiting (Other) - Violet
+  "#EF4444", // In Progress - Red
+  "#10B981", // Ready - Emerald
+  "#6B7280", // Resolved - Gray
 ];
 const DEVICES = ["Phone", "Tablet", "Laptop", "Desktop", "All in one", "Watch", "Console", ""]; // last = other
 const BRANDS = [
@@ -256,23 +258,19 @@ function TicketCard({
 /*************************
  * TopBar + Settings
  *************************/
-function TopBar({ onHome, onSearchFocus, onNewCustomer, onSettings }){
+function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings }){
   return (
     <div className="sticky top-0 z-30 w-full bg-gradient-to-r from-slate-900/95 via-slate-800/95 to-slate-900/95 backdrop-blur-xl border-b border-slate-700/50 shadow-lg">
       <div className="mx-auto max-w-7xl px-6 py-4 flex items-center gap-4">
         <button 
           onClick={onHome}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 border border-blue-500/20"
+          className="text-xl font-bold tracking-wide text-white/95 flex-1 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent hover:from-blue-300 hover:to-purple-300 transition-all duration-200 text-left cursor-pointer"
         >
-          <span className="text-sm">🏠</span>
-          Home
-        </button>
-        <h1 className="text-xl font-bold tracking-wide text-white/95 flex-1 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
           True Tickets - Computer and Cellphone Inc
-        </h1>
+        </button>
         <div className="flex items-center gap-2">
           <button 
-            onClick={onSearchFocus} 
+            onClick={onSearchClick} 
             title="Search"
             className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500/50 transition-all duration-200 hover:scale-105 shadow-md"
           >
@@ -331,6 +329,146 @@ function SettingsModal({open,onClose}){
           >
             Close
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SearchModal({ open, onClose, goTo }) {
+  const api = useApi();
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [statusHidden, setStatusHidden] = useState(() => new Set(["Resolved"]));
+
+  const toggleStatus = (s) => {
+    const n = new Set(statusHidden);
+    n.has(s) ? n.delete(s) : n.add(s);
+    setStatusHidden(n);
+  };
+
+  async function fetchTickets() {
+    if (!search.trim()) {
+      setResults([]);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const data = await api.get(`/tickets?query=${encodeURIComponent(search.trim())}`);
+      const arr = data.tickets || data || [];
+      setResults(arr);
+    } catch (e) {
+      console.error(e);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchTickets();
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [search]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-4xl rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-600/50 shadow-2xl p-6 space-y-6 text-white">
+        <div className="flex items-center justify-between">
+          <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            Search Tickets
+          </div>
+          <button 
+            onClick={onClose}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-700/50 hover:bg-slate-600/50 border border-slate-600/50 transition-all duration-200"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Search Input */}
+        <div className="relative">
+          <input 
+            value={search} 
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search tickets..."
+            className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200 shadow-lg backdrop-blur-sm"
+            autoFocus
+          />
+          <Search className="w-5 h-5 absolute left-4 top-4 text-slate-400"/>
+        </div>
+
+        {/* Status Filter */}
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-slate-400 font-medium">Status filter:</div>
+          <div className="flex flex-wrap gap-2">
+            {STATUSES.map((s, i) => (
+              <button 
+                key={s} 
+                onClick={() => toggleStatus(s)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 shadow-md border ${
+                  statusHidden.has(s)
+                    ? "bg-slate-700/30 text-slate-500 border-slate-600/30" 
+                    : "bg-slate-800/80 text-slate-200 border-slate-600/50 shadow-lg hover:shadow-xl"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="rounded-2xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-xl backdrop-blur-sm overflow-hidden max-h-96 overflow-y-auto">
+          <div className="grid grid-cols-12 text-xs uppercase tracking-wider text-slate-400 px-6 py-4 bg-slate-800/30 border-b border-slate-600/30">
+            <div className="col-span-2 font-semibold">Number</div>
+            <div className="col-span-5 font-semibold">Subject</div>
+            <div className="col-span-2 font-semibold">Status</div>
+            <div className="col-span-3 font-semibold">Customer</div>
+          </div>
+          <div className="divide-y divide-slate-700/30">
+            {loading && (
+              <div className="flex items-center justify-center p-8 text-sm gap-3 text-slate-300">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-400"/>
+                <span className="font-medium">Searching...</span>
+              </div>
+            )}
+            {!loading && results.length === 0 && search.trim() && (
+              <div className="flex items-center justify-center p-8 text-sm text-slate-400">
+                No tickets found for "{search}"
+              </div>
+            )}
+            {!loading && !search.trim() && (
+              <div className="flex items-center justify-center p-8 text-sm text-slate-400">
+                Start typing to search tickets...
+              </div>
+            )}
+            {!loading && results
+              .filter(t => !t.status || !statusHidden.has(t.status))
+              .map((t) => (
+                <motion.button 
+                  key={t.id} 
+                  initial={{opacity:0,y:4}} 
+                  animate={{opacity:1,y:0}} 
+                  onClick={() => { onClose(); goTo(`/&${t.id}`); }}
+                  className="grid grid-cols-12 w-full text-left hover:bg-slate-700/30 px-6 py-4 transition-all duration-200 hover:shadow-lg group"
+                >
+                  <div className="col-span-2 font-mono text-slate-200 font-medium">#{t.number ?? t.id}</div>
+                  <div className="col-span-5 truncate text-white font-medium group-hover:text-blue-300 transition-colors">{t.subject}</div>
+                  <div className="col-span-2">
+                    <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-slate-700/50 text-slate-200 border border-slate-600/50 shadow-sm">
+                      {t.status}
+                    </span>
+                  </div>
+                  <div className="col-span-3 truncate text-slate-300">{t.customer?.business_and_full_name ?? t.customer?.fullname}</div>
+                </motion.button>
+              ))}
+          </div>
         </div>
       </div>
     </div>
@@ -426,12 +564,11 @@ function TicketListView({ goTo, focusSearchRef }){
                 <button 
                   key={s} 
                   onClick={()=>toggleStatus(s)}
-                  className={cx("px-3 py-1.5 rounded-full border text-xs font-medium transition-all duration-200 hover:scale-105",
+                  className={cx("px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 shadow-md border",
                     statusHidden.has(s)
-                      ? "bg-slate-700/50 text-slate-400 border-slate-600/50" 
-                      : "bg-slate-800/80 text-white border-opacity-60 shadow-md hover:shadow-lg"
+                      ? "bg-slate-700/30 text-slate-500 border-slate-600/30" 
+                      : "bg-slate-800/80 text-slate-200 border-slate-600/50 shadow-lg hover:shadow-xl"
                   )}
-                  style={{ borderColor: STATUS_COLORS[i] }}
                 >
                   {s}
                 </button>
@@ -486,8 +623,7 @@ function TicketListView({ goTo, focusSearchRef }){
                   <div className="col-span-2 font-mono text-slate-200 font-medium">#{t.number ?? t.id}</div>
                   <div className="col-span-5 truncate text-white font-medium group-hover:text-blue-300 transition-colors">{t.subject}</div>
                   <div className="col-span-2">
-                    <span className="px-3 py-1.5 rounded-full text-xs font-medium border shadow-sm" 
-                          style={{borderColor: STATUS_COLORS[STATUSES.indexOf(t.status)||0]}}>
+                    <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-700/50 text-slate-200 border border-slate-600/50 shadow-sm">
                       {t.status}
                     </span>
                   </div>
@@ -545,22 +681,37 @@ function CustomerView({ id, goTo }){
   if(loading) return <Loading/>;
   if(!c) return <ErrorMsg text="Customer not found"/>;
   return (
-    <div className="mx-auto max-w-5xl px-3 py-4 grid md:grid-cols-3 gap-6">
-      <div className="md:col-span-2 space-y-4">
-        <div className="panel">
-          <div className="text-xl font-semibold">{c.business_and_full_name || c.fullname}</div>
-          <div className="text-gray-400">{c.email}</div>
-          <div className="text-gray-400">{c.phone || c.mobile}</div>
+    <div className="mx-auto max-w-6xl px-6 py-6 grid md:grid-cols-3 gap-8">
+      <div className="md:col-span-2 space-y-6">
+        <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-8">
+          <div className="text-2xl font-bold text-white mb-2">{c.business_and_full_name || c.fullname}</div>
+          <div className="text-slate-300 mb-1">{c.email}</div>
+          <div className="text-slate-300">{c.phone || c.mobile}</div>
         </div>
-        <div className="flex gap-2">
-          <button className="btn" onClick={()=>goTo(`/$${id}?newticket`)}><Plus className="w-4 h-4"/> New Ticket</button>
-          <a className="btn" href={`/$${id}?edit`} onClick={(e)=>{e.preventDefault(); goTo(`/$${id}?edit`);}}><ExternalLink className="w-4 h-4"/> Edit</a>
+        <div className="flex gap-4">
+          <button 
+            onClick={()=>goTo(`/$${id}?newticket`)}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+          >
+            <Plus className="w-5 h-5"/>
+            New Ticket
+          </button>
+          <button 
+            onClick={()=>goTo(`/$${id}?edit`)}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+          >
+            <ExternalLink className="w-5 h-5"/>
+            Edit
+          </button>
         </div>
       </div>
-      <div className="space-y-4">
-        <div className="panel">
-          <div className="text-sm font-semibold text-gray-300">Notes</div>
-          <textarea className="input h-32" placeholder="Customer notes…"/>
+      <div className="space-y-6">
+        <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-6">
+          <div className="text-lg font-semibold text-white mb-4">Notes</div>
+          <textarea 
+            className="w-full h-32 px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+            placeholder="Customer notes…"
+          />
         </div>
       </div>
     </div>
@@ -572,16 +723,28 @@ function NewCustomer({ goTo }){
   const [saving, setSaving] = useState(false);
   async function save(){ setSaving(true); try{ const d = await api.post(`/customers`, { customer: form }); const c = d.customer||d; goTo(`/$${c.id}`);}catch(e){console.error(e);}finally{setSaving(false);} }
   return (
-    <div className="mx-auto max-w-lg px-3 py-4">
-      <div className="panel space-y-3">
-        <div className="text-lg font-semibold">New Customer</div>
+    <div className="mx-auto max-w-2xl px-6 py-6">
+      <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-8 space-y-6">
+        <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">New Customer</div>
         {['first_name','last_name','phone','email'].map(k=> (
-          <div key={k} className="space-y-1">
-            <label className="text-sm text-gray-300 capitalize">{k.replace('_',' ')}</label>
-            <input className="input w-full" value={form[k]} onChange={e=>setForm({...form, [k]: e.target.value})}/>
+          <div key={k} className="space-y-2">
+            <label className="text-sm font-medium text-slate-300 capitalize">{k.replace('_',' ')}</label>
+            <input 
+              className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+              value={form[k]} 
+              onChange={e=>setForm({...form, [k]: e.target.value})}
+            />
           </div>
         ))}
-        <div className="flex justify-end gap-2"><button className="btn" onClick={save} disabled={saving}>{saving?"Saving…":"Create"}</button></div>
+        <div className="flex justify-end gap-3 pt-4">
+          <button 
+            onClick={save} 
+            disabled={saving}
+            className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-600 disabled:to-slate-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 disabled:hover:scale-100"
+          >
+            {saving?"Saving…":"Create"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -594,6 +757,7 @@ function TicketView({ id, goTo }) {
   const api = useApi();
   const [t, setT] = useState(null);
   const [loading, setLoading] = useState(true);
+  const ticketCardRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -613,27 +777,98 @@ function TicketView({ id, goTo }) {
 
   const phone = formatPhone(t.customer?.phone || t.customer?.mobile || "");
 
-  return (
-    <div className="mx-auto max-w-6xl px-6 py-6 grid grid-cols-12 gap-6">
-      {/* LEFT SIDE: Ticket + statuses */}
-      <div className="col-span-12 lg:col-span-7 space-y-4">
-        <TicketCard
-          password={t.password || ""}
-          ticketNumber={t.number ?? t.id}
-          subject={t.subject}
-          itemsLeft={(t.items_left || []).join(", ")}
-          name={t.customer?.business_and_full_name || t.customer?.fullname || ""}
-          creationDate={fmtDate(t.created_at)}
-          phoneNumber={phone}
-        />
+  const generatePDF = async () => {
+    if (!ticketCardRef.current) return;
+    
+    try {
+      const canvas = await html2canvas(ticketCardRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+        allowTaint: true
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      
+      let position = 0;
+      
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      pdf.save(`ticket-${t.number || t.id}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
+  };
 
-        {/* Status buttons */}
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-gray-200">Status:</p>
-          <div className="flex flex-col gap-2">
-            {STATUSES.map((s, i) => {
-              const active = t.status === s;
-              return (
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-6">
+      {/* Top Action Buttons */}
+      <div className="flex justify-end gap-2 mb-6">
+        <button 
+          onClick={() => goTo(`/$${t.customer?.id || t.customer_id}`)}
+          title="View Customer"
+          className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500/50 transition-all duration-200 hover:scale-105 shadow-md"
+        >
+          <UserPlus className="w-5 h-5 text-slate-300"/>
+        </button>
+        <button 
+          onClick={generatePDF}
+          title="Print PDF"
+          className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500/50 transition-all duration-200 hover:scale-105 shadow-md"
+        >
+          <Printer className="w-5 h-5 text-slate-300"/>
+        </button>
+        <button 
+          onClick={() => goTo(`/&${t.id}?edit`)}
+          title="Edit Ticket"
+          className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600/50 hover:border-slate-500/50 transition-all duration-200 hover:scale-105 shadow-md"
+        >
+          <Edit className="w-5 h-5 text-slate-300"/>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-12 gap-6">
+        {/* LEFT SIDE: Ticket + statuses */}
+        <div className="col-span-12 lg:col-span-7 space-y-4">
+          {/* Ticket Card - Scaled up */}
+          <div ref={ticketCardRef} className="transform scale-125 origin-top-left">
+            <TicketCard
+              password={t.password || ""}
+              ticketNumber={t.number ?? t.id}
+              subject={t.subject}
+              itemsLeft={(t.items_left || []).join(", ")}
+              name={t.customer?.business_and_full_name || t.customer?.fullname || ""}
+              creationDate={fmtDate(t.created_at)}
+              phoneNumber={phone}
+            />
+          </div>
+
+          {/* Status buttons */}
+          <div className="space-y-3" style={{ width: "323px" }}>
+            <p className="text-sm font-semibold text-slate-200">Status:</p>
+            <div className="flex flex-col gap-2">
+              {STATUSES.map((s, i) => {
+                const active = t.status === s;
+                return (
                 <button
                   key={s}
                   onClick={async () => {
@@ -646,39 +881,28 @@ function TicketView({ id, goTo }) {
                       console.error(err);
                     }
                   }}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium text-left ${
+                  className={`px-4 py-2 rounded-xl text-sm font-semibold text-left transition-all duration-200 hover:scale-105 shadow-md border ${
                     active
-                      ? "bg-yellow-500 text-black"
-                      : "bg-neutral-800 text-white hover:bg-neutral-700"
+                      ? "bg-slate-700 text-white border-slate-500 shadow-lg"
+                      : "bg-slate-800/50 text-slate-300 border-slate-600/50 hover:text-white hover:bg-slate-700/50 hover:shadow-lg"
                   }`}
                 >
                   {s}
                 </button>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Print option */}
-        <div className="flex items-center gap-2 text-sm text-gray-400 mt-3">
-          <Printer className="w-4 h-4" />
-          <button onClick={() => window.print()} className="underline">
-            Print
-          </button>
-          <span>
-            This prints the on-screen ticket label using your browser's print
-            dialog.
-          </span>
-        </div>
+        {/* RIGHT SIDE: Comments */}
+        <aside className="col-span-12 lg:col-span-5">
+          <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-6">
+            <div className="text-lg font-semibold mb-4 text-white">Comments</div>
+            <CommentsBox ticketId={t.id} />
+          </div>
+        </aside>
       </div>
-
-      {/* RIGHT SIDE: Comments */}
-      <aside className="col-span-12 lg:col-span-5">
-        <div className="panel">
-          <div className="text-sm font-semibold mb-2 text-white">Comments</div>
-          <CommentsBox ticketId={t.id} />
-        </div>
-      </aside>
     </div>
   );
 }
@@ -694,16 +918,30 @@ function CommentsBox({ ticketId }){
   // eslint-disable-next-line
   }, [ticketId]);
   return (
-    <div className="panel space-y-3">
-      <div className="text-sm font-semibold text-gray-300">Comments</div>
-      <textarea value={text} onChange={e=>setText(e.target.value)} className="input h-24" placeholder="Write a comment…"/>
-      <button onClick={create} className="btn w-full">Create Comment</button>
-      <div className="divide-y divide-neutral-800">
-        {loading && <div className="text-sm text-gray-400">Loading…</div>}
+    <div className="space-y-4">
+      <textarea 
+        value={text} 
+        onChange={e=>setText(e.target.value)} 
+        className="w-full h-24 px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+        placeholder="Write a comment…"
+      />
+      <button 
+        onClick={create} 
+        className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+      >
+        Create Comment
+      </button>
+      <div className="divide-y divide-slate-700/30">
+        {loading && (
+          <div className="flex items-center justify-center py-4 text-sm text-slate-400">
+            <Loader2 className="w-4 h-4 animate-spin mr-2"/>
+            Loading…
+          </div>
+        )}
         {(list||[]).map(c=> (
-          <div key={c.id} className="py-2 text-sm">
-            <div className="text-gray-300 whitespace-pre-wrap">{c.body || c.comment || ''}</div>
-            <div className="text-[11px] text-gray-500 mt-1">{fmtDate(c.created_at)}</div>
+          <div key={c.id} className="py-4 text-sm">
+            <div className="text-slate-200 whitespace-pre-wrap leading-relaxed">{c.body || c.comment || ''}</div>
+            <div className="text-xs text-slate-500 mt-2 font-medium">{fmtDate(c.created_at)}</div>
           </div>
         ))}
       </div>
@@ -715,25 +953,34 @@ function TicketEditor({ ticketId, customerId, goTo }){
   const api = useApi();
   const [pre, setPre] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [deviceIdx, setDeviceIdx] = useState(0);
-  const [brandIdx, setBrandIdx] = useState(0);
-  const [model, setModel] = useState("");
-  const [colorIdx, setColorIdx] = useState(-1);
-  const [problems, setProblems] = useState([]);
-  const [howLongIdx, setHowLongIdx] = useState(0);
+  const [subject, setSubject] = useState("");
   const [password, setPassword] = useState("");
+  const [deviceIdx, setDeviceIdx] = useState(0);
+  const [colorIdx, setColorIdx] = useState(-1);
+  const [howLongIdx, setHowLongIdx] = useState(0);
   const [itemsLeft, setItemsLeft] = useState([]);
   const [needDataIdx, setNeedDataIdx] = useState(0);
-  const [other, setOther] = useState("");
-  const [subject, setSubject] = useState("");
-  const [useLegacySubject, setUseLegacySubject] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(()=>{(async()=>{
     try{
-      if(ticketId){ const d = await api.get(`/tickets/${ticketId}`); const t = d.ticket||d; setPre(t); setSubject(t.subject||""); setPassword(t.password||""); }
-      else if(customerId){ const d = await api.get(`/customers/${customerId}`); setPre(d.customer||d); }
-    }catch(e){ console.error(e);} finally{ setLoading(false);} })();}, [ticketId, customerId]);
+      if(ticketId){ 
+        const d = await api.get(`/tickets/${ticketId}`); 
+        const t = d.ticket||d; 
+        setPre(t); 
+        setSubject(t.subject||""); 
+        setPassword(t.password||""); 
+        setDeviceIdx(DEVICES.indexOf(t.device_type) || 0);
+        setColorIdx(COLORS.indexOf(t.color) || -1);
+        setHowLongIdx(HOW_LONG_MIN.indexOf(t.promised_by ? Math.round((new Date(t.promised_by) - new Date(t.created_at)) / 60000) : 0) || 0);
+        setItemsLeft(t.items_left || []);
+        setNeedDataIdx(NEED_DATA.indexOf(t.need_data) || 0);
+      }
+      else if(customerId){ 
+        const d = await api.get(`/customers/${customerId}`); 
+        setPre(d.customer||d); 
+      }
+    }catch(e){ console.error(e);} finally{ setLoading(false);} })();}, [ticketId, customerId, deviceIdx]);
 
   function toggleProblem(i){ setProblems(p=> p.includes(i)? p.filter(x=>x!==i) : [...p,i]); }
   function toggleItem(name){ setItemsLeft(xs=> xs.includes(name)? xs.filter(x=>x!==name) : [...xs, name]); }
@@ -741,64 +988,246 @@ function TicketEditor({ ticketId, customerId, goTo }){
   async function save(){
     setSaving(true);
     try{
-      let payload;
-      if(useLegacySubject){
-        payload = { ticket: { subject, customer_id: customerId || pre?.customer_id || pre?.id, password, has_device: itemsLeft.includes("Charger") } };
-      } else {
-        const arrival = new Date();
-        const promised = HOW_LONG_MIN[howLongIdx] ? new Date(arrival.getTime()+HOW_LONG_MIN[howLongIdx]*60000) : arrival;
-        payload = { ticket: {
-          subject: buildSubject(),
-          customer_id: customerId || pre?.customer_id || pre?.id,
-          device_type: DEVICES[deviceIdx],
-          brand: BRANDS[deviceIdx][brandIdx],
-          model,
-          color: colorIdx>=0 ? COLORS[colorIdx] : "",
-          problems: problems.map(i=>PROBLEMS[deviceIdx][i]),
-          notes: other,
-          need_data: NEED_DATA[needDataIdx],
+      const arrival = new Date();
+      const promised = HOW_LONG_MIN[howLongIdx] ? new Date(arrival.getTime()+HOW_LONG_MIN[howLongIdx]*60000) : arrival;
+      
+      const payload = { 
+        ticket: { 
+          subject: subject || buildSubject(),
+          customer_id: customerId || pre?.customer_id || pre?.id, 
           password,
+          device_type: DEVICES[deviceIdx],
+          color: colorIdx>=0 ? COLORS[colorIdx] : "",
+          need_data: NEED_DATA[needDataIdx],
           promised_by: promised.toISOString(),
-        }};
-      }
-      let out; if(ticketId) out = await api.put(`/tickets/${ticketId}`, payload); else out = await api.post(`/tickets`, payload);
-      const t = out.ticket||out; goTo(`/&${t.id}`);
+          items_left: itemsLeft
+        } 
+      };
+      let out; 
+      if(ticketId) out = await api.put(`/tickets/${ticketId}`, payload); 
+      else out = await api.post(`/tickets`, payload);
+      const t = out.ticket||out; 
+      goTo(`/&${t.id}`);
     }catch(e){ console.error(e);} finally{ setSaving(false);} 
   }
+
   function buildSubject(){
-    const bits=[BRANDS[deviceIdx][brandIdx], model, colorIdx>=0?COLORS[colorIdx]:null, DEVICES[deviceIdx]].filter(Boolean);
-    const probs=problems.map(i=>PROBLEMS[deviceIdx][i]);
-    const extra=other?.trim();
-    return [bits.join(" "), probs.join(" + "), extra].filter(Boolean).join(" — ");
+    const bits=[colorIdx>=0?COLORS[colorIdx]:null].filter(Boolean);
+    return bits.join(" ");
   }
+
   if(loading) return <Loading/>;
+  
   return (
-    <div className="mx-auto max-w-5xl px-3 py-4">
-      <div className="panel space-y-6">
+    <div className="mx-auto max-w-4xl px-6 py-6">
+      <div className="rounded-3xl border border-slate-600/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 shadow-2xl backdrop-blur-sm p-8 space-y-6">
         <div className="flex items-center justify-between">
-          <div className="text-lg font-semibold">{ticketId?"Edit Ticket":"New Ticket"}</div>
-          <div className="flex items-center gap-3 text-sm">
-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={useLegacySubject} onChange={e=>setUseLegacySubject(e.target.checked)}/> Legacy subject panel</label>
-            <button className="btn" onClick={save} disabled={saving}>{saving?"Saving…":"Apply"}</button>
+          <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            {ticketId ? "Edit Ticket" : "New Ticket"}
+          </div>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => goTo(ticketId ? `/&${ticketId}` : '/')} 
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={save} 
+              disabled={saving}
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-600 disabled:to-slate-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 disabled:hover:scale-100"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
           </div>
         </div>
 
-        {!useLegacySubject ? (
-          <div className="grid md:grid-cols-2 gap-6">
-            <PickerRow label="Device" options={DEVICES} value={deviceIdx} onChange={setDeviceIdx}/>
-            <PickerRow label="Brand" options={BRANDS[deviceIdx]} value={brandIdx} onChange={setBrandIdx}/>
-            <Field label="Model" value={model} onChange={setModel}/>
-            <ColorRow value={colorIdx} onChange={setColorIdx}/>
-            <MultiRow label="Problems" options={PROBLEMS[deviceIdx]} selected={problems} onToggle={toggleProblem}/>
-            <PickerRow label="How long" options={HOW_LONG} value={howLongIdx} onChange={setHowLongIdx}/>
-            <Field label="Password" value={password} onChange={setPassword}/>
-            <Checkboxes label="Items left" options={ITEMS_LEFT} values={itemsLeft} onToggle={toggleItem}/>
-            <PickerRow label="Data" options={NEED_DATA} value={needDataIdx} onChange={setNeedDataIdx}/>
-            <TextArea label="Other" value={other} onChange={setOther}/>
-            <div className="md:col-span-2 text-sm text-gray-400">Subject preview: <span className="font-medium text-white">{buildSubject()}</span></div>
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Basic Information */}
+          <div className="space-y-6">
+            <div className="text-lg font-semibold text-slate-200 mb-4">Basic Information</div>
+            
+            {/* Subject */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Subject</label>
+              <input 
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+                value={subject} 
+                onChange={e=>setSubject(e.target.value)}
+                placeholder="Enter ticket subject..."
+              />
+            </div>
+
+            {/* Password */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Password</label>
+              <input 
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200" 
+                value={password} 
+                onChange={e=>setPassword(e.target.value)}
+                placeholder="Device password (optional)"
+              />
+            </div>
+
           </div>
-        ) : (
-          <Field label="Subject" value={subject} onChange={setSubject}/>
+
+          {/* Device Information */}
+          <div className="space-y-6">
+            <div className="text-lg font-semibold text-slate-200 mb-4">Device Information</div>
+            
+            {/* Device Type */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Device Type</label>
+              <select 
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                value={deviceIdx} 
+                onChange={e=>{setDeviceIdx(parseInt(e.target.value)); setBrandIdx(0); setProblems([]);}}
+              >
+                {DEVICES.map((d, i) => (
+                  <option key={i} value={i}>
+                    {d || "Other"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+
+            {/* Color */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Color</label>
+              <div className="flex flex-wrap gap-3">
+                {/* No color option */}
+                <button
+                  onClick={() => setColorIdx(-1)}
+                  className={`w-8 h-8 rounded-full border-2 transition-all duration-200 ${
+                    colorIdx === -1
+                      ? "border-white ring-2 ring-blue-400"
+                      : "border-slate-600 hover:border-slate-400"
+                  }`}
+                  style={{
+                    background: "linear-gradient(135deg, #374151 0%, #1f2937 100%)"
+                  }}
+                  title="No color"
+                />
+                
+                {/* Color options */}
+                {COLORS.map((color, i) => {
+                  let colorStyle = {};
+                  
+                  // Special textures for metallic colors
+                  if (color.toLowerCase() === "silver") {
+                    colorStyle = {
+                      background: "linear-gradient(135deg, #c0c0c0 0%, #a8a8a8 25%, #d3d3d3 50%, #b8b8b8 75%, #c0c0c0 100%)",
+                      boxShadow: "inset 0 1px 2px rgba(255,255,255,0.3), inset 0 -1px 2px rgba(0,0,0,0.2)"
+                    };
+                  } else if (color.toLowerCase() === "gold") {
+                    colorStyle = {
+                      background: "linear-gradient(135deg, #ffd700 0%, #ffed4e 25%, #ffd700 50%, #b8860b 75%, #ffd700 100%)",
+                      boxShadow: "inset 0 1px 2px rgba(255,255,255,0.4), inset 0 -1px 2px rgba(0,0,0,0.3)"
+                    };
+                  } else if (color.toLowerCase() === "rose gold") {
+                    colorStyle = {
+                      background: "linear-gradient(135deg, #e8b4b8 0%, #f4a6ab 25%, #e8b4b8 50%, #d4a5a9 75%, #e8b4b8 100%)",
+                      boxShadow: "inset 0 1px 2px rgba(255,255,255,0.3), inset 0 -1px 2px rgba(0,0,0,0.2)"
+                    };
+                  } else {
+                    // Regular colors
+                    const colorMap = {
+                      "purple": "#8b5cf6",
+                      "orange": "#f97316", 
+                      "black": "#000000",
+                      "gray": "#6b7280",
+                      "white": "#ffffff",
+                      "yellow": "#eab308",
+                      "pink": "#ec4899",
+                      "blue": "#3b82f6",
+                      "brown": "#a3a3a3",
+                      "green": "#22c55e",
+                      "red": "#ef4444"
+                    };
+                    colorStyle = {
+                      backgroundColor: colorMap[color.toLowerCase()] || "#6b7280"
+                    };
+                  }
+                  
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setColorIdx(i)}
+                      className={`w-8 h-8 rounded-full border-2 transition-all duration-200 ${
+                        colorIdx === i
+                          ? "border-white ring-2 ring-blue-400"
+                          : "border-slate-600 hover:border-slate-400"
+                      }`}
+                      style={colorStyle}
+                      title={color}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+
+            {/* Time Estimate */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Estimated Time</label>
+              <select 
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                value={howLongIdx} 
+                onChange={e=>setHowLongIdx(parseInt(e.target.value))}
+              >
+                {HOW_LONG.map((h, i) => (
+                  <option key={i} value={i}>
+                    {h || "No estimate"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Items Left */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Items Left</label>
+              <div className="flex flex-wrap gap-2">
+                {ITEMS_LEFT.map((item, i) => item && (
+                  <button
+                    key={i}
+                    onClick={() => toggleItem(item)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
+                      itemsLeft.includes(item)
+                        ? "bg-slate-700 text-white border-slate-500"
+                        : "bg-slate-800/50 text-slate-300 border-slate-600/50 hover:bg-slate-700/50"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Data Handling */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Data Handling</label>
+              <select 
+                className="w-full px-4 py-3 rounded-xl bg-slate-700/50 border border-slate-600/50 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
+                value={needDataIdx} 
+                onChange={e=>setNeedDataIdx(parseInt(e.target.value))}
+              >
+                {NEED_DATA.map((d, i) => (
+                  <option key={i} value={i}>
+                    {d || "No data handling"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Subject Preview */}
+        {!subject && (
+          <div className="mt-6 p-4 rounded-xl bg-slate-800/30 border border-slate-600/30">
+            <div className="text-sm text-slate-400 mb-2">Auto-generated subject preview:</div>
+            <div className="text-slate-200 font-medium">{buildSubject()}</div>
+          </div>
         )}
       </div>
     </div>
@@ -883,6 +1312,7 @@ function ErrorMsg({ text }){ return <div className="mx-auto max-w-3xl px-3 py-10
 export default function App(){
   const { path, navigate } = useRoute();
   const [showSettings, setShowSettings] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const searchRef = useRef(null);
   const route = useMemo(()=>{
     const url = new URL(window.location.origin + path);
@@ -900,7 +1330,7 @@ export default function App(){
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
         <TopBar
           onHome={()=>navigate("/")}
-          onSearchFocus={()=>searchRef.current?.focus()}
+          onSearchClick={()=>setShowSearch(true)}
           onNewCustomer={()=>navigate("/newcustomer")}
           onSettings={()=>setShowSettings(true)}
         />
@@ -913,6 +1343,7 @@ export default function App(){
         {route.view==="ticket-by-number" && <TicketByNumber number={route.number} goTo={navigate}/>} 
 
         <SettingsModal open={showSettings} onClose={()=>setShowSettings(false)}/>
+        <SearchModal open={showSearch} onClose={()=>setShowSearch(false)} goTo={navigate}/>
       </div>
     </ApiProvider>
   );
