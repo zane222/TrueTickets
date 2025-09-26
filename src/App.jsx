@@ -202,9 +202,10 @@ function TicketCard({
             id="result"
             style={{
                 color: "black",
-                paddingLeft: "21px",
+                paddingLeft: "20px",
                 width: "323px",
                 paddingTop: "6px",
+                paddingBottom: "6px",
                 transformOrigin: "top",
                 fontFamily: "ff2",
                 fontStyle: "normal",
@@ -226,7 +227,7 @@ function TicketCard({
                 <p style={{ fontSize: "7.5pt" }} >
                     {password}
                 </p>
-                <p style={{ textAlign: "right", fontWeight: 900, paddingRight: "18pt" }}>
+                <p style={{ textAlign: "right", fontWeight: 950, paddingRight: "17pt" }}>
                     # {ticketNumber}
                 </p>
             </div>
@@ -248,7 +249,7 @@ function TicketCard({
                 <p style={{ fontSize: "7.5pt", lineHeight: "1px" }}>
                     {itemsLeft}
                 </p>
-                <p style={{ textAlign: "right", paddingTop: "51px", lineHeight: "7px", paddingRight: "18pt" }}>
+                <p style={{ textAlign: "right", paddingTop: "51px", lineHeight: "7px", paddingRight: "17pt" }}>
                     {name}
                 </p>
             </div>
@@ -265,7 +266,7 @@ function TicketCard({
                 <p style={{ fontSize: "7.5pt" }}>
                     {creationDate}
                 </p>
-                <p style={{ textAlign: "right", paddingRight: "18pt" }}>
+                <p style={{ textAlign: "right", paddingRight: "17pt" }}>
                     {phoneNumber}
                 </p>
             </div>
@@ -358,6 +359,7 @@ function SearchModal({ open, onClose, goTo }) {
     const [search, setSearch] = useState("");
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false);
     // New Customer autofill helpers
     const parsePhoneNumber = (s = "") => (s || "").replace(/\D/g, "");
     const isLikelyPhone = (digits) => digits.length >= 7; // permissive; adjust if needed
@@ -387,10 +389,12 @@ function SearchModal({ open, onClose, goTo }) {
     async function fetchTickets() {
         if (!search.trim()) {
             setResults([]);
+            setHasSearched(false);
             return;
         }
 
         setLoading(true);
+        setHasSearched(true);
         try {
             const data = await api.get(`/tickets?query=${encodeURIComponent(search.trim())}`);
             const arr = data.tickets || data || [];
@@ -437,12 +441,12 @@ function SearchModal({ open, onClose, goTo }) {
                 </div>
 
                 {/* Search Input */}
-                <div className="relative">
+                <div className="relative pl-12">
                     <input
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Search..."
-                        className="md-input pl-10"
+                        className="md-input pl-12"
                         autoFocus
                     />
                     <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -463,12 +467,12 @@ function SearchModal({ open, onClose, goTo }) {
                                 <span className="font-medium">Searching...</span>
                             </div>
                         )}
-                        {!loading && results.length === 0 && search.trim() && (
+                        {!loading && hasSearched && results.length === 0 && (
                             <div className="flex items-center justify-center p-6 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
                                 No tickets found for "{search}"
                             </div>
                         )}
-                        {!loading && !search.trim() && (
+                        {!loading && !hasSearched && (
                             <div className="flex items-center justify-center p-6 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
                                 Start typing to search tickets...
                             </div>
@@ -1082,7 +1086,7 @@ function TicketView({ id, goTo }) {
                 .set({ 
                     margin: [0, 0, 0, 0], 
                     filename: "ticket.pdf", 
-                    html2canvas: { scale: 3 }, 
+                    html2canvas: { scale: 8 }, 
                     jsPDF: { 
                         orientation: "l", 
                         unit: "in", 
@@ -1136,9 +1140,9 @@ function TicketView({ id, goTo }) {
 
             <div className="grid grid-cols-12 gap-6">
                 {/* LEFT SIDE: Ticket + statuses */}
-                <div className="col-span-12 lg:col-span-4 space-y-25">
+                <div className="col-span-12 lg:col-span-4 space-y-20">
                     {/* Ticket Card - Scaled up */}
-                    <div className="transform scale-148 origin-top-left bg-white rounded-md shadow-lg pb-[1px]">
+                    <div className="transform scale-148 origin-top-left bg-white rounded-md shadow-lg">
                         <div ref={ticketCardRef}>
                             <TicketCard
                                 password={getTicketPassword(t)}
@@ -1153,7 +1157,7 @@ function TicketView({ id, goTo }) {
                     </div>
 
                     {/* Status buttons */}
-                    <div className="space-y-3" style={{ width: "240px" }}>
+                    <div className="md-card p-4 space-y-3" style={{ width: "240px" }}>
                         <p className="text-md font-semibold">Status:</p>
                         <div className="flex flex-col gap-2">
                             {STATUSES.map((s, i) => {
@@ -1327,19 +1331,15 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     async function save() {
         setSaving(true);
         try {
-            // Build properties object, preserving existing properties
             const properties = { ...existingProperties };
             
-            // Only update fields that are being modified
-            properties.Password = password || "n";
+            properties.Password = password || "";
             properties["AC Charger"] = itemsLeft.includes("Charger") ? "1" : "0";
             
-            // Preserve existing Tech Notes - don't overwrite them
             // Tech Notes will only be set to empty for new tickets
             if (!ticketId) {
                 properties["Tech Notes"] = "";
             }
-            // For existing tickets, Tech Notes are preserved from existingProperties
             
             const payload = {
                 customer_id: customerId || pre?.customer_id || pre?.id,

@@ -73,26 +73,9 @@ html, body, #root {
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
-.material-primary-container {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-}
-
-.material-button-tonal {
-  background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
-  border-radius: 9999px;
-}
-
-.material-button-filled {
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  border-radius: 9999px;
-}
 
 .elev-1 { box-shadow: var(--md-elevation-1); }
 .elev-2 { box-shadow: var(--md-elevation-2); }
-.elev-3 { box-shadow: var(--md-elevation-3); }
 
 /* Material You component utilities */
 .md-card {
@@ -153,125 +136,11 @@ html, body, #root {
 .md-btn-surface:hover { background: color-mix(in oklab, #2c2c2f 90%, white); }
 .md-btn-primary:hover { filter: brightness(1.05); }
 
-/* Aliases to previously used classes */
-.material-button-filled { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border-radius: 9999px; }
-.material-button-tonal { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); border-radius: 9999px; }
 
-/* List item background tone */
-:root { --md-list-item-bg: #2c2c2f; }
 .md-row-box {
-  background: var(--md-list-item-bg);
+  background: #2c2c2f;
   border: 1px solid color-mix(in oklab, var(--md-sys-color-on-surface) 8%, transparent);
   border-radius: 14px;
   box-shadow: 0 1px 0 rgba(0,0,0,.25);
 }
-.md-row-box:hover { background: color-mix(in oklab, var(--md-list-item-bg) 92%, var(--md-sys-color-on-surface)); }
-
-/* ===================== One UI (Samsung) ===================== */
-/* Blue accent, soft surfaces, subtle dividers, rounded corners */
-:root {
-  --oneui-accent: #1e88ff; /* blue accent */
-  --oneui-accent-on: #ffffff;
-  --oneui-surface: #fbfbfd;
-  --oneui-on-surface: #0b0b0f;
-  --oneui-surface-2: #ffffff;
-  --oneui-border: rgba(0, 0, 0, 0.08);
-  --oneui-border-strong: rgba(0, 0, 0, 0.12);
-  --oneui-muted: #6b7280;
-  --oneui-success: #10b981;
-  --oneui-danger: #ef4444;
-  --oneui-elev-1: 0 2px 6px rgba(0,0,0,.06);
-  --oneui-elev-2: 0 6px 16px rgba(0,0,0,.08);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --oneui-accent: #61a8ff;
-    --oneui-accent-on: #0a0a0a;
-    --oneui-surface: #0f1115;
-    --oneui-on-surface: #e7e9ee;
-    --oneui-surface-2: #141820;
-    --oneui-border: rgba(255, 255, 255, 0.08);
-    --oneui-border-strong: rgba(255, 255, 255, 0.14);
-    --oneui-muted: #a1a7b3;
-    --oneui-elev-1: 0 2px 8px rgba(0,0,0,.5);
-    --oneui-elev-2: 0 8px 22px rgba(0,0,0,.55);
-  }
-}
-
-.oneui-surface {
-  background: var(--oneui-surface);
-  color: var(--oneui-on-surface);
-}
-
-.oneui-appbar {
-  background: var(--oneui-surface-2);
-  color: var(--oneui-on-surface);
-  box-shadow: var(--oneui-elev-1);
-  border-bottom: 1px solid var(--oneui-border);
-}
-
-.oneui-card {
-  background: var(--oneui-surface-2);
-  color: var(--oneui-on-surface);
-  border: 1px solid var(--oneui-border);
-  border-radius: 16px;
-  box-shadow: var(--oneui-elev-1);
-}
-
-.oneui-input {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background: var(--oneui-surface);
-  color: var(--oneui-on-surface);
-  border: 1px solid var(--oneui-border);
-  border-radius: 14px;
-  outline: none;
-}
-.oneui-input:focus {
-  border-color: color-mix(in oklab, var(--oneui-accent) 45%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--oneui-accent) 20%, transparent);
-}
-
-.btn-primary {
-  background: var(--oneui-accent);
-  color: var(--oneui-accent-on);
-  border-radius: 9999px;
-  padding: 0.625rem 1rem;
-}
-.btn-primary:disabled { opacity: .7; }
-
-.btn-tonal {
-  background: color-mix(in oklab, var(--oneui-accent) 12%, var(--oneui-surface-2));
-  color: var(--oneui-on-surface);
-  border: 1px solid color-mix(in oklab, var(--oneui-accent) 20%, var(--oneui-border));
-  border-radius: 9999px;
-  padding: 0.625rem 1rem;
-}
-
-.oneui-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.375rem 0.75rem;
-  border-radius: 9999px;
-  background: var(--oneui-surface);
-  color: var(--oneui-on-surface);
-  border: 1px solid var(--oneui-border);
-}
-.oneui-chip.is-selected {
-  background: color-mix(in oklab, var(--oneui-accent) 18%, var(--oneui-surface));
-  border-color: color-mix(in oklab, var(--oneui-accent) 40%, var(--oneui-border));
-}
-
-.oneui-list-row {
-  display: grid;
-  align-items: center;
-}
-.oneui-list-row:hover {
-  background: color-mix(in oklab, var(--oneui-on-surface) 6%, transparent);
-}
-
-.divider {
-  border-top: 1px solid var(--oneui-border);
-}
+.md-row-box:hover { background: color-mix(in oklab, #2c2c2f 92%, var(--md-sys-color-on-surface)); }
