@@ -6,13 +6,12 @@ import html2pdf from 'html2pdf.js';
 /**
  * Mini-RepairShopr — Full React + Tailwind (Dark Theme)
  *
- * What’s here
  * - API client (base URL + API key) matching RepairShopr REST
- * - Hashless, URL-driven routing mirroring your Unity scheme
+ * - Hashless, URL-driven routing
  * - Ticket List with status filters, keyboard shortcuts
  * - Ticket View using TicketCard (converted from your index.html template)
  * - Sidebar with status chips and comments box (dark theme like your screenshot)
- * - New/Edit Ticket flow matching your C# presets (NewTicketManager, UsefullMethods)
+ * - New/Edit Ticket flow matching
  * - Customer View + New Customer form
  * - Settings modal for base URL + API key
  *
@@ -90,10 +89,9 @@ function formatPhone(num = "") {
     if (digits.length === 10) {
         return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
     }
-    return num; // fallback: return as-is if not 10 digits
+    return num;
 }
 
-// Match C# GetPassword logic
 function getTicketPassword(ticket) {
     try {
         const typeId = ticket?.ticket_type_id;
@@ -116,7 +114,26 @@ function useHotkeys(map) {
         function onKey(e) {
             const tag = (e.target || {}).tagName;
             if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+            
+            // Handle complex key combinations
+            let keyCombo = '';
+            if (e.altKey) keyCombo += 'alt+';
+            if (e.ctrlKey) keyCombo += 'ctrl+';
+            if (e.shiftKey) keyCombo += 'shift+';
+            
             const k = e.key.toLowerCase();
+            if (k === 'arrowleft') keyCombo += 'arrowleft';
+            else if (k === 'arrowright') keyCombo += 'arrowright';
+            else if (k === 'arrowup') keyCombo += 'arrowup';
+            else if (k === 'arrowdown') keyCombo += 'arrowdown';
+            else keyCombo += k;
+            
+            if (map[keyCombo]) {
+                map[keyCombo](e);
+                return;
+            }
+            
+            // Fallback to simple key
             if (map[k]) map[k](e);
         }
         window.addEventListener('keydown', onKey);
@@ -184,20 +201,17 @@ function TicketCard({
         <div
             id="result"
             style={{
-                paddingLeft: "13px",
-                width: "323px",
-                display: "block",
-                marginTop: "15px",
-                transformOrigin: "center top",
-                position: "relative", // needed for absolute children
-                backgroundColor: "white",
                 color: "black",
+                paddingLeft: "21px",
+                width: "323px",
+                paddingTop: "6px",
+                transformOrigin: "top",
+                fontFamily: "ff2",
                 fontStyle: "normal",
                 fontWeight: 500,
                 fontSize: "10.35pt",
                 margin: "0pt",
                 lineHeight: "12pt",
-                fontFamily: "ff2",
             }}
         >
             {/* Row 1: password + ticket number */}
@@ -209,22 +223,16 @@ function TicketCard({
                     alignItems: "center",
                 }}
             >
-                <p style={{ fontSize: "7.5pt" }} id="password">
+                <p style={{ fontSize: "7.5pt" }} >
                     {password}
                 </p>
-                <p
-                    style={{ textAlign: "right", fontWeight: 700, paddingRight: "33pt" }}
-                    id="ticketNumber"
-                >
+                <p style={{ textAlign: "right", fontWeight: 900, paddingRight: "18pt" }}>
                     # {ticketNumber}
                 </p>
             </div>
 
             {/* Subject */}
-            <p
-                style={{ position: "absolute", width: "294px", fontSize: "10.35pt" }}
-                id="subject"
-            >
+            <p style={{ position: "absolute", width: "294px" }}>
                 {subject}
             </p>
 
@@ -237,18 +245,10 @@ function TicketCard({
                     alignItems: "baseline",
                 }}
             >
-                <p style={{ fontSize: "7.5pt", lineHeight: "1px" }} id="itemsLeft">
+                <p style={{ fontSize: "7.5pt", lineHeight: "1px" }}>
                     {itemsLeft}
                 </p>
-                <p
-                    style={{
-                        textAlign: "right",
-                        paddingTop: "51px",
-                        lineHeight: "7px",
-                        paddingRight: "33pt",
-                    }}
-                    id="name"
-                >
+                <p style={{ textAlign: "right", paddingTop: "51px", lineHeight: "7px", paddingRight: "18pt" }}>
                     {name}
                 </p>
             </div>
@@ -262,10 +262,10 @@ function TicketCard({
                     alignItems: "baseline",
                 }}
             >
-                <p style={{ fontSize: "7.5pt" }} id="creationDate">
+                <p style={{ fontSize: "7.5pt" }}>
                     {creationDate}
                 </p>
-                <p style={{ textAlign: "right", paddingRight: "33pt" }} id="phoneNumber">
+                <p style={{ textAlign: "right", paddingRight: "18pt" }}>
                     {phoneNumber}
                 </p>
             </div>
@@ -441,7 +441,7 @@ function SearchModal({ open, onClose, goTo }) {
                     <input
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        placeholder="Search tickets..."
+                        placeholder="Search..."
                         className="md-input pl-10"
                         autoFocus
                     />
@@ -525,6 +525,7 @@ function TicketListView({ goTo }) {
 
     useHotkeys({
         "h": () => goTo("/"),
+        "s": () => setShowSearch(true),
         "n": () => goTo("/newcustomer"),
     });
 
@@ -777,6 +778,19 @@ function NewCustomer({ goTo, customerId }) {
     const [form, setForm] = useState({ first_name: "", last_name: "", business_name: "", phone: "", email: "" });
     const [additionalPhones, setAdditionalPhones] = useState([]);
     const [applying, setApplying] = useState(false);
+    
+    // Keybinds from Unity NewCustomerManager
+    useHotkeys({
+        "h": () => goTo("/"),
+        "s": () => {
+            // Trigger search modal from parent
+            const searchEvent = new CustomEvent('openSearch');
+            window.dispatchEvent(searchEvent);
+        },
+        "c": () => {
+            if (customerId) goTo(`/$${customerId}`);
+        }
+    });
     const formatPhoneLive = (value) => {
         const d = (value || "").replace(/\D/g, "");
         const a = d.slice(0, 3);
@@ -884,16 +898,23 @@ function NewCustomer({ goTo, customerId }) {
     async function save() {
         setSaving(true);
         try {
-            const sanitized = { ...form, phone: (form.phone || "").replace(/\D/g, "") };
+            const sanitized = { 
+                firstname: form.first_name, 
+                lastname: form.last_name, 
+                business_name: form.business_name, 
+                mobile: (form.phone || "").replace(/\D/g, ""),
+                phone: "",
+                email: form.email
+            };
             let d;
             if (customerId) {
                 // Edit flow with phone reordering
-                if ((sanitized.first_name || "").replace(/\u200B/g, "").trim() === "") {
+                if ((sanitized.firstname || "").replace(/\u200B/g, "").trim() === "") {
                     window.alert("You may have not entered the first name");
                     setSaving(false);
                     return;
                 }
-                if ((sanitized.phone || "").length !== 10) {
+                if ((sanitized.mobile || "").length !== 10) {
                     window.alert("You may have typed the phone number wrong");
                     setSaving(false);
                     return;
@@ -984,7 +1005,7 @@ function NewCustomer({ goTo, customerId }) {
                     </div>
                 </div>
                 <div className="space-y-2">
-                    <label className="text-sm font-medium">email</label>
+                    <label className="text-sm font-medium">Email</label>
                     <input
                         className="md-input"
                         value={form.email}
@@ -1021,6 +1042,19 @@ function TicketView({ id, goTo }) {
     const [t, setT] = useState(null);
     const [loading, setLoading] = useState(true);
     const ticketCardRef = useRef(null);
+    
+    // Keybinds from Unity TicketViewerManager
+    useHotkeys({
+        "h": () => goTo("/"),
+        "s": () => {
+            // Trigger search modal from parent
+            const searchEvent = new CustomEvent('openSearch');
+            window.dispatchEvent(searchEvent);
+        },
+        "c": () => goTo(`/$${t?.customer?.id || t?.customer_id}`),
+        "e": () => goTo(`/&${id}?edit`),
+        "p": () => generatePDF()
+    });
 
     useEffect(() => {
         (async () => {
@@ -1104,21 +1138,23 @@ function TicketView({ id, goTo }) {
                 {/* LEFT SIDE: Ticket + statuses */}
                 <div className="col-span-12 lg:col-span-4 space-y-25">
                     {/* Ticket Card - Scaled up */}
-                    <div ref={ticketCardRef} className="transform scale-147 origin-top-left bg-white rounded-md shadow-lg pt-1 pl-2 pb-[2px]">
-                        <TicketCard
-                            password={getTicketPassword(t)}
-                            ticketNumber={t.number ?? t.id}
-                            subject={t.subject}
-                            itemsLeft={(t.items_left || []).join(", ")}
-                            name={t.customer?.business_and_full_name || t.customer?.fullname || ""}
-                            creationDate={fmtDateAndTime(t.created_at)}
-                            phoneNumber={phone}
-                        />
+                    <div className="transform scale-148 origin-top-left bg-white rounded-md shadow-lg pb-[1px]">
+                        <div ref={ticketCardRef}>
+                            <TicketCard
+                                password={getTicketPassword(t)}
+                                ticketNumber={t.number ?? t.id}
+                                subject={t.subject}
+                                itemsLeft={(t.items_left || []).join(", ")}
+                                name={t.customer?.business_and_full_name || t.customer?.fullname || ""}
+                                creationDate={fmtDateAndTime(t.created_at)}
+                                phoneNumber={phone}
+                            />
+                        </div>
                     </div>
 
                     {/* Status buttons */}
-                    <div className="space-y-3" style={{ width: "323px" }}>
-                        <p className="text-sm font-semibold">Status:</p>
+                    <div className="space-y-3" style={{ width: "240px" }}>
+                        <p className="text-md font-semibold">Status:</p>
                         <div className="flex flex-col gap-2">
                             {STATUSES.map((s, i) => {
                                 const active = convertStatus(t.status) === s;
@@ -1128,7 +1164,7 @@ function TicketView({ id, goTo }) {
                                         onClick={async () => {
                                             try {
                                                 await api.put(`/tickets/${t.id}`, {
-                                                    ticket: { status: s },
+                                                    status: s,
                                                 });
                                                 setT({ ...t, status: s });
                                             } catch (err) {
@@ -1165,7 +1201,19 @@ function CommentsBox({ ticketId, comments }) {
         setList(comments);
     }, [comments]);
 
-    async function create() { try { await api.post(`/tickets/${ticketId}/comment`, { body: text }); setText(""); goTo(`/&${ticketId}`); } catch (e) { console.error(e); } }
+    async function create() { 
+        try { 
+            await api.post(`/tickets/${ticketId}/comment`, { 
+                subject: "Update",
+                body: text,
+                tech: "Cacell System",
+                hidden: true,
+                do_not_email: true
+            }); 
+            setText(""); 
+            goTo(`/&${ticketId}`); 
+        } catch (e) { console.error(e); } 
+    }
 
     return (
         <div className="space-y-4">
@@ -1220,6 +1268,58 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     const [timeEstimate, setTimeEstimate] = useState("");
     const [itemsLeft, setItemsLeft] = useState([]);
     const [saving, setSaving] = useState(false);
+    const [existingProperties, setExistingProperties] = useState({});
+    
+    // Load existing ticket data when editing
+    useEffect(() => {
+        if (!ticketId) {
+            setLoading(false);
+            return;
+        }
+        
+        (async () => {
+            try {
+                const data = await api.get(`/tickets/${ticketId}`);
+                const ticket = data.ticket || data;
+                setPre(ticket);
+                setSubject(ticket.subject || "");
+                
+                // Load existing properties to preserve them
+                const props = ticket.properties || {};
+                setExistingProperties(props);
+                
+                // Set password from existing data
+                setPassword(props.Password || props.password || "");
+                
+                // Set charger status from existing data
+                const hasCharger = props["AC Charger"] === "1" || props["AC Charger"] === 1;
+                if (hasCharger) {
+                    setItemsLeft(prev => [...prev, "Charger"]);
+                }
+                
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, [ticketId, api]);
+
+    // Keybinds from Unity NewTicketManager
+    useHotkeys({
+        "h": () => goTo("/"),
+        "s": () => {
+            // Trigger search modal from parent
+            const searchEvent = new CustomEvent('openSearch');
+            window.dispatchEvent(searchEvent);
+        },
+        "c": () => {
+            if (customerId) goTo(`/$${customerId}`);
+        },
+        "t": () => {
+            if (ticketId) goTo(`/&${ticketId}`);
+        }
+    });
 
 
     function toggleItem(name) { setItemsLeft(xs => xs.includes(name) ? xs.filter(x => x !== name) : [...xs, name]); }
@@ -1227,16 +1327,31 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     async function save() {
         setSaving(true);
         try {
+            // Build properties object, preserving existing properties
+            const properties = { ...existingProperties };
+            
+            // Only update fields that are being modified
+            properties.Password = password || "n";
+            properties["AC Charger"] = itemsLeft.includes("Charger") ? "1" : "0";
+            
+            // Preserve existing Tech Notes - don't overwrite them
+            // Tech Notes will only be set to empty for new tickets
+            if (!ticketId) {
+                properties["Tech Notes"] = "";
+            }
+            // For existing tickets, Tech Notes are preserved from existingProperties
+            
             const payload = {
-                ticket: {
-                    subject: subject,
-                    customer_id: customerId || pre?.customer_id || pre?.id,
-                    password,
-                    device_type: DEVICES[deviceIdx],
-                    promised_by: timeEstimate,
-                    items_left: itemsLeft
-                }
+                customer_id: customerId || pre?.customer_id || pre?.id,
+                user_id: 0,
+                ticket_type_id: 9818,
+                subject: subject,
+                problem_type: "Other",
+                status: "New",
+                due_date: new Date().toISOString(),
+                properties: properties
             };
+            
             let out;
             if (ticketId) out = await api.put(`/tickets/${ticketId}`, payload); // update the ticket
             else out = await api.post(`/tickets`, payload); // create the ticket
@@ -1332,7 +1447,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                             key={i}
                                             role="radio"
                                             aria-checked={active}
-                                            onClick={() => { setDeviceIdx(i); setProblems([]); }}
+                                            onClick={() => { setDeviceIdx(i); }}
                                             className={`inline-flex items-center gap-2 md-chip ${active ? 'md-chip--on' : ''}`}
                                         >
                                             <span
@@ -1356,6 +1471,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                 placeholder="e.g. 30 min, 2 hours, Call by: 11th"
                             />
                         </div>
+
                     </div>
                 </div>
             </div>
@@ -1373,6 +1489,14 @@ export default function App() {
     const { path, navigate } = useRoute();
     const [showSettings, setShowSettings] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
+    
+    // Listen for search events from child components
+    useEffect(() => {
+        const handleOpenSearch = () => setShowSearch(true);
+        window.addEventListener('openSearch', handleOpenSearch);
+        return () => window.removeEventListener('openSearch', handleOpenSearch);
+    }, []);
+    
     const route = useMemo(() => {
         const url = new URL(window.location.origin + path);
         const pathname = url.pathname;
