@@ -9,11 +9,28 @@ API_KEY = os.environ["API_KEY"]
 TARGET_URL = "https://Cacell.repairshopr.com/api/v1"
 USER_POOL_ID = os.environ.get("USER_POOL_ID")
 
+def get_cors_headers():
+    """Get CORS headers for API responses"""
+    return {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "Access-Control-Max-Age": "86400"
+    }
+
 def lambda_handler(event, context):
     """
     Lambda that handles both RepairShopr API proxy and user management operations.
     Authentication is handled by API Gateway with Cognito Authorizer.
     """
+    # Handle preflight OPTIONS requests
+    if event.get("httpMethod") == "OPTIONS":
+        return {
+            "statusCode": 200,
+            "headers": get_cors_headers(),
+            "body": ""
+        }
+    
     try:
         method = event["httpMethod"]
         path = event.get("path", "")
@@ -42,10 +59,19 @@ def lambda_handler(event, context):
         return handle_repairshopr_proxy(event, context)
         
     except Exception as e:
+        error_msg = f"Internal server error: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        print(f"Event: {json.dumps(event, default=str)}")
+        headers = {"Content-Type": "application/json"}
+        headers.update(get_cors_headers())
         return {
             "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": f"Internal server error: {str(e)}"})
+            "headers": headers,
+            "body": json.dumps({
+                "error": error_msg,
+                "details": "An unexpected error occurred in the Lambda function.",
+                "suggestion": "Check the Lambda logs for more details."
+            })
         }
 
 def handle_user_invitation(event, context):
@@ -132,6 +158,16 @@ def handle_repairshopr_proxy(event, context):
         query_string = event.get("queryStringParameters")
         path = event.get("path", "")
 
+        # Debug logging
+        print(f"=== REPAIRSHOPR PROXY DEBUG ===")
+        print(f"Method: {method}")
+        print(f"Path: {path}")
+        print(f"Full URL: {TARGET_URL}{path}")
+        print(f"Headers: {headers}")
+        print(f"Query params: {query_string}")
+        print(f"Body: {body}")
+        print(f"=== END DEBUG ===")
+
         # Remove the original Authorization header and add our API key
         headers.pop("Authorization", None)
         headers["Authorization"] = f"Bearer {API_KEY}"
@@ -139,24 +175,188 @@ def handle_repairshopr_proxy(event, context):
         # Construct the full URL with the path
         full_url = f"{TARGET_URL}{path}"
 
+        print(f"Making request to: {full_url}")
+        print(f"With headers: {headers}")
+
         resp = requests.request(
             method=method,
             url=full_url,
             headers=headers,
             params=query_string,
-            data=body
+            data=body,
+            timeout=30  # Add timeout to prevent hanging
         )
 
+        print(f"Response status: {resp.status_code}")
+        print(f"Response headers: {dict(resp.headers)}")
+        print(f"Response body (first 500 chars): {resp.text[:500]}")
+
+        # Check for specific RepairShopr API errors and provide better error messages
+        if resp.status_code == 401:
+            print("ERROR: 401 Unauthorized - API key is invalid or expired")
+            return {
+                "statusCode": 401,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+                },
+                "body": json.dumps({
+                    "error": "Invalid API key",
+                    "details": "The RepairShopr API key is invalid, expired, or does not have the required permissions.",
+                    "suggestion": "Please check your API key in the Lambda environment variables and ensure it has the correct permissions."
+                })
+            }
+        elif resp.status_code == 403:
+            print("ERROR: 403 Forbidden - API key lacks permissions")
+            return {
+                "statusCode": 403,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+                },
+                "body": json.dumps({
+                    "error": "Insufficient permissions",
+                    "details": "The RepairShopr API key does not have the required permissions for this operation.",
+                    "suggestion": "Please check your API key permissions in RepairShopr."
+                })
+            }
+        elif resp.status_code == 404:
+            print("ERROR: 404 Not Found - API endpoint not found")
+            return {
+                "statusCode": 404,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+                },
+                "body": json.dumps({
+                    "error": "API endpoint not found",
+                    "details": "The requested RepairShopr API endpoint was not found.",
+                    "suggestion": "Please check the API endpoint URL."
+                })
+            }
+        elif resp.status_code >= 400:
+            print(f"ERROR: {resp.status_code} - API returned error")
+            try:
+                # Try to parse the error response from RepairShopr
+                error_data = resp.json()
+                return {
+                    "statusCode": resp.status_code,
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+                    },
+                    "body": json.dumps({
+                        "error": f"RepairShopr API error ({resp.status_code})",
+                        "details": error_data.get("message", resp.text),
+                        "suggestion": "Please check the RepairShopr API documentation for this error."
+                    })
+                }
+            except:
+                # If we can't parse the error response, return the raw text
+                return {
+                    "statusCode": resp.status_code,
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+                    },
+                    "body": json.dumps({
+                        "error": f"RepairShopr API error ({resp.status_code})",
+                        "details": resp.text,
+                        "suggestion": "Please check the RepairShopr API documentation for this error."
+                    })
+                }
+
+        # Add CORS headers to the response
+        response_headers = dict(resp.headers)
+        response_headers.update({
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+        })
+        
         return {
             "statusCode": resp.status_code,
-            "headers": dict(resp.headers),
+            "headers": response_headers,
             "body": resp.text
         }
 
-    except Exception as e:
+    except requests.exceptions.ConnectionError as e:
+        error_msg = f"Connection error to RepairShopr API: {str(e)}"
+        print(f"ERROR: {error_msg}")
         return {
             "statusCode": 502,
-            "body": f"Proxy error: {str(e)}"
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+            },
+            "body": json.dumps({
+                "error": "Connection failed",
+                "details": error_msg,
+                "suggestion": "Check if the RepairShopr API is accessible and the URL is correct."
+            })
+        }
+    except requests.exceptions.Timeout as e:
+        error_msg = f"Request timeout to RepairShopr API: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        return {
+            "statusCode": 504,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+            },
+            "body": json.dumps({
+                "error": "Request timeout",
+                "details": error_msg,
+                "suggestion": "The RepairShopr API is taking too long to respond."
+            })
+        }
+    except requests.exceptions.HTTPError as e:
+        error_msg = f"HTTP error from RepairShopr API: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        return {
+            "statusCode": 502,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+            },
+            "body": json.dumps({
+                "error": "HTTP error from RepairShopr API",
+                "details": error_msg,
+                "suggestion": "Check if the API key is correct and has proper permissions."
+            })
+        }
+    except Exception as e:
+        error_msg = f"Unexpected error: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        return {
+            "statusCode": 500,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+            },
+            "body": json.dumps({
+                "error": "Internal server error",
+                "details": error_msg,
+                "suggestion": "Check the Lambda logs for more details."
+            })
         }
 
 def get_user_groups_from_event(event):

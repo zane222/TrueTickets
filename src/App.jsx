@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, createContext, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Settings, Plus, Loader2, Printer, UserPlus, ExternalLink, Edit, User } from "lucide-react";
+import { Search, Settings, Plus, Loader2, Printer, UserPlus, ExternalLink, Edit, User, LogOut } from "lucide-react";
 import html2pdf from 'html2pdf.js';
 import { Amplify } from 'aws-amplify';
 import { AuthWrapper } from './components/Auth';
@@ -376,7 +376,7 @@ function TicketCard({
 /*************************
  * TopBar + Settings
  *************************/
-function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings }) {
+function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings, showUserMenu, setShowUserMenu, userGroups, canInviteUsers, canManageUsers, onInviteUser, onManageUsers, onLogout }) {
     return (
         <div className="sticky top-0 z-30 w-full material-app-bar backdrop-blur-md">
             <div className="mx-auto max-w-7xl px-6 py-4 flex items-center gap-4">{/* larger again */}
@@ -401,13 +401,54 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings }) {
                     >
                         <UserPlus className="w-5.5 h-5.5" />
                     </button>
-                    <button
-                        onClick={onSettings}
-                        title="Settings"
-                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-11 h-11 rounded-full"
-                    >
-                        <Settings className="w-5.5 h-5.5" />
-                    </button>
+                    
+                    {/* User menu dropdown */}
+                    <div className="relative">
+                        <motion.button
+                            onClick={() => setShowUserMenu(!showUserMenu)}
+                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-11 h-11 rounded-full"
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            <Settings className="w-5.5 h-5.5" />
+                        </motion.button>
+
+                        {showUserMenu && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="absolute right-0 mt-2 w-48 md-card py-1 z-50"
+                            >
+                                {canInviteUsers && (
+                                    <button
+                                        onClick={onInviteUser}
+                                        className="flex items-center w-full px-4 py-2 text-sm hover:bg-opacity-10 hover:bg-white"
+                                        style={{color:'var(--md-sys-color-on-surface)'}}
+                                    >
+                                        <UserPlus className="w-4 h-4 mr-3" />
+                                        Invite User
+                                    </button>
+                                )}
+                                {canManageUsers && (
+                                    <button
+                                        onClick={onManageUsers}
+                                        className="flex items-center w-full px-4 py-2 text-sm hover:bg-opacity-10 hover:bg-white"
+                                        style={{color:'var(--md-sys-color-on-surface)'}}
+                                    >
+                                        <User className="w-4 h-4 mr-3" />
+                                        Manage Users
+                                    </button>
+                                )}
+                                <button
+                                    onClick={onLogout}
+                                    className="flex items-center w-full px-4 py-2 text-sm hover:bg-opacity-10 hover:bg-white"
+                                    style={{color:'var(--md-sys-color-on-surface)'}}
+                                >
+                                    <LogOut className="w-4 h-4 mr-3" />
+                                    Sign Out
+                                </button>
+                            </motion.div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
@@ -1875,6 +1916,16 @@ export default function App() {
     const { path, navigate } = useRoute();
     const [showSettings, setShowSettings] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
+    const [showUserMenu, setShowUserMenu] = useState(false);
+    const [showInviteUser, setShowInviteUser] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteLoading, setInviteLoading] = useState(false);
+    const [userGroups, setUserGroups] = useState([]);
+    const [showUserManagement, setShowUserManagement] = useState(false);
+    const [users, setUsers] = useState([]);
+    const [usersLoading, setUsersLoading] = useState(false);
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [showUserEdit, setShowUserEdit] = useState(false);
     
     // Listen for search events from child components
     useEffect(() => {
@@ -1882,6 +1933,153 @@ export default function App() {
         window.addEventListener('openSearch', handleOpenSearch);
         return () => window.removeEventListener('openSearch', handleOpenSearch);
     }, []);
+
+    // User management functions
+    const handleInviteUser = async (e) => {
+        e.preventDefault();
+        setInviteLoading(true);
+        
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/invite-user`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(await fetchAuthSession()).tokens.accessToken.toString()}`
+                },
+                body: JSON.stringify({ email: inviteEmail })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert(`Invitation sent successfully to ${inviteEmail}. The user will receive an email with login instructions.`);
+                setInviteEmail('');
+                setShowInviteUser(false);
+            } else {
+                throw new Error(result.error || 'Failed to send invitation');
+            }
+            
+        } catch (error) {
+            console.error('Invite user error:', error);
+            let errorMessage = 'Failed to send invitation. Please try again.';
+            
+            if (error.message.includes('already exists')) {
+                errorMessage = 'A user with this email already exists.';
+            } else if (error.message.includes('Insufficient permissions')) {
+                errorMessage = 'You do not have permission to invite users.';
+            } else if (error.message.includes('Invalid email')) {
+                errorMessage = 'Invalid email address. Please check the format.';
+            } else if (error.message.includes('Too many requests')) {
+                errorMessage = 'Too many requests. Please try again later.';
+            }
+            
+            alert(errorMessage);
+        } finally {
+            setInviteLoading(false);
+        }
+    };
+
+    const loadUsers = async () => {
+        setUsersLoading(true);
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/users`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(await fetchAuthSession()).tokens.accessToken.toString()}`
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                setUsers(result.users || []);
+            } else {
+                throw new Error('Failed to load users');
+            }
+        } catch (error) {
+            console.error('Error loading users:', error);
+            alert('Failed to load users. Please try again.');
+        } finally {
+            setUsersLoading(false);
+        }
+    };
+
+    const updateUserGroup = async (username, newGroup) => {
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/update-user-group`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(await fetchAuthSession()).tokens.accessToken.toString()}`
+                },
+                body: JSON.stringify({ username, group: newGroup })
+            });
+
+            if (response.ok) {
+                alert('User group updated successfully');
+                loadUsers(); // Refresh the user list
+                setShowUserEdit(false);
+                setSelectedUser(null);
+            } else {
+                const result = await response.json();
+                throw new Error(result.error || 'Failed to update user group');
+            }
+        } catch (error) {
+            console.error('Error updating user group:', error);
+            alert('Failed to update user group. Please try again.');
+        }
+    };
+
+    const removeUser = async (username) => {
+        if (!confirm(`Are you sure you want to remove user ${username}? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/remove-user`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${(await fetchAuthSession()).tokens.accessToken.toString()}`
+                },
+                body: JSON.stringify({ username })
+            });
+
+            if (response.ok) {
+                alert('User removed successfully');
+                loadUsers(); // Refresh the user list
+            } else {
+                const result = await response.json();
+                throw new Error(result.error || 'Failed to remove user');
+            }
+        } catch (error) {
+            console.error('Error removing user:', error);
+            alert('Failed to remove user. Please try again.');
+        }
+    };
+
+    // User permission checks
+    const canInviteUsers = userGroups.includes('TrueTickets-Cacell-ApplicationAdmin') || 
+                          userGroups.includes('TrueTickets-Cacell-Owner') || 
+                          userGroups.includes('TrueTickets-Cacell-Manager');
+
+    const canManageUsers = userGroups.includes('TrueTickets-Cacell-ApplicationAdmin') || 
+                          userGroups.includes('TrueTickets-Cacell-Owner');
+
+    // User management handlers
+    const handleInviteUserClick = () => setShowInviteUser(true);
+    const handleManageUsersClick = () => {
+        setShowUserManagement(true);
+        loadUsers();
+    };
+    const handleLogout = async () => {
+        try {
+            await signOut();
+            // The AuthWrapper will handle the logout state
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    };
     
     const route = useMemo(() => {
         const url = new URL(window.location.origin + path);
@@ -1903,6 +2101,14 @@ export default function App() {
                         onSearchClick={() => setShowSearch(true)}
                         onNewCustomer={() => navigate("/newcustomer")}
                         onSettings={() => setShowSettings(true)}
+                        showUserMenu={showUserMenu}
+                        setShowUserMenu={setShowUserMenu}
+                        userGroups={userGroups}
+                        canInviteUsers={canInviteUsers}
+                        canManageUsers={canManageUsers}
+                        onInviteUser={handleInviteUserClick}
+                        onManageUsers={handleManageUsersClick}
+                        onLogout={handleLogout}
                     />
 
                     {route.view === "home" && <TicketListView goTo={navigate} />}
@@ -1915,6 +2121,170 @@ export default function App() {
 
                     <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
                     <SearchModal open={showSearch} onClose={() => setShowSearch(false)} goTo={navigate} />
+                    
+                    {/* User Management Modals */}
+                    {showInviteUser && (
+                        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="md-card p-6 w-full max-w-md"
+                            >
+                                <h3 className="text-lg font-medium mb-4" style={{color:'var(--md-sys-color-primary)'}}>Invite User</h3>
+                                <form onSubmit={handleInviteUser}>
+                                    <div className="mb-4">
+                                        <label htmlFor="inviteEmail" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                                            Email Address
+                                        </label>
+                                        <input
+                                            id="inviteEmail"
+                                            type="email"
+                                            required
+                                            value={inviteEmail}
+                                            onChange={(e) => setInviteEmail(e.target.value)}
+                                            className="md-input"
+                                            placeholder="Enter email address"
+                                        />
+                                    </div>
+                                    <div className="flex justify-end space-x-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowInviteUser(false)}
+                                            className="md-btn-surface elev-1"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <motion.button
+                                            type="submit"
+                                            disabled={inviteLoading}
+                                            className="md-btn-primary elev-1"
+                                            whileTap={{ scale: 0.95 }}
+                                        >
+                                            {inviteLoading ? 'Sending...' : 'Send Invitation'}
+                                        </motion.button>
+                                    </div>
+                                </form>
+                            </motion.div>
+                        </div>
+                    )}
+
+                    {showUserManagement && (
+                        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="md-card p-6 w-full max-w-4xl max-h-[80vh] overflow-hidden"
+                            >
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-lg font-medium" style={{color:'var(--md-sys-color-primary)'}}>User Management</h3>
+                                    <button
+                                        onClick={() => setShowUserManagement(false)}
+                                        className="text-gray-500 hover:text-gray-700"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                
+                                {usersLoading ? (
+                                    <div className="flex justify-center py-8">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor:'var(--md-sys-color-primary)'}}></div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4 max-h-96 overflow-y-auto">
+                                        {users.map((user) => (
+                                            <div key={user.username} className="md-row-box p-4 flex items-center justify-between">
+                                                <div className="flex-1">
+                                                    <div className="font-medium">{user.email || user.username}</div>
+                                                    <div className="text-sm text-gray-500">
+                                                        Groups: {user.groups ? user.groups.join(', ') : 'None'}
+                                                    </div>
+                                                    <div className="text-xs text-gray-400">
+                                                        Status: {user.enabled ? 'Active' : 'Disabled'}
+                                                    </div>
+                                                </div>
+                                                <div className="flex space-x-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedUser(user);
+                                                            setShowUserEdit(true);
+                                                        }}
+                                                        className="md-btn-surface text-xs px-3 py-1"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => removeUser(user.username)}
+                                                        className="md-btn-surface text-xs px-3 py-1"
+                                                        style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {users.length === 0 && (
+                                            <div className="text-center py-8 text-gray-500">
+                                                No users found
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </motion.div>
+                        </div>
+                    )}
+
+                    {showUserEdit && selectedUser && (
+                        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="md-card p-6 w-full max-w-md"
+                            >
+                                <h3 className="text-lg font-medium mb-4" style={{color:'var(--md-sys-color-primary)'}}>
+                                    Edit User: {selectedUser.email || selectedUser.username}
+                                </h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                                            User Group
+                                        </label>
+                                        <select
+                                            className="md-input"
+                                            value={selectedUser.groups?.[0] || 'TrueTickets-Cacell-Employee'}
+                                            onChange={(e) => {
+                                                setSelectedUser({
+                                                    ...selectedUser,
+                                                    groups: [e.target.value]
+                                                });
+                                            }}
+                                        >
+                                            <option value="TrueTickets-Cacell-Employee">Employee</option>
+                                            <option value="TrueTickets-Cacell-Manager">Manager</option>
+                                            <option value="TrueTickets-Cacell-Owner">Owner</option>
+                                            <option value="TrueTickets-Cacell-ApplicationAdmin">Application Admin</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex justify-end space-x-3">
+                                        <button
+                                            onClick={() => {
+                                                setShowUserEdit(false);
+                                                setSelectedUser(null);
+                                            }}
+                                            className="md-btn-surface elev-1"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={() => updateUserGroup(selectedUser.username, selectedUser.groups[0])}
+                                            className="md-btn-primary elev-1"
+                                        >
+                                            Update Group
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
                 </div>
             </ApiProvider>
         </AuthWrapper>
