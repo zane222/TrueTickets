@@ -7,10 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "setup-env": "node setup-env.js"
   },
   "dependencies": {
-    "framer-motion": "^12.23.12",
+    "@aws-sdk/client-cognito-identity-provider": "^3.896.0",
+    "aws-amplify": "^6.15.6",
+    "framer-motion": "^12.23.22",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.12.0",
     "jspdf": "^3.0.2",

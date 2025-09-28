@@ -2,20 +2,98 @@ import React, { useEffect, useMemo, useRef, useState, createContext, useContext 
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Settings, Plus, Loader2, Printer, UserPlus, ExternalLink, Edit, User } from "lucide-react";
 import html2pdf from 'html2pdf.js';
+import { Amplify } from 'aws-amplify';
+import { AuthWrapper } from './components/Auth';
+import LambdaClient from './api/lambdaClient';
+import awsconfig from './aws-exports';
+
+// Debug Amplify import
+console.log('Amplify import:', Amplify);
+console.log('Amplify.Auth before config:', Amplify.Auth);
+
+// Try alternative import for Amplify v6
+import { getCurrentUser, signIn, signOut, confirmSignIn, resetPassword, fetchAuthSession } from 'aws-amplify/auth';
+console.log('Auth functions imported:', { getCurrentUser, signIn, signOut, confirmSignIn, fetchAuthSession, resetPassword });
+
+// Configure Amplify
+try {
+  console.log('=== AMPLIFY CONFIGURATION DEBUG ===');
+  console.log('awsconfig:', awsconfig);
+  console.log('awsconfig.Auth:', awsconfig.Auth);
+  console.log('userPoolId:', awsconfig.Auth.Cognito.userPoolId);
+  console.log('userPoolClientId:', awsconfig.Auth.Cognito.userPoolClientId);
+  console.log('region:', awsconfig.Auth.Cognito.region);
+  
+  if (awsconfig.Auth.Cognito.userPoolId && awsconfig.Auth.Cognito.userPoolClientId) {
+    try {
+      Amplify.configure(awsconfig);
+      console.log('Amplify configured successfully');
+      console.log('Amplify configured successfully - Auth functions should be available');
+      console.log('Auth functions imported:', { getCurrentUser, signIn, signOut, confirmSignIn, fetchAuthSession, resetPassword });
+      
+      // Test if Auth methods are available
+      console.log('signIn function type:', typeof signIn);
+      console.log('confirmSignIn function type:', typeof confirmSignIn);
+      
+      if (typeof signIn !== 'function') {
+        console.error('❌ signIn function is not available after configuration');
+        console.error('This might be an Amplify version issue or configuration problem');
+      }
+    } catch (configError) {
+      console.error('Amplify configuration failed with error:', configError);
+      throw configError;
+    }
+  } else {
+    console.error('Amplify configuration skipped - missing required environment variables');
+    console.error('Missing userPoolId:', !awsconfig.Auth.Cognito.userPoolId);
+    console.error('Missing userPoolClientId:', !awsconfig.Auth.Cognito.userPoolClientId);
+    
+    // Provide helpful error message
+    console.error('🔧 SOLUTION: Create a .env file with your AWS credentials');
+    console.error('Run: node setup-env.js');
+    console.error('Then edit .env with your actual AWS values');
+  }
+} catch (error) {
+  console.error('Amplify configuration failed:', error);
+  console.error('Error details:', error.message, error.stack);
+}
 
 /**
- * Mini-RepairShopr — Full React + Tailwind (Dark Theme)
+ * True Tickets — Full React + Tailwind (Dark Theme) with AWS Cognito Authentication
  *
- * - API client (base URL + API key) matching RepairShopr REST
+ * ARCHITECTURE:
+ * - AWS Cognito User Pool for authentication with group-based permissions
+ * - AWS Lambda function as API Gateway backend with dual functionality:
+ *   • RepairShopr API proxy (via /api/* endpoints)
+ *   • User management system (invite, list, edit, remove users)
+ * - React frontend with Material Design components and dark theme
  * - Hashless, URL-driven routing
- * - Ticket List with status filters, keyboard shortcuts
- * - Ticket View using TicketCard (converted from your index.html template)
- * - Sidebar with status chips and comments box (dark theme like your screenshot)
- * - New/Edit Ticket flow matching
- * - Customer View + New Customer form
- * - Settings modal for base URL + API key
+ * - Real-time authentication state management
  *
- * NOTE: This is front-end only. You need CORS allowed from where you host this.
+ * FEATURES:
+ * - Ticket management (list, view, create, edit, status updates)
+ * - Customer management (view, create, edit, phone number handling)
+ * - User management system with role-based access:
+ *   • ApplicationAdmin & Owner: Full user management (view, edit, remove)
+ *   • Manager: Can invite users as employees only
+ *   • Employee: Standard access, no user management
+ * - PDF ticket generation
+ * - Search and filtering capabilities
+ * - Keyboard shortcuts and hotkeys
+ * - Responsive design with Tailwind CSS
+ *
+ * SECURITY:
+ * - JWT token authentication via AWS Cognito
+ * - Group-based permission checking (server-side validation)
+ * - Secure API key storage in Lambda environment variables
+ * - CORS protection and proper error handling
+ *
+ * API ENDPOINTS:
+ * - /api/* → RepairShopr API proxy (authenticated)
+ * - /invite-user → User invitation (Manager+)
+ * - /users → List all users (Admin/Owner only)
+ * - /update-user-group → Change user groups (Admin/Owner only)
+ * - /remove-user → Delete users (Admin/Owner only)
  */
 
 /*************************
@@ -46,18 +124,18 @@ const STATUS_MAP = {
     "Resolved": "Resolved",
 };
 
-const convertStatus = (s) => {
-    if (!s) return "";
-    return STATUS_MAP[s] || s;
+const convertStatus = (status) => {
+    if (!status) return "";
+    return STATUS_MAP[status] || status;
 };
 
 /*************************
  * Utility helpers
  *************************/
 function cx(...xs) { return xs.filter(Boolean).join(" "); }
-function fmtDate(s) {
+function fmtDate(dateString) {
     try {
-        return new Date(s).toLocaleString(undefined, {
+        return new Date(dateString).toLocaleString(undefined, {
             year: "numeric",
             month: "numeric",   // "Sep"
             day: "numeric",
@@ -65,11 +143,11 @@ function fmtDate(s) {
             minute: undefined, // removes minutes
             second: undefined, // removes seconds
         });
-    } catch { return s; }
+    } catch { return dateString; }
 }
-function fmtTime(s) {
+function fmtTime(timeString) {
     try {
-        return new Date(s).toLocaleString(undefined, {
+        return new Date(timeString).toLocaleString(undefined, {
             year: undefined,
             month: undefined, 
             day: undefined,
@@ -77,64 +155,94 @@ function fmtTime(s) {
             minute: "2-digit", // keeps minutes like "08"
             second: undefined, // removes seconds
         });
-    } catch { return s; }
+    } catch { return timeString; }
 }
-function fmtDateAndTime(s) {
+function fmtDateAndTime(dateTimeString) {
     try {
-        return fmtDate(s) + " | " + fmtTime(s);
-    } catch { return s; }
+        return fmtDate(dateTimeString) + " | " + fmtTime(dateTimeString);
+    } catch { return dateTimeString; }
 }
-function formatPhone(num = "") {
-    const digits = num.replace(/\D/g, ""); // remove anything not a digit
+function formatPhone(phoneNumber = "") {
+    const digits = phoneNumber.replace(/\D/g, ""); // remove anything not a digit
     if (digits.length === 10) {
         return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
     }
-    return num;
+    return phoneNumber;
 }
 
 function getTicketPassword(ticket) {
     try {
-        const typeId = ticket?.ticket_type_id;
+        // Check ticket_fields[0].ticket_type_id first, fallback to main ticket_type_id
+        const typeId = ticket?.ticket_fields?.[0]?.ticket_type_id || ticket?.ticket_type_id;
         const props = ticket?.properties || {};
         const invalid = new Set(["n", "na", "n/a", "none"]);
-        const norm = (s) => (typeof s === 'string' ? s.toLowerCase().trim() : "");
+        const norm = (str) => (typeof str === 'string' ? str.toLowerCase().trim() : "");
         if (typeId === 9818 || typeId === 9836) {
-            const v = norm(props.Password);
-            if (v && !invalid.has(v)) return props.Password;
+            const normalizedPassword = norm(props.Password);
+            if (normalizedPassword && !invalid.has(normalizedPassword)) return props.Password;
         } else if (typeId === 9801) {
-            const v = norm(props.passwordForPhone);
-            if (v && !invalid.has(v)) return props.passwordForPhone;
+            const normalizedPassword = norm(props.passwordForPhone);
+            if (normalizedPassword && !invalid.has(normalizedPassword)) return props.passwordForPhone;
         }
         return "";
     } catch { return ""; }
 }
 
+function getTicketDeviceInfo(ticket) {
+    try {
+        const techNotes = ticket?.properties?.["Tech Notes"] || "";
+        if (techNotes.startsWith("v1")) {
+            const data = JSON.parse(techNotes.substring(2));
+            return {
+                device: data.device || "Other",
+                itemsLeft: data.itemsLeft || [],
+                howLong: data.howLong || ""
+            };
+        } else if (techNotes.startsWith("v2")) {
+            const data = JSON.parse(techNotes.substring(2));
+            return {
+                device: data.device || "Other",
+                itemsLeft: data.itemsLeft || [],
+                howLong: data.estimatedTime || ""
+            };
+        }
+        return { device: "Other", itemsLeft: [], howLong: "" };
+    } catch { 
+        return { device: "Other", itemsLeft: [], howLong: "" };
+    }
+}
+
+function formatItemsLeft(itemsLeft) {
+    if (!Array.isArray(itemsLeft) || itemsLeft.length === 0) return "";
+    return "They left: " + itemsLeft.join(", ").toLowerCase();
+}
+
 function useHotkeys(map) {
     useEffect(() => {
-        function onKey(e) {
-            const tag = (e.target || {}).tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        function onKey(event) {
+            const targetTag = (event.target || {}).tagName;
+            if (targetTag === 'INPUT' || targetTag === 'TEXTAREA') return;
             
             // Handle complex key combinations
             let keyCombo = '';
-            if (e.altKey) keyCombo += 'alt+';
-            if (e.ctrlKey) keyCombo += 'ctrl+';
-            if (e.shiftKey) keyCombo += 'shift+';
+            if (event.altKey) keyCombo += 'alt+';
+            if (event.ctrlKey) keyCombo += 'ctrl+';
+            if (event.shiftKey) keyCombo += 'shift+';
             
-            const k = e.key.toLowerCase();
-            if (k === 'arrowleft') keyCombo += 'arrowleft';
-            else if (k === 'arrowright') keyCombo += 'arrowright';
-            else if (k === 'arrowup') keyCombo += 'arrowup';
-            else if (k === 'arrowdown') keyCombo += 'arrowdown';
-            else keyCombo += k;
+            const key = event.key.toLowerCase();
+            if (key === 'arrowleft') keyCombo += 'arrowleft';
+            else if (key === 'arrowright') keyCombo += 'arrowright';
+            else if (key === 'arrowup') keyCombo += 'arrowup';
+            else if (key === 'arrowdown') keyCombo += 'arrowdown';
+            else keyCombo += key;
             
             if (map[keyCombo]) {
-                map[keyCombo](e);
+                map[keyCombo](event);
                 return;
             }
             
             // Fallback to simple key
-            if (map[k]) map[k](e);
+            if (map[key]) map[key](event);
         }
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
@@ -147,26 +255,17 @@ function useHotkeys(map) {
 const ApiCtx = createContext(null);
 const useApi = () => useContext(ApiCtx);
 function ApiProvider({ children }) {
-    const [baseUrl, setBaseUrl] = useState("https://Cacell.repairshopr.com/api/v1");
-    const [apiKey, setApiKey] = useState("");
+    const [lambdaUrl, setLambdaUrl] = useState(import.meta.env.VITE_API_GATEWAY_URL || "https://your-api-gateway-url.amazonaws.com/prod");
     const client = useMemo(() => {
-        async function send(path, { method = "GET", body } = {}) {
-            const res = await fetch(`${baseUrl}${path}`, {
-                method,
-                headers: { "Content-Type": "application/json", Authorization: apiKey || "" },
-                body: body ? JSON.stringify(body) : undefined,
-            });
-            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-            return await res.json();
-        }
+        const lambdaClient = new LambdaClient(lambdaUrl);
         return {
-            baseUrl, setBaseUrl, apiKey, setApiKey,
-            get: (p) => send(p, { method: "GET" }),
-            post: (p, b) => send(p, { method: "GET", body: b }),
-            put: (p, b) => send(p, { method: "GET", body: b }),
-            del: (p) => send(p, { method: "GET" }),
+            lambdaUrl, setLambdaUrl,
+            get: (path) => lambdaClient.get(path),
+            post: (path, body) => lambdaClient.post(path, body),
+            put: (path, body) => lambdaClient.put(path, body),
+            del: (path) => lambdaClient.del(path),
         };
-    }, [baseUrl, apiKey]);
+    }, [lambdaUrl]);
     return <ApiCtx.Provider value={client}>{children}</ApiCtx.Provider>;
 }
 
@@ -176,10 +275,10 @@ function ApiProvider({ children }) {
 function useRoute() {
     const [path, setPath] = useState(window.location.pathname + window.location.search + window.location.hash);
     useEffect(() => {
-        const f = () => setPath(window.location.pathname + window.location.search + window.location.hash);
-        window.addEventListener('popstate', f);
-        window.addEventListener('hashchange', f);
-        return () => { window.removeEventListener('popstate', f); window.removeEventListener('hashchange', f); };
+        const updatePath = () => setPath(window.location.pathname + window.location.search + window.location.hash);
+        window.addEventListener('popstate', updatePath);
+        window.addEventListener('hashchange', updatePath);
+        return () => { window.removeEventListener('popstate', updatePath); window.removeEventListener('hashchange', updatePath); };
     }, []);
     const navigate = (to) => { window.history.pushState({}, "", to); window.dispatchEvent(new Event('popstate')); };
     return { path, navigate };
@@ -321,25 +420,27 @@ function SettingsModal({ open, onClose }) {
         <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="w-full max-w-lg md-card p-8 space-y-6">
                 <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
-                    Settings
+                    API Configuration
                 </div>
                 <div className="space-y-3">
-                    <label className="block text-sm font-medium">RepairShopr Base URL</label>
+                    <label className="block text-sm font-medium">Lambda API Gateway URL</label>
                     <input
                         className="md-input"
-                        value={api.baseUrl}
-                        onChange={(e) => api.setBaseUrl(e.target.value)}
-                        placeholder="https://Cacell.repairshopr.com/api/v1"
+                        value={api.lambdaUrl}
+                        onChange={(e) => api.setLambdaUrl(e.target.value)}
+                        placeholder="https://xxxxxxxxxx.execute-api.us-east-2.amazonaws.com/prod"
                     />
+                    <p className="text-xs text-gray-500">
+                        This is the URL of your AWS API Gateway that proxies to the Lambda function.
+                    </p>
                 </div>
                 <div className="space-y-3">
-                    <label className="block text-sm font-medium">API Key (Authorization header)</label>
-                    <input
-                        className="md-input"
-                        value={api.apiKey}
-                        onChange={(e) => api.setApiKey(e.target.value)}
-                        placeholder="api_key"
-                    />
+                    <div className="p-4 bg-blue-50 rounded-md">
+                        <h4 className="font-medium text-blue-900 mb-2">Authentication</h4>
+                        <p className="text-sm text-blue-800">
+                            You are authenticated through AWS Cognito. Your API key is securely stored in the Lambda function.
+                        </p>
+                    </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                     <button
@@ -360,28 +461,38 @@ function SearchModal({ open, onClose, goTo }) {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
+    
+    // Reset search state when modal closes
+    useEffect(() => {
+        if (!open) {
+            setSearch("");
+            setResults([]);
+            setLoading(false);
+            setHasSearched(false);
+        }
+    }, [open]);
     // New Customer autofill helpers
     const parsePhoneNumber = (s = "") => (s || "").replace(/\D/g, "");
     const isLikelyPhone = (digits) => digits.length >= 7; // permissive; adjust if needed
     const handleNewCustomer = () => {
-        const q = search.trim();
-        if (!q) { goTo("/newcustomer"); return; }
-        const digits = parsePhoneNumber(q);
+        const query = search.trim();
+        if (!query) { goTo("/newcustomer"); return; }
+        const digits = parsePhoneNumber(query);
         let url = "/newcustomer";
         const params = new URLSearchParams();
         if (isLikelyPhone(digits)) {
             params.set("phone", digits);
-        } else if (q.includes(" ")) {
-            const idx = q.lastIndexOf(" ");
-            const first = q.slice(0, idx).trim();
-            const last = q.slice(idx + 1).trim();
-            if (first) params.set("first_name", first);
-            if (last) params.set("last_name", last);
+        } else if (query.includes(" ")) {
+            const spaceIndex = query.lastIndexOf(" ");
+            const firstName = query.slice(0, spaceIndex).trim();
+            const lastName = query.slice(spaceIndex + 1).trim();
+            if (firstName) params.set("first_name", firstName);
+            if (lastName) params.set("last_name", lastName);
         } else {
-            params.set("first_name", q); // fallback single-field
+            params.set("first_name", query); // fallback single-field
         }
-        const qs = params.toString();
-        if (qs) url += `?${qs}`;
+        const queryString = params.toString();
+        if (queryString) url += `?${queryString}`;
         onClose();
         goTo(url);
     };
@@ -397,10 +508,10 @@ function SearchModal({ open, onClose, goTo }) {
         setHasSearched(true);
         try {
             const data = await api.get(`/tickets?query=${encodeURIComponent(search.trim())}`);
-            const arr = data.tickets || data || [];
-            setResults(arr);
-        } catch (e) {
-            console.error(e);
+            const tickets = data.tickets || data || [];
+            setResults(tickets);
+        } catch (error) {
+            console.error(error);
             setResults([]);
         } finally {
             setLoading(false);
@@ -478,18 +589,18 @@ function SearchModal({ open, onClose, goTo }) {
                             </div>
                         )}
                         {!loading && results
-                            .map((t) => (
+                            .map((ticket) => (
                                 <motion.button
-                                    key={t.id}
+                                    key={ticket.id}
                                     initial={{ opacity: 0, y: 4 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    onClick={() => { onClose(); goTo(`/&${t.id}`); }}
+                                    onClick={() => { onClose(); goTo(`/&${ticket.id}`); }}
                                     className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
                                 >
-                                    <div className="col-span-2 font-mono">#{t.number ?? t.id}</div>
-                                    <div className="col-span-5 truncate">{t.subject}</div>
-                                    <div className="col-span-2 truncate">{convertStatus(t.status)}</div>
-                                    <div className="col-span-3 truncate">{t.customer?.business_and_full_name ?? t.customer?.fullname}</div>
+                                    <div className="col-span-2 font-mono">#{ticket.number ?? ticket.id}</div>
+                                    <div className="col-span-5 truncate">{ticket.subject}</div>
+                                    <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
+                                    <div className="col-span-3 truncate">{ticket.customer?.business_and_full_name ?? ticket.customer?.fullname}</div>
                                 </motion.button>
                             ))}
                     </div>
@@ -510,17 +621,18 @@ function TicketListView({ goTo }) {
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const listRef = useRef(null);
+    const [showSearch, setShowSearch] = useState(false);
 
-    const toggleStatus = (s) => { const n = new Set(statusHidden); n.has(s) ? n.delete(s) : n.add(s); setStatusHidden(n); };
+    const toggleStatus = (status) => { const newStatusHidden = new Set(statusHidden); newStatusHidden.has(status) ? newStatusHidden.delete(status) : newStatusHidden.add(status); setStatusHidden(newStatusHidden); };
 
     async function fetchTickets(reset = false) {
         setLoading(true);
         try {
             let data = await api.get(`/tickets?page=${reset ? 1 : page}`);
-            const arr = data.tickets || data || [];
-            setItems(reset ? arr : [...items, ...arr]);
-            setPage(p => reset ? 1 : p);
-        } catch (e) { console.error(e); } finally { setLoading(false); }
+            const tickets = data.tickets || data || [];
+            setItems(reset ? tickets : [...items, ...tickets]);
+            setPage(currentPage => reset ? 1 : currentPage);
+        } catch (error) { console.error(error); } finally { setLoading(false); }
     }
 
     useEffect(() => {
@@ -538,14 +650,14 @@ function TicketListView({ goTo }) {
             <div className="flex items-center gap-3 mb-4">
                 <div className="text-sm" style={{color:'var(--md-sys-color-on-surface)'}}>Status filter:</div>
                 <div className="flex flex-wrap gap-2">
-                    {STATUSES.map((s, i) => (
+                    {STATUSES.map((status, index) => (
                         <button
-                            key={s}
-                            onClick={() => toggleStatus(s)}
+                            key={status}
+                            onClick={() => toggleStatus(status)}
                             className={cx("md-chip",
-                                statusHidden.has(s) ? "" : "md-chip--on")}
+                                statusHidden.has(status) ? "" : "md-chip--on")}
                         >
-                            {s}
+                            {status}
                         </button>
                     ))}
                 </div>
@@ -553,21 +665,21 @@ function TicketListView({ goTo }) {
             <div className="flex items-center gap-3 mb-6">
                 <div className="text-sm" style={{color:'var(--md-sys-color-on-surface)'}}>Device filter:</div>
                 <div className="flex flex-wrap gap-2">
-                    {DEVICES.map((d, i) => {
-                        const isSelected = selectedDevices.has(i);
+                    {DEVICES.map((device, index) => {
+                        const isSelected = selectedDevices.has(index);
                         return (
                             <button
-                                key={`${d || "Other"}-${i}`}
+                                key={`${device || "Other"}-${index}`}
                                 onClick={() => {
-                                    setSelectedDevices(prev => {
-                                        const next = new Set(prev);
-                                        if (next.has(i)) next.delete(i); else next.add(i);
+                                    setSelectedDevices(previous => {
+                                        const next = new Set(previous);
+                                        if (next.has(index)) next.delete(index); else next.add(index);
                                         return next;
                                     });
                                 }}
                                 className={cx("md-chip", isSelected ? "md-chip--on" : "")}
                             >
-                                {d || "Other"}
+                                {device || "Other"}
                             </button>
                         );
                     })}
@@ -586,31 +698,31 @@ function TicketListView({ goTo }) {
                 <div ref={listRef} className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
                     <AnimatePresence>
                         {(items || [])
-                            .filter(t => !convertStatus(t.status) || !statusHidden.has(convertStatus(t.status))) // filter out devices with a status that isn't selected
-                            .filter(t => {
+                            .filter(ticket => !convertStatus(ticket.status) || !statusHidden.has(convertStatus(ticket.status))) // filter out devices with a status that isn't selected
+                            .filter(ticket => {
                                 // Default behavior: if none selected, show all
                                 if (!selectedDevices || selectedDevices.size === 0) return true;
-                                const val = t.device_type || "";
-                                const otherIdx = DEVICES.length - 1; // "" maps to Other
-                                const idx = DEVICES.includes(val) ? DEVICES.indexOf(val) : otherIdx;
-                                return selectedDevices.has(idx);
+                                const deviceType = ticket.device_type || "";
+                                const otherIndex = DEVICES.length - 1; // "" maps to Other
+                                const deviceIndex = DEVICES.includes(deviceType) ? DEVICES.indexOf(deviceType) : otherIndex;
+                                return selectedDevices.has(deviceIndex);
                             })
-                            .map((t) => (
+                            .map((ticket) => (
                                 <motion.button
-                                    key={t.id}
+                                    key={ticket.id}
                                     data-row
                                     initial={{ opacity: 0, y: 4 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0 }}
-                                    onClick={() => goTo(`/&${t.id}`)}
+                                    onClick={() => goTo(`/&${ticket.id}`)}
                                     className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
                                 >
-                                    <div className="col-span-1 truncate">#{t.number ?? t.id}</div>
-                                    <div className="col-span-5 truncate">{t.subject}</div>
-                                    <div className="col-span-2 truncate">{convertStatus(t.status)}</div>
-                                    <div className="col-span-1 truncate">{t.device_type || "Other"}</div>
-                                    <div className="col-span-1 truncate">{fmtDate(t.created_at)}</div>
-                                    <div className="col-span-2 truncate">{t.customer?.business_and_full_name ?? t.customer?.fullname}</div>
+                                    <div className="col-span-1 truncate">#{ticket.number ?? ticket.id}</div>
+                                    <div className="col-span-5 truncate">{ticket.subject}</div>
+                                    <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
+                                    <div className="col-span-1 truncate">{getTicketDeviceInfo(ticket).device}</div>
+                                    <div className="col-span-1 truncate">{fmtDate(ticket.created_at)}</div>
+                                    <div className="col-span-2 truncate">{ticket.customer?.business_and_full_name ?? ticket.customer?.fullname}</div>
                                 </motion.button>
                             ))}
                     </AnimatePresence>
@@ -643,48 +755,90 @@ function TicketListView({ goTo }) {
  *************************/
 function CustomerView({ id, goTo }) {
     const api = useApi();
-    const [c, setC] = useState(null);
+    const [customer, setCustomer] = useState(null);
     const [loading, setLoading] = useState(true);
     const [tickets, setTickets] = useState([]);
     const [tPage, setTPage] = useState(1);
     const [tLoading, setTLoading] = useState(false);
     const [tHasMore, setTHasMore] = useState(true);
+    const [allPhones, setAllPhones] = useState([]);
     const passwords = useMemo(() => {
         try {
             const set = new Set();
-            (tickets || []).forEach(t => {
-                const p = (getTicketPassword(t) || "").trim();
-                if (p) set.add(p);
+            (tickets || []).forEach(ticket => {
+                const password = (getTicketPassword(ticket) || "").trim();
+                if (password) set.add(password);
             });
             return Array.from(set);
         } catch { return []; }
     }, [tickets]);
-    useEffect(() => { (async () => { try { const d = await api.get(`/customers/${id}`); setC(d.customer || d); } catch (e) { console.error(e); } finally { setLoading(false); } })(); }, [id]);
+    useEffect(() => { 
+        (async () => { 
+            try { 
+                const data = await api.get(`/customers/${id}`); 
+                setCustomer(data.customer || data); 
+                
+                // Load all phone numbers
+                try {
+                    const phoneData = await api.get(`/customers/${id}/phones`);
+                    const phoneArray = (phoneData && (phoneData.phones || phoneData)) || [];
+                    const numbers = Array.isArray(phoneArray) ? phoneArray.map(phone => phone?.number || phone).filter(Boolean) : [];
+                    setAllPhones(numbers);
+                } catch (phoneError) {
+                    // Fallback to mobile/phone if phones endpoint fails
+                    const customer = data.customer || data;
+                    const basePhone = (customer.mobile && String(customer.mobile).trim()) ? customer.mobile : (customer.phone || "");
+                    if (basePhone) {
+                        setAllPhones([basePhone]);
+                    } else {
+                        setAllPhones([]);
+                    }
+                }
+            } catch (error) { 
+                console.error(error); 
+            } finally { 
+                setLoading(false); 
+            } 
+        })(); 
+    }, [id]);
     useEffect(() => { setTickets([]); setTPage(1); setTHasMore(true); }, [id]);
     async function loadMoreTickets() {
         if (!id || tLoading || !tHasMore) return;
         setTLoading(true);
         try {
-            const d = await api.get(`/tickets?customer_id=${encodeURIComponent(id)}&page=${tPage}`);
-            const arr = d.tickets || d || [];
-            setTickets(prev => [...prev, ...arr]);
-            setTPage(p => p + 1);
-            if (!arr || arr.length === 0) setTHasMore(false);
-        } catch (e) { console.error(e); setTHasMore(false); } finally { setTLoading(false); }
+            const data = await api.get(`/tickets?customer_id=${encodeURIComponent(id)}&page=${tPage}`);
+            const tickets = data.tickets || data || [];
+            setTickets(previous => [...previous, ...tickets]);
+            setTPage(currentPage => currentPage + 1);
+            if (!tickets || tickets.length === 0) setTHasMore(false);
+        } catch (error) { console.error(error); setTHasMore(false); } finally { setTLoading(false); }
     }
     useEffect(() => {
         loadMoreTickets();
         // eslint-disable-next-line
     }, [id]);
     if (loading) return <Loading />;
-    if (!c) return <ErrorMsg text="Customer not found" />;
+    if (!customer) return <ErrorMsg text="Customer not found" />;
     return (
         <div className="mx-auto max-w-6xl px-6 py-6 grid md:grid-cols-3 gap-8">
             <div className="md:col-span-2 space-y-6">
                 <div className="md-card p-8">
-                    <div className="text-2xl font-bold mb-2">{c.business_and_full_name || c.fullname}</div>
-                    <div className="mb-1" style={{color:'var(--md-sys-color-outline)'}}>{c.email}</div>
-                    <div style={{color:'var(--md-sys-color-outline)'}}>{formatPhone(c.phone || c.mobile)}</div>
+                    <div className="text-2xl font-bold mb-2">{customer.business_and_full_name || customer.fullname}</div>
+                    <div className="mb-1" style={{color:'var(--md-sys-color-outline)'}}>{customer.email}</div>
+                    <div className="space-y-1">
+                        {allPhones.length > 0 ? (
+                            allPhones.map((phone, index) => (
+                                <div key={index} style={{color:'var(--md-sys-color-outline)'}}>
+                                    {formatPhone(phone)}
+                                    {index === 0 && allPhones.length > 1 && (
+                                        <span className="ml-2 text-xs font-medium">(Primary)</span>
+                                    )}
+                                </div>
+                            ))
+                        ) : (
+                            <div style={{color:'var(--md-sys-color-outline)'}}>No phone numbers</div>
+                        )}
+                    </div>
                 </div>
                 <div className="flex gap-4">
                     <button
@@ -714,17 +868,17 @@ function CustomerView({ id, goTo }) {
                         <div className="col-span-2 font-semibold">Created</div>
                     </div>
                     <div className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
-                        {(tickets || []).map(t => (
+                        {(tickets || []).map(ticket => (
                             <button
-                                key={t.id}
-                                onClick={() => goTo(`/&${t.id}`)}
+                                key={ticket.id}
+                                onClick={() => goTo(`/&${ticket.id}`)}
                                 className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
                             >
-                                <div className="col-span-2 truncate">#{t.number ?? t.id}</div>
-                                <div className="col-span-4 truncate">{t.subject}</div>
-                                <div className="col-span-2 truncate">{convertStatus(t.status)}</div>
-                                <div className="col-span-2 truncate">{t.device_type || "Other"}</div>
-                                <div className="col-span-2 truncate">{fmtDate(t.created_at)}</div>
+                                <div className="col-span-2 truncate">#{ticket.number ?? ticket.id}</div>
+                                <div className="col-span-4 truncate">{ticket.subject}</div>
+                                <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
+                                <div className="col-span-2 truncate">{getTicketDeviceInfo(ticket).device}</div>
+                                <div className="col-span-2 truncate">{fmtDate(ticket.created_at)}</div>
                             </button>
                         ))}
                         {tLoading && (
@@ -756,8 +910,8 @@ function CustomerView({ id, goTo }) {
                     <div className="md-card p-6">
                         <div className="text-lg font-semibold mb-2">Previously used passwords</div>
                         <div className="text-sm" style={{color:'var(--md-sys-color-outline)'}}>
-                            {passwords.map((p, i) => (
-                                <div key={i}>{p}</div>
+                            {passwords.map((password, index) => (
+                                <div key={index}>{password}</div>
                             ))}
                         </div>
                     </div>
@@ -780,8 +934,10 @@ function CustomerView({ id, goTo }) {
 function NewCustomer({ goTo, customerId }) {
     const api = useApi();
     const [form, setForm] = useState({ first_name: "", last_name: "", business_name: "", phone: "", email: "" });
-    const [additionalPhones, setAdditionalPhones] = useState([]);
+    const [allPhones, setAllPhones] = useState([""]); // All phone numbers in a single array
+    const [primaryPhoneIndex, setPrimaryPhoneIndex] = useState(0); // Track which phone is primary
     const [applying, setApplying] = useState(false);
+    const [storedCustomer, setStoredCustomer] = useState(null);
     
     // Keybinds from Unity NewCustomerManager
     useHotkeys({
@@ -796,58 +952,70 @@ function NewCustomer({ goTo, customerId }) {
         }
     });
     const formatPhoneLive = (value) => {
-        const d = (value || "").replace(/\D/g, "");
-        const a = d.slice(0, 3);
-        const b = d.slice(3, 6);
-        const c = d.slice(6, 10);
-        if (d.length <= 3) return a;
-        if (d.length <= 6) return `${a}-${b}`;
-        return `${a}-${b}-${c}`;
+        const digits = (value || "").replace(/\D/g, "");
+        const areaCode = digits.slice(0, 3);
+        const exchange = digits.slice(3, 6);
+        const number = digits.slice(6, 10);
+        if (digits.length <= 3) return areaCode;
+        if (digits.length <= 6) return `${areaCode}-${exchange}`;
+        return `${areaCode}-${exchange}-${number}`;
     };
     const sanitizePhone = (value) => (value || "").replace(/\D/g, "");
-    // Prefill from URL query params if present
-    useEffect(() => {
-        try {
-            const url = new URL(window.location.href);
-            const q = url.searchParams;
-            setForm(f => ({
-                first_name: q.get("first_name") ?? f.first_name,
-                last_name: q.get("last_name") ?? f.last_name,
-                business_name: q.get("business_name") ?? f.business_name,
-                phone: q.get("phone") ?? f.phone,
-                email: q.get("email") ?? f.email,
-            }));
-        } catch { }
-    }, []);
+    
+    // Helper to set primary phone without reordering the list
+    const setPrimaryPhone = (index) => {
+        if (index < 0 || index >= allPhones.length) return;
+        
+        // Update which index is marked as primary (for visual indication only)
+        setPrimaryPhoneIndex(index);
+    };
+
     // Load existing customer data if editing
     useEffect(() => {
         if (!customerId) return;
         (async () => {
             try {
-                const d = await api.get(`/customers/${customerId}`);
-                const c = d.customer || d;
-                // Prefer mobile if present, else phone
-                const basePhone = (c.mobile && String(c.mobile).trim()) ? c.mobile : (c.phone || "");
+                const data = await api.get(`/customers/${customerId}`);
+                const customer = data.customer || data;
+                setStoredCustomer(customer); // Store the customer data
+                
                 setForm({
-                    first_name: c.firstname || c.first_name || "",
-                    last_name: c.lastname || c.last_name || "",
-                    business_name: c.business_name || c.business || "",
-                    phone: formatPhoneLive(basePhone || ""),
-                    email: c.email || "",
+                    first_name: customer.firstname || customer.first_name || "",
+                    last_name: customer.lastname || customer.last_name || "",
+                    business_name: customer.business_name || customer.business || "",
+                    phone: "", // We'll set this after loading phones
+                    email: customer.email || "",
                 });
-                // Load additional phones
+                
+                // Load all phones
                 try {
-                    const dp = await api.get(`/customers/${customerId}/phones`);
-                    const arr = (dp && (dp.phones || dp)) || [];
-                    const numbers = Array.isArray(arr) ? arr.map(p => p?.number || p).filter(Boolean) : [];
+                    const phoneData = await api.get(`/customers/${customerId}/phones`);
+                    const phoneArray = (phoneData && (phoneData.phones || phoneData)) || [];
+                    const numbers = Array.isArray(phoneArray) ? phoneArray.map(phone => phone?.number || phone).filter(Boolean) : [];
+                    
                     if (numbers.length > 0) {
-                        // Use first as primary, rest as additional
-                        const primary = numbers[0];
-                        setForm(prev => ({ ...prev, phone: formatPhoneLive(primary) }));
-                        const rest = numbers.slice(1).map(n => formatPhoneLive(n));
-                        setAdditionalPhones(rest);
+                        // Format all phone numbers
+                        const formattedNumbers = numbers.map(number => formatPhoneLive(number));
+                        setAllPhones(formattedNumbers);
+                        setPrimaryPhoneIndex(0); // First phone is primary by default
+                        // Set the first phone as the primary in the form for saving
+                        setForm(previous => ({ ...previous, phone: formattedNumbers[0] }));
+                    } else {
+                        // Fallback to mobile/phone if no phones endpoint
+                        const basePhone = (customer.mobile && String(customer.mobile).trim()) ? customer.mobile : (customer.phone || "");
+                        const formattedPhone = formatPhoneLive(basePhone || "");
+                        setAllPhones([formattedPhone]);
+                        setPrimaryPhoneIndex(0);
+                        setForm(previous => ({ ...previous, phone: formattedPhone }));
                     }
-                } catch { /* optional endpoint; ignore errors */ }
+                } catch { 
+                    // Fallback to mobile/phone if phones endpoint fails
+                    const basePhone = (customer.mobile && String(customer.mobile).trim()) ? customer.mobile : (customer.phone || "");
+                    const formattedPhone = formatPhoneLive(basePhone || "");
+                    setAllPhones([formattedPhone]);
+                    setPrimaryPhoneIndex(0);
+                    setForm(previous => ({ ...previous, phone: formattedPhone }));
+                }
             } catch (e) { console.error(e); }
         })();
     }, [customerId]);
@@ -855,39 +1023,41 @@ function NewCustomer({ goTo, customerId }) {
 
     // Helpers for phone syncing and reordering
     async function getPhonesOnServer(id) {
-        const dp = await api.get(`/customers/${id}/phones`);
-        const arr = (dp && (dp.phones || dp)) || [];
-        return Array.isArray(arr) ? arr : [];
+        const phoneData = await api.get(`/customers/${id}/phones`);
+        const phoneArray = (phoneData && (phoneData.phones || phoneData)) || [];
+        return Array.isArray(phoneArray) ? phoneArray : [];
     }
     async function deletePhones(id, phones) {
         if (!phones || phones.length === 0) return;
         await Promise.all(
-            phones.map(p => {
-                const pid = p?.id ?? p?.phone_id;
-                if (!pid) return Promise.resolve();
-                return api.del(`/customers/${id}/phones/${pid}`).catch(() => {});
+            phones.map(phone => {
+                const phoneId = phone?.id ?? phone?.phone_id;
+                if (!phoneId) return Promise.resolve();
+                return api.del(`/customers/${id}/phones/${phoneId}`).catch(() => {});
             })
         );
     }
     async function postPhones(id, numbers) {
         if (!numbers || numbers.length === 0) return;
-        for (const num of numbers) {
+        for (const number of numbers) {
             try {
-                await api.post(`/customers/${id}/phones`, { number: num, primary: true });
-            } catch (e) { /* best-effort; continue */ }
+                await api.post(`/customers/${id}/phones`, { number: number, primary: true });
+            } catch (error) { /* best-effort; continue */ }
         }
     }
+
+    // for some reason the server picks the order completely randomly. This keeps putting the phones until the selected one to be first is first
     async function makeCorrectPhoneBeFirst(id, selected) {
         try {
             const phones = await getPhonesOnServer(id);
             const first = phones?.[0];
             if (!first) return; // nothing to order
             if ((first.number || "") === selected) return; // already first
-            const targetIdx = phones.findIndex(p => (p.number || "") === selected);
-            if (targetIdx === -1) return; // target not present
+            const targetIndex = phones.findIndex(phone => (phone.number || "") === selected);
+            if (targetIndex === -1) return; // target not present
             // Delete current first and target, then post target then old first, then recurse
             const oldFirstId = first.id;
-            const targetId = phones[targetIdx].id;
+            const targetId = phones[targetIndex].id;
             await api.del(`/customers/${id}/phones/${oldFirstId}`).catch(() => {});
             await api.del(`/customers/${id}/phones/${targetId}`).catch(() => {});
             await api.post(`/customers/${id}/phones`, { number: selected, primary: true }).catch(() => {});
@@ -902,15 +1072,16 @@ function NewCustomer({ goTo, customerId }) {
     async function save() {
         setSaving(true);
         try {
+            const primaryPhone = allPhones[primaryPhoneIndex] || "";
             const sanitized = { 
                 firstname: form.first_name, 
                 lastname: form.last_name, 
                 business_name: form.business_name, 
-                mobile: (form.phone || "").replace(/\D/g, ""),
+                mobile: sanitizePhone(primaryPhone),
                 phone: "",
                 email: form.email
             };
-            let d;
+            let data;
             if (customerId) {
                 // Edit flow with phone reordering
                 if ((sanitized.firstname || "").replace(/\u200B/g, "").trim() === "") {
@@ -926,14 +1097,13 @@ function NewCustomer({ goTo, customerId }) {
                 if (applying) { setSaving(false); return; }
                 setApplying(true);
                 try {
-                    await api.put(`/customers/${customerId}`, { customer: sanitized });
-                    // Build current phones: main + additional valid ones (10 digits)
+                    // Send the full customer object with updated fields
+                    await api.put(`/customers/${customerId}`, { ...storedCustomer, ...sanitized });
+
                     const currentPhones = [];
-                    const mainDigits = sanitizePhone(form.phone);
-                    if (mainDigits.length === 10) currentPhones.push(mainDigits);
-                    additionalPhones.forEach(p => {
-                        const d = sanitizePhone(p);
-                        if (d.length === 10) currentPhones.push(d);
+                    allPhones.forEach(phone => {
+                        const digits = sanitizePhone(phone);
+                        if (digits.length === 10) currentPhones.push(digits);
                     });
                     // Distinct
                     const distinct = Array.from(new Set(currentPhones));
@@ -941,23 +1111,24 @@ function NewCustomer({ goTo, customerId }) {
                     const old = await getPhonesOnServer(customerId);
                     await deletePhones(customerId, old || []);
                     await postPhones(customerId, distinct);
-                    // Reorder to make main first
-                    await makeCorrectPhoneBeFirst(customerId, mainDigits);
+                    // Reorder to make primary phone first
+                    const primaryDigits = sanitizePhone(primaryPhone);
+                    await makeCorrectPhoneBeFirst(customerId, primaryDigits);
                     // Navigate to view
                     goTo(`/$${customerId}`);
-                } catch (e) {
-                    window.alert("Customer not edited because: " + (e?.message || e));
+                } catch (error) {
+                    window.alert("Customer not edited because: " + (error?.message || error));
                 } finally {
                     setApplying(false);
                     setSaving(false);
                 }
                 return;
             } else {
-                d = await api.post(`/customers`, { customer: sanitized });
+                data = await api.post(`/customers`, { customer: sanitized });
             }
-            const c = d.customer || d;
-            goTo(`/$${c.id}`);
-        } catch (e) { console.error(e); } finally { setSaving(false); }
+            const customer = data.customer || data;
+            goTo(`/$${customer.id}`);
+        } catch (error) { console.error(error); } finally { setSaving(false); }
     }
     return (
         <div className="mx-auto max-w-2xl px-6 py-6">
@@ -965,47 +1136,67 @@ function NewCustomer({ goTo, customerId }) {
                 <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                     {customerId ? "Edit Customer" : "New Customer"}
                 </div>
-                {["first_name", "last_name", "business_name"].map(k => (
-                    <div key={k} className="space-y-2">
-                        <label className="text-sm font-medium capitalize">{k.replace('_', ' ')}</label>
+                {["first_name", "last_name", "business_name"].map(fieldKey => (
+                    <div key={fieldKey} className="space-y-2">
+                        <label className="text-sm font-medium capitalize">{fieldKey.replace('_', ' ')}</label>
                         <input
                             className="md-input"
-                            value={form[k]}
-                            onChange={e => setForm({ ...form, [k]: e.target.value })}
+                            value={form[fieldKey]}
+                            onChange={event => setForm({ ...form, [fieldKey]: event.target.value })}
                         />
                     </div>
                 ))}
                 <div className="space-y-2">
-                    <label className="text-sm font-medium">Phone</label>
-                    <input
-                        className="md-input"
-                        value={form.phone}
-                        onChange={e => setForm({ ...form, phone: formatPhoneLive(e.target.value) })}
-                        inputMode={'numeric'}
-                        autoComplete={'tel'}
-                    />
-                    {additionalPhones.map((p, idx) => (
-                        <div key={idx}>
-                            <input
-                                className="md-input"
-                                value={p}
-                                onChange={e => {
-                                    const v = e.target.value;
-                                    setAdditionalPhones(prev => prev.map((x, i) => i === idx ? formatPhoneLive(v) : x));
-                                }}
-                                inputMode={'numeric'}
-                                autoComplete={'tel'}
-                            />
+                    <label className="text-sm font-medium">Phone Numbers</label>
+                    <div className="space-y-3">
+                        {allPhones.map((phone, index) => {
+                            const isPrimary = index === primaryPhoneIndex;
+                            
+                            return (
+                                <div key={index} className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPrimaryPhone(index)}
+                                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                                            isPrimary 
+                                                ? 'border-blue-500 bg-blue-500' 
+                                                : 'border-gray-300 hover:border-gray-400'
+                                        }`}
+                                        title={isPrimary ? "Primary phone" : "Click to make primary"}
+                                    >
+                                        {isPrimary && (
+                                            <div className="w-2 h-2 bg-white rounded-full"></div>
+                                        )}
+                                    </button>
+                                    <input
+                                        className="md-input flex-1"
+                                        value={phone}
+                                        onChange={event => {
+                                            const value = event.target.value;
+                                            // Update the phone in the allPhones array
+                                            setAllPhones(prev => 
+                                                prev.map((p, i) => i === index ? formatPhoneLive(value) : p)
+                                            );
+                                        }}
+                                        inputMode={'numeric'}
+                                        autoComplete={'tel'}
+                                        placeholder="Phone number"
+                                    />
+                                    {isPrimary && (
+                                        <span className="text-xs font-medium text-blue-600">Primary</span>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        <div>
+                            <button
+                                type="button"
+                                className="md-btn-surface elev-1 text-xs"
+                                onClick={() => setAllPhones([...allPhones, ""]) }
+                            >
+                                + Add another phone
+                            </button>
                         </div>
-                    ))}
-                    <div>
-                        <button
-                            type="button"
-                            className="md-btn-surface elev-1 text-xs"
-                            onClick={() => setAdditionalPhones([...additionalPhones, ""]) }
-                        >
-                            + Add another phone
-                        </button>
                     </div>
                 </div>
                 <div className="space-y-2">
@@ -1013,7 +1204,7 @@ function NewCustomer({ goTo, customerId }) {
                     <input
                         className="md-input"
                         value={form.email}
-                        onChange={e => setForm({ ...form, email: e.target.value })}
+                        onChange={event => setForm({ ...form, email: event.target.value })}
                         autoComplete={'email'}
                     />
                 </div>
@@ -1025,13 +1216,46 @@ function NewCustomer({ goTo, customerId }) {
                     >
                         Cancel
                     </button>
-                    <button
+                    <motion.button
                         onClick={save}
                         disabled={saving || applying}
-                        className="md-btn-primary elev-1 disabled:opacity-80"
+                        className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden"
+                        whileTap={{ scale: (saving || applying) ? 1 : 0.95 }}
+                        animate={(saving || applying) ? { 
+                            backgroundColor: "var(--md-sys-color-primary-container)",
+                            color: "black"
+                        } : {
+                            backgroundColor: "var(--md-sys-color-primary)",
+                            color: "var(--md-sys-color-on-primary)"
+                        }}
+                        transition={{ duration: 0.15 }}
                     >
-                        {saving ? "Saving…" : (customerId ? "Update" : "Create")}
-                    </button>
+                        <div className="flex items-center justify-center gap-2">
+                            <span>{saving ? (customerId ? "Updating..." : "Creating...") : (customerId ? "Update" : "Create")}</span>
+                            {(saving || applying) && (
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0 }}
+                                >
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                </motion.div>
+                            )}
+                        </div>
+                        {/* Loading overlay animation */}
+                        {(saving || applying) && (
+                            <motion.div
+                                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                                initial={{ x: '-100%' }}
+                                animate={{ x: '100%' }}
+                                transition={{
+                                    duration: 1.5,
+                                    repeat: Infinity,
+                                    ease: "linear"
+                                }}
+                            />
+                        )}
+                    </motion.button>
                 </div>
             </div>
         </div>
@@ -1043,11 +1267,12 @@ function NewCustomer({ goTo, customerId }) {
  *************************/
 function TicketView({ id, goTo }) {
     const api = useApi();
-    const [t, setT] = useState(null);
+    const [ticket, setTicket] = useState(null);
     const [loading, setLoading] = useState(true);
     const ticketCardRef = useRef(null);
+    const [refreshKey, setRefreshKey] = useState(0);
+    const [updatingStatus, setUpdatingStatus] = useState(null); // Track which status is being updated
     
-    // Keybinds from Unity TicketViewerManager
     useHotkeys({
         "h": () => goTo("/"),
         "s": () => {
@@ -1060,23 +1285,35 @@ function TicketView({ id, goTo }) {
         "p": () => generatePDF()
     });
 
+    const fetchTicket = async () => {
+        setLoading(true);
+        try {
+            const data = await api.get(`/tickets/${id}`);
+            setTicket(data.ticket || data);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        (async () => {
-            try {
-                const d = await api.get(`/tickets/${id}`);
-                setT(d.ticket || d);
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
-            }
-        })();
-    }, [id, api]);
+        fetchTicket();
+    }, [id, api, refreshKey]);
+
+    // Listen for ticket refresh events
+    useEffect(() => {
+        const handleRefresh = () => {
+            setRefreshKey(prev => prev + 1);
+        };
+        window.addEventListener('refreshTicket', handleRefresh);
+        return () => window.removeEventListener('refreshTicket', handleRefresh);
+    }, []);
 
     if (loading) return <Loading />;
-    if (!t) return <ErrorMsg text="Ticket not found" />;
+    if (!ticket) return <ErrorMsg text="Ticket not found" />;
 
-    const phone = formatPhone(t.customer?.phone || t.customer?.mobile || "");
+    const phone = formatPhone(ticket.customer?.phone || ticket.customer?.mobile || "");
 
     const generatePDF = async () => {
         if (!ticketCardRef.current) return;
@@ -1116,7 +1353,7 @@ function TicketView({ id, goTo }) {
             {/* Top Action Buttons */}
             <div className="flex justify-end gap-4 mb-6">
                 <button
-                    onClick={() => goTo(`/$${t.customer?.id || t.customer_id}`)}
+                    onClick={() => goTo(`/$${ticket.customer?.id || ticket.customer_id}`)}
                     className="md-btn-surface elev-1 inline-flex items-center gap-2"
                 >
                     <User className="w-5 h-5" />
@@ -1130,7 +1367,7 @@ function TicketView({ id, goTo }) {
                     Print PDF
                 </button>
                 <button
-                    onClick={() => goTo(`/&${t.id}?edit`)}
+                    onClick={() => goTo(`/&${ticket.id}?edit`)}
                     className="md-btn-primary elev-1 inline-flex items-center gap-2"
                 >
                     <Edit className="w-5 h-5" />
@@ -1145,12 +1382,12 @@ function TicketView({ id, goTo }) {
                     <div className="transform scale-148 origin-top-left bg-white rounded-md shadow-lg">
                         <div ref={ticketCardRef}>
                             <TicketCard
-                                password={getTicketPassword(t)}
-                                ticketNumber={t.number ?? t.id}
-                                subject={t.subject}
-                                itemsLeft={(t.items_left || []).join(", ")}
-                                name={t.customer?.business_and_full_name || t.customer?.fullname || ""}
-                                creationDate={fmtDateAndTime(t.created_at)}
+                                password={getTicketPassword(ticket)}
+                                ticketNumber={ticket.number ?? ticket.id}
+                                subject={ticket.subject}
+                                itemsLeft={formatItemsLeft(getTicketDeviceInfo(ticket).itemsLeft)}
+                                name={ticket.customer?.business_and_full_name || ticket.customer?.fullname || ""}
+                                creationDate={fmtDateAndTime(ticket.created_at)}
                                 phoneNumber={phone}
                             />
                         </div>
@@ -1160,25 +1397,70 @@ function TicketView({ id, goTo }) {
                     <div className="md-card p-4 space-y-3" style={{ width: "240px" }}>
                         <p className="text-md font-semibold">Status:</p>
                         <div className="flex flex-col gap-2">
-                            {STATUSES.map((s, i) => {
-                                const active = convertStatus(t.status) === s;
+                            {STATUSES.map((status, index) => {
+                                const active = convertStatus(ticket.status) === status;
+                                const isUpdating = updatingStatus === status;
                                 return (
-                                    <button
-                                        key={s}
+                                    <motion.button
+                                        key={status}
                                         onClick={async () => {
+                                            if (isUpdating) return; // Prevent multiple clicks
+                                            
+                                            setUpdatingStatus(status);
                                             try {
-                                                await api.put(`/tickets/${t.id}`, {
-                                                    status: s,
-                                                });
-                                                setT({ ...t, status: s });
-                                            } catch (err) {
-                                                console.error(err);
+                                                // Send the full ticket object with updated status
+                                                const updatedTicket = { ...ticket, status: status };
+                                                await api.put(`/tickets/${ticket.id}`, updatedTicket);
+                                                setTicket(updatedTicket);
+                                            } catch (error) {
+                                                console.error(error);
+                                                alert(`Failed to update status: ${error.message}`);
+                                            } finally {
+                                                setUpdatingStatus(null);
                                             }
                                         }}
-                                        className={`${active ? 'md-btn-primary' : 'md-btn-surface'} text-left`}
+                                        disabled={isUpdating}
+                                        className={`${active ? 'md-btn-primary' : 'md-btn-surface'} text-left relative overflow-hidden ${
+                                            isUpdating ? 'cursor-not-allowed' : ''
+                                        }`}
+                                        style={active ? { borderRadius: '12px' } : {}}
+                                        whileTap={{ scale: 0.95 }}
+                                        animate={isUpdating ? { 
+                                            backgroundColor: active ? "var(--md-sys-color-primary)" : "var(--md-sys-color-primary-container)",
+                                            color: "black"
+                                        } : {
+                                            backgroundColor: active ? "var(--md-sys-color-primary)" : "#2c2c2f",
+                                            color: active ? "black" : "var(--md-sys-color-on-surface)"
+                                        }}
+                                        transition={{ duration: 0.15 }}
                                     >
-                                        {s}
-                                    </button>
+                                        <div className="flex items-center justify-between">
+                                            <span>{status}</span>
+                                            {isUpdating && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, scale: 0 }}
+                                                    animate={{ opacity: 1, scale: 1 }}
+                                                    exit={{ opacity: 0, scale: 0 }}
+                                                    className="ml-2"
+                                                >
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                </motion.div>
+                                            )}
+                                        </div>
+                                        {/* Loading overlay animation */}
+                                        {isUpdating && (
+                                            <motion.div
+                                                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                                                initial={{ x: '-100%' }}
+                                                animate={{ x: '100%' }}
+                                                transition={{
+                                                    duration: 1.5,
+                                                    repeat: Infinity,
+                                                    ease: "linear"
+                                                }}
+                                            />
+                                        )}
+                                    </motion.button>
                                 );
                             })}
                         </div>
@@ -1189,7 +1471,7 @@ function TicketView({ id, goTo }) {
                 <aside className="col-span-12 lg:col-start-7 lg:col-span-6">
                     <div className="md-card p-6">
                         <div className="text-lg font-semibold mb-4">Comments</div>
-                        <CommentsBox ticketId={t.id} comments={t.comments} />
+                        <CommentsBox ticketId={ticket.id} comments={ticket.comments} goTo={goTo} />
                     </div>
                 </aside>
             </div>
@@ -1197,7 +1479,7 @@ function TicketView({ id, goTo }) {
     );
 }
 
-function CommentsBox({ ticketId, comments }) {
+function CommentsBox({ ticketId, comments, goTo }) {
     const api = useApi();
     const [text, setText] = useState("");
     const [list, setList] = useState([]);
@@ -1210,20 +1492,21 @@ function CommentsBox({ ticketId, comments }) {
             await api.post(`/tickets/${ticketId}/comment`, { 
                 subject: "Update",
                 body: text,
-                tech: "Cacell System",
+                tech: "True Tickets",
                 hidden: true,
                 do_not_email: true
             }); 
             setText(""); 
-            goTo(`/&${ticketId}`); 
-        } catch (e) { console.error(e); } 
+            // Trigger a refresh event to reload the ticket data
+            window.dispatchEvent(new CustomEvent('refreshTicket'));
+        } catch (error) { console.error(error); } 
     }
 
     return (
         <div className="space-y-4">
             <textarea
                 value={text}
-                onChange={e => setText(e.target.value)}
+                onChange={event => setText(event.target.value)}
                 className="md-textarea h-24"
                 placeholder="Write a comment…"
             />
@@ -1234,24 +1517,24 @@ function CommentsBox({ ticketId, comments }) {
                 Create Comment
             </button>
             <div className="space-y-3">
-                {(list || []).filter(c => {
-                    const b = (c.body ?? c.comment ?? '').trim();
-                    return b !== 'Ticket marked as Pre-Diagnosed.';
-                }).map(c => (
-                    <div key={c.id} className="md-row-box p-3 text-sm relative">
+                {(list || []).filter(comment => {
+                    const body = (comment.body ?? comment.comment ?? '').trim();
+                    return body !== 'Ticket marked as Pre-Diagnosed.';
+                }).map(comment => (
+                    <div key={comment.id} className="md-row-box p-3 relative">
                         {/* Top bar details: tech + time (left), SMS (right) */}
-                        <div className="absolute inset-x-3 top-2 flex items-center justify-between text-[11px]" style={{color:'var(--md-sys-color-outline)'}}>
+                        <div className="absolute inset-x-3 top-2 flex items-center justify-between text-sm" style={{color:'var(--md-sys-color-outline)'}}>
                             <div className="flex items-center gap-3">
-                                {c.tech ? (<span>{c.tech}</span>) : null}
-                                <span>{fmtDateAndTime(c.created_at)}</span>
+                                {comment.tech ? (<span>{comment.tech}</span>) : null}
+                                <span>{fmtDateAndTime(comment.created_at)}</span>
                             </div>
-                            {typeof c.hidden === 'boolean' && c.hidden === false ? (
+                            {typeof comment.hidden === 'boolean' && comment.hidden === false ? (
                                 <span>Probably SMS</span>
                             ) : <span />}
                         </div>
 
                         {/* Body */}
-                        <div className="whitespace-pre-wrap leading-relaxed pt-5">{c.body || c.comment || ''}</div>
+                        <div className="whitespace-pre-wrap leading-relaxed pt-5 text-base">{comment.body || comment.comment || ''}</div>
                     </div>
                 ))}
             </div>
@@ -1264,7 +1547,7 @@ function CommentsBox({ ticketId, comments }) {
  *************************/
 function TicketEditor({ ticketId, customerId, goTo }) {
     const api = useApi();
-    const [pre, setPre] = useState(null);
+    const [previousTicket, setPreviousTicket] = useState(null);
     const [loading, setLoading] = useState(true);
     const [subject, setSubject] = useState("");
     const [password, setPassword] = useState("");
@@ -1285,31 +1568,51 @@ function TicketEditor({ ticketId, customerId, goTo }) {
             try {
                 const data = await api.get(`/tickets/${ticketId}`);
                 const ticket = data.ticket || data;
-                setPre(ticket);
+                setPreviousTicket(ticket);
                 setSubject(ticket.subject || "");
                 
                 // Load existing properties to preserve them
-                const props = ticket.properties || {};
-                setExistingProperties(props);
+                const properties = ticket.properties || {};
+                setExistingProperties(properties);
                 
                 // Set password from existing data
-                setPassword(props.Password || props.password || "");
+                setPassword(properties.Password || properties.password || "");
                 
                 // Set charger status from existing data
-                const hasCharger = props["AC Charger"] === "1" || props["AC Charger"] === 1;
+                const hasCharger = properties["AC Charger"] === "1" || properties["AC Charger"] === 1;
                 if (hasCharger) {
-                    setItemsLeft(prev => [...prev, "Charger"]);
+                    setItemsLeft(previous => [...previous, "Charger"]);
                 }
                 
-            } catch (e) {
-                console.error(e);
+                // Parse device info from Tech Notes (v1 or v2)
+                const deviceInfo = getTicketDeviceInfo(ticket);
+                
+                // Set device from JSON
+                if (deviceInfo.device) {
+                    const deviceIndex = DEVICES.indexOf(deviceInfo.device);
+                    if (deviceIndex !== -1) {
+                        setDeviceIdx(deviceIndex);
+                    }
+                }
+                
+                // Set items left from JSON
+                if (Array.isArray(deviceInfo.itemsLeft)) {
+                    setItemsLeft(deviceInfo.itemsLeft);
+                }
+                
+                // Set estimated time from JSON
+                if (deviceInfo.howLong) {
+                    setTimeEstimate(deviceInfo.howLong);
+                }
+                
+            } catch (error) {
+                console.error(error);
             } finally {
                 setLoading(false);
             }
         })();
     }, [ticketId, api]);
 
-    // Keybinds from Unity NewTicketManager
     useHotkeys({
         "h": () => goTo("/"),
         "s": () => {
@@ -1326,7 +1629,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     });
 
 
-    function toggleItem(name) { setItemsLeft(xs => xs.includes(name) ? xs.filter(x => x !== name) : [...xs, name]); }
+    function toggleItem(name) { setItemsLeft(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]); }
 
     async function save() {
         setSaving(true);
@@ -1341,23 +1644,73 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                 properties["Tech Notes"] = "";
             }
             
-            const payload = {
-                customer_id: customerId || pre?.customer_id || pre?.id,
-                user_id: 0,
-                ticket_type_id: 9818,
-                subject: subject,
-                problem_type: "Other",
-                status: "New",
-                due_date: new Date().toISOString(),
-                properties: properties
-            };
-            
-            let out;
-            if (ticketId) out = await api.put(`/tickets/${ticketId}`, payload); // update the ticket
-            else out = await api.post(`/tickets`, payload); // create the ticket
-            const idOfNewlyCreatedOrUpdatedTicket = (out.ticket || out).id;
+            let result;
+            if (ticketId) {
+                // Implement ChangeTicketTypeIdToComputer logic to preserve fields
+                const currentTicketTypeId = previousTicket?.ticket_type_id || previousTicket?.ticket_fields?.[0]?.ticket_type_id;
+                let legacyOptions = "";
+                
+                // Build legacy options based on current ticket type
+                if (currentTicketTypeId === 9836) {
+                    if (properties.Model && properties.Model !== "") legacyOptions += "Model: " + properties.Model;
+                    if (properties.imeiOrSn && properties.imeiOrSn !== "") legacyOptions += "\nIMEI or S/N: " + properties.imeiOrSn;
+                    legacyOptions += "\nEver been Wet: " + (properties.EverBeenWet || "Unknown");
+                    if (properties.previousDamageOrIssues && properties.previousDamageOrIssues !== "") legacyOptions += "\nPrevious Damage or Issues: " + properties.previousDamageOrIssues;
+                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) legacyOptions += "\nTech notes: " + properties.techNotes;
+                    if (properties.currentIssue && properties.currentIssue !== "") legacyOptions += "\nCurrent issue: " + properties.currentIssue;
+                    if (properties.Size && properties.Size !== "") legacyOptions += "\nSize: " + properties.Size;
+                }
+                if (currentTicketTypeId === 9801) {
+                    if (properties.Model && properties.Model !== "") legacyOptions += "Model: " + properties.Model;
+                    if (properties.imeiOrSnForPhone && properties.imeiOrSnForPhone !== "") legacyOptions += "\nIMEI or S/N: " + properties.imeiOrSnForPhone;
+                    legacyOptions += "\nEver been Wet: " + (properties.EverBeenWet || "Unknown");
+                    if (properties.previousDamageOrIssues && properties.previousDamageOrIssues !== "") legacyOptions += "\nPrevious Damage or Issues: " + properties.previousDamageOrIssues;
+                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) legacyOptions += "\nTech notes: " + properties.techNotes;
+                    if (properties.currentIssue && properties.currentIssue !== "") legacyOptions += "\nCurrent issue: " + properties.currentIssue;
+                    properties.Password = properties.passwordForPhone || "";
+                }
+                if (currentTicketTypeId === 23246) {
+                    if (properties.Model && properties.Model !== "") legacyOptions += "\nModel: " + properties.Model;
+                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) legacyOptions += "\nTech notes: " + properties.techNotes;
+                }
+                
+                // Set password and preserve legacy options in Model
+                properties.Password = (password || "").trim() !== "" ? password : "n";
+                properties.Model = legacyOptions;
+                
+                const updatedTicket = { 
+                    ...previousTicket,
+                    subject: subject,
+                    ticket_type_id: 9818,
+                    properties: properties
+                };
+                
+                result = await api.put(`/tickets/${ticketId}`, updatedTicket);
+            } else {
+                // For new tickets, create the full payload
+                // Create techNotes JSON with device, items left, and estimated time
+                const techNotesData = {
+                    device: DEVICES[deviceIdx] || "Other",
+                    itemsLeft: itemsLeft,
+                    estimatedTime: timeEstimate
+                };
+                properties["Tech Notes"] = "v2" + JSON.stringify(techNotesData, null, 2);
+                
+                const payload = {
+                    customer_id: customerId || previousTicket?.customer_id || previousTicket?.id,
+                    user_id: 0,
+                    ticket_type_id: 9818,
+                    subject: subject,
+                    problem_type: "Other",
+                    status: "New",
+                    due_date: new Date().toISOString(),
+                    properties: properties
+                };
+                result = await api.post(`/tickets`, payload); // create the ticket
+            }
+            const idOfNewlyCreatedOrUpdatedTicket = (result.ticket || result).id;
             goTo(`/&${idOfNewlyCreatedOrUpdatedTicket}`);
-        } catch (e) { console.error(e); } finally { setSaving(false); }
+        } catch (error) { console.error(error); } finally { setSaving(false); }
     }
 
     if (loading) return <Loading />;
@@ -1376,13 +1729,46 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                         >
                             Cancel
                         </button>
-                        <button
+                        <motion.button
                             onClick={save}
                             disabled={saving}
-                            className="md-btn-primary elev-1 disabled:opacity-80"
+                            className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden"
+                            whileTap={{ scale: saving ? 1 : 0.95 }}
+                            animate={saving ? { 
+                                backgroundColor: "var(--md-sys-color-primary-container)",
+                                color: "black"
+                            } : {
+                                backgroundColor: "var(--md-sys-color-primary)",
+                                color: "var(--md-sys-color-on-primary)"
+                            }}
+                            transition={{ duration: 0.15 }}
                         >
-                            {saving ? "Saving…" : "Save"}
-                        </button>
+                            <div className="flex items-center justify-center gap-2">
+                                <span>{saving ? "Updating..." : "Update"}</span>
+                                {saving && (
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0 }}
+                                    >
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    </motion.div>
+                                )}
+                            </div>
+                            {/* Loading overlay animation */}
+                            {saving && (
+                                <motion.div
+                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                                    initial={{ x: '-100%' }}
+                                    animate={{ x: '100%' }}
+                                    transition={{
+                                        duration: 1.5,
+                                        repeat: Infinity,
+                                        ease: "linear"
+                                    }}
+                                />
+                            )}
+                        </motion.button>
                     </div>
                 </div>
 
@@ -1392,7 +1778,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                     <input
                         className="md-input"
                         value={subject}
-                        onChange={e => setSubject(e.target.value)}
+                        onChange={event => setSubject(event.target.value)}
                         placeholder="Enter ticket subject..."
                     />
                 </div>
@@ -1407,18 +1793,18 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                             <input
                                 className="md-input"
                                 value={password}
-                                onChange={e => setPassword(e.target.value)}
+                                onChange={event => setPassword(event.target.value)}
                                 placeholder="Device password"
                             />
                         </div>
 
-                        {/* Items Left (moved to left side) */}
+                        {/* Items Left */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Items Left</label>
                             <div className="flex flex-wrap gap-2">
-                                {ITEMS_LEFT.map((item, i) => item && (
+                                {ITEMS_LEFT.map((item, index) => item && (
                                     <button
-                                        key={i}
+                                        key={index}
                                         onClick={() => toggleItem(item)}
                                         className={`md-chip ${itemsLeft.includes(item) ? 'md-chip--on' : ''}`}
                                     >
@@ -1440,21 +1826,21 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                 aria-label="Device Type"
                                 className="p-2 flex flex-wrap gap-2"
                             >
-                                {DEVICES.map((d, i) => {
-                                    const active = deviceIdx === i;
+                                {DEVICES.map((device, index) => {
+                                    const active = deviceIdx === index;
                                     return (
                                         <button
-                                            key={i}
+                                            key={index}
                                             role="radio"
                                             aria-checked={active}
-                                            onClick={() => { setDeviceIdx(i); }}
+                                            onClick={() => { setDeviceIdx(index); }}
                                             className={`inline-flex items-center gap-2 md-chip ${active ? 'md-chip--on' : ''}`}
                                         >
                                             <span
                                                 aria-hidden
                                                 className={`w-2.5 h-2.5 rounded-full ${active ? "bg-white" : "border"}`}
                                             />
-                                            <span>{d || "Other"}</span>
+                                            <span>{device || "Other"}</span>
                                         </button>
                                     );
                                 })}
@@ -1467,7 +1853,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                             <input
                                 className="md-input"
                                 value={timeEstimate}
-                                onChange={e => setTimeEstimate(e.target.value)}
+                                onChange={event => setTimeEstimate(event.target.value)}
                                 placeholder="e.g. 30 min, 2 hours, Call by: 11th"
                             />
                         </div>
@@ -1509,34 +1895,36 @@ export default function App() {
     }, [path]);
 
     return (
-        <ApiProvider>
-            <div className="min-h-screen material-surface">
-                <TopBar
-                    onHome={() => navigate("/")}
-                    onSearchClick={() => setShowSearch(true)}
-                    onNewCustomer={() => navigate("/newcustomer")}
-                    onSettings={() => setShowSettings(true)}
-                />
+        <AuthWrapper>
+            <ApiProvider>
+                <div className="min-h-screen material-surface">
+                    <TopBar
+                        onHome={() => navigate("/")}
+                        onSearchClick={() => setShowSearch(true)}
+                        onNewCustomer={() => navigate("/newcustomer")}
+                        onSettings={() => setShowSettings(true)}
+                    />
 
-                {route.view === "home" && <TicketListView goTo={navigate} />}
-                {route.view === "customer" && <CustomerView id={route.id} goTo={navigate} />}
-                {route.view === "newcustomer" && <NewCustomer goTo={navigate} />}
-                {route.view === "customer-edit" && <NewCustomer goTo={navigate} customerId={route.id} />}
-                {route.view === "ticket" && <TicketView id={route.id} goTo={navigate} />}
-                {route.view === "ticket-editor" && <TicketEditor ticketId={route.ticketId} customerId={route.customerId} goTo={navigate} />}
-                {route.view === "ticket-by-number" && <TicketByNumber number={route.number} goTo={navigate} />}
+                    {route.view === "home" && <TicketListView goTo={navigate} />}
+                    {route.view === "customer" && <CustomerView id={route.id} goTo={navigate} />}
+                    {route.view === "newcustomer" && <NewCustomer goTo={navigate} />}
+                    {route.view === "customer-edit" && <NewCustomer goTo={navigate} customerId={route.id} />}
+                    {route.view === "ticket" && <TicketView id={route.id} goTo={navigate} />}
+                    {route.view === "ticket-editor" && <TicketEditor ticketId={route.ticketId} customerId={route.customerId} goTo={navigate} />}
+                    {route.view === "ticket-by-number" && <TicketByNumber number={route.number} goTo={navigate} />}
 
-                <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
-                <SearchModal open={showSearch} onClose={() => setShowSearch(false)} goTo={navigate} />
-            </div>
-        </ApiProvider>
+                    <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+                    <SearchModal open={showSearch} onClose={() => setShowSearch(false)} goTo={navigate} />
+                </div>
+            </ApiProvider>
+        </AuthWrapper>
     );
 }
 function TicketByNumber({ number, goTo }) {
     const api = useApi();
     const [id, setId] = useState(null);
     const [err, setErr] = useState(null);
-    useEffect(() => { (async () => { try { const d = await api.get(`/tickets?number=${encodeURIComponent(number)}`); const t = (d.tickets || [])[0]; if (t) setId(t.id); else setErr("Ticket not found by number"); } catch (e) { console.error(e); setErr("Ticket not found by number"); } })(); }, [number]);
+    useEffect(() => { (async () => { try { const data = await api.get(`/tickets?number=${encodeURIComponent(number)}`); const ticket = (data.tickets || [])[0]; if (ticket) setId(ticket.id); else setErr("Ticket not found by number"); } catch (error) { console.error(error); setErr("Ticket not found by number"); } })(); }, [number]);
     if (err) return <ErrorMsg text={err} />;
     if (!id) return <Loading />;
     return <TicketView id={id} goTo={goTo} />;
