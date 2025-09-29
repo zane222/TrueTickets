@@ -1,21 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Amplify } from 'aws-amplify';
-import { getCurrentUser, signIn, signOut, confirmSignIn, resetPassword } from 'aws-amplify/auth';
+import { getCurrentUser, signIn, signOut, resetPassword } from 'aws-amplify/auth';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { motion } from 'framer-motion';
 import { UserPlus, LogOut, Settings, Mail, Key } from 'lucide-react';
 
+// Create context for user groups
+const UserGroupsContext = createContext();
+
+export const useUserGroups = () => {
+  const context = useContext(UserGroupsContext);
+  if (!context) {
+    throw new Error('useUserGroups must be used within a UserGroupsProvider');
+  }
+  return context;
+};
+
 export function LoginForm({ onLoginSuccess }) {
-  const [activeTab, setActiveTab] = useState('otp'); // 'otp' or 'password'
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('error'); // 'error', 'success', 'info'
-  const [otpSent, setOtpSent] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
@@ -25,23 +32,17 @@ export function LoginForm({ onLoginSuccess }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
 
-  // Debug Amplify configuration on component mount
+  // Clear reset code when form is first shown
   useEffect(() => {
-    window.console.log('=== AMPLIFY CONFIG DEBUG ===');
-    window.console.log('Amplify object:', Amplify);
-    window.console.log('Auth functions available:', { getCurrentUser, signIn, signOut, confirmSignIn, fetchAuthSession, resetPassword });
-    window.console.log('signIn function exists:', typeof signIn);
-    window.console.log('confirmSignIn function exists:', typeof confirmSignIn);
-    window.console.log('getCurrentUser function exists:', typeof getCurrentUser);
-    window.console.log('=== AMPLIFY CONFIG DEBUG END ===');
-  }, []);
+    if (showResetCodeForm) {
+      setResetCode('');
+    }
+  }, [showResetCodeForm]);
 
   const resetForm = () => {
     setError('');
     setMessage('');
     setMessageType('error');
-    setOtpSent(false);
-    setOtp('');
     setPassword('');
     setShowResetCodeForm(false);
     setResetCode('');
@@ -55,141 +56,6 @@ export function LoginForm({ onLoginSuccess }) {
     setError(''); // Clear any existing error
   };
 
-  const handleSendOtp = async (e) => {
-    e.preventDefault();
-    setSendingOtp(true);
-    setError('');
-
-    try {
-      window.console.log('=== OTP DEBUG START ===');
-      window.console.log('Email:', email);
-      window.console.log('Amplify object:', Amplify);
-      window.console.log('signIn function available:', typeof signIn);
-      
-      // Check if signIn function is available
-      if (typeof signIn !== 'function') {
-        const errorMsg = 'signIn function is not available. This usually means your AWS environment variables are missing. Please check the console for setup instructions.';
-        window.console.error('🔧 SETUP REQUIRED:');
-        window.console.error('1. Run: node setup-env.js');
-        window.console.error('2. Edit .env with your AWS credentials');
-        window.console.error('3. Restart the development server');
-        throw new Error(errorMsg);
-      }
-      
-      // For OTP-only authentication, we'll call your backend to send a real OTP
-      window.console.log('Sending real OTP for email:', email);
-      
-      // Call your backend API to generate and send OTP
-      const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/send-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: email })
-      });
-
-      if (response.ok) {
-        setOtpSent(true);
-        setMessageWithType('OTP sent to your email. Please check your inbox.', 'success');
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send OTP');
-      }
-      window.console.log('=== OTP DEBUG END ===');
-    } catch (err) {
-      window.console.log('=== OTP ERROR DEBUG ===');
-      window.console.error('Send OTP error:', err);
-      window.console.log('Error type:', typeof err);
-      window.console.log('Error message:', err.message);
-      window.console.log('Error code:', err.code);
-      window.console.log('Error stack:', err.stack);
-      window.console.log('=== OTP ERROR DEBUG END ===');
-      
-      if (err.code === 'UserNotFoundException') {
-        setError('User not found. Please use password login to create an account first.');
-        setMessage('');
-      } else if (err.code === 'NotAuthorizedException') {
-        setError('Invalid credentials. Please try again.');
-        setMessage('');
-      } else {
-        setError('Failed to send OTP. Please try again.');
-        setMessage('');
-      }
-    } finally {
-      setSendingOtp(false);
-    }
-  };
-
-  const handleOtpLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      window.console.log('=== OTP LOGIN DEBUG START ===');
-      window.console.log('Email:', email);
-      window.console.log('OTP:', otp);
-      window.console.log('confirmSignIn function available:', typeof confirmSignIn);
-      
-      // Check if confirmSignIn function is available
-      if (typeof confirmSignIn !== 'function') {
-        const errorMsg = 'confirmSignIn function is not available. This usually means your AWS environment variables are missing. Please check the console for setup instructions.';
-        window.console.error('🔧 SETUP REQUIRED:');
-        window.console.error('1. Run: node setup-env.js');
-        window.console.error('2. Edit .env with your AWS credentials');
-        window.console.error('3. Restart the development server');
-        throw new Error(errorMsg);
-      }
-      
-      // For OTP-only authentication, we'll verify the OTP with the backend
-      window.console.log('Verifying OTP for email:', email, 'with OTP:', otp);
-      
-      // Call your backend API to verify the OTP
-      const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/verify-otp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email: email, otp: otp })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        window.console.log('OTP verification result:', result);
-        
-        // If OTP is valid, we can now sign in the user
-        // For now, we'll use a temporary approach - in production you might
-        // want to implement a different authentication flow
-        window.console.log('OTP verified successfully');
-        setMessageWithType('OTP verified! Please use password login to complete authentication.', 'success');
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Invalid OTP');
-      }
-      window.console.log('=== OTP LOGIN DEBUG END ===');
-    } catch (err) {
-      window.console.log('=== OTP LOGIN ERROR DEBUG ===');
-      window.console.error('Login error:', err);
-      window.console.log('Error type:', typeof err);
-      window.console.log('Error message:', err.message);
-      window.console.log('Error code:', err.code);
-      window.console.log('Error stack:', err.stack);
-      window.console.log('=== OTP LOGIN ERROR DEBUG END ===');
-      
-      if (err.code === 'CodeMismatchException') {
-        setError('Invalid OTP code. Please try again.');
-        setMessage('');
-      } else if (err.code === 'ExpiredCodeException') {
-        setError('OTP has expired. Please request a new one.');
-        setMessage('');
-      } else {
-        setError('Failed to verify OTP. Please try again.');
-        setMessage('');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handlePasswordLogin = async (e) => {
     e.preventDefault();
@@ -198,7 +64,6 @@ export function LoginForm({ onLoginSuccess }) {
 
     try {
       const user = await signIn({ username: email, password: password });
-      console.log('Login successful:', user);
       onLoginSuccess(user);
     } catch (err) {
       console.error('Login error:', err);
@@ -215,56 +80,11 @@ export function LoginForm({ onLoginSuccess }) {
     setError('');
 
     try {
-      window.console.log('=== FORGOT PASSWORD DEBUG START ===');
-      window.console.log('Email:', forgotPasswordEmail);
-      window.console.log('resetPassword function available:', typeof resetPassword);
-      window.console.log('User Pool ID:', import.meta.env.VITE_USER_POOL_ID);
-      window.console.log('App Client ID:', import.meta.env.VITE_USER_POOL_WEB_CLIENT_ID);
-      window.console.log('Region:', import.meta.env.VITE_AWS_REGION);
-      
-      // Check if resetPassword function is available
-      if (typeof resetPassword !== 'function') {
-        const errorMsg = 'resetPassword function is not available. This usually means your AWS environment variables are missing. Please check the console for setup instructions.';
-        window.console.error('🔧 SETUP REQUIRED:');
-        window.console.error('1. Run: node setup-env.js');
-        window.console.error('2. Edit .env with your AWS credentials');
-        window.console.error('3. Restart the development server');
-        throw new Error(errorMsg);
-      }
-      
-      // In Amplify v6, resetPassword requires a different approach
-      // We need to use the correct method signature
-      window.console.log('Attempting password reset for:', forgotPasswordEmail);
-      
-      // Use the correct Amplify v6 resetPassword method
-      // The method signature is: resetPassword({ username: string })
-      window.console.log('Attempting resetPassword with username:', forgotPasswordEmail);
-      
-      // Try to get user info first to debug
-      try {
-        const { getCurrentUser } = await import('aws-amplify/auth');
-        window.console.log('Attempting to get current user info...');
-        // This will help us see if the user exists and what their attributes are
-      } catch (userError) {
-        window.console.log('User not signed in (expected for password reset)');
-      }
-      
       const result = await resetPassword({ username: forgotPasswordEmail });
-      window.console.log('Reset password result:', result);
-      
       setMessageWithType('Password reset code sent to your email. Please check your inbox.', 'success');
       setShowResetCodeForm(true);
-      
-      window.console.log('=== FORGOT PASSWORD DEBUG END ===');
     } catch (err) {
-      window.console.log('=== FORGOT PASSWORD ERROR DEBUG ===');
-      window.console.error('Forgot password error:', err);
-      window.console.log('Error type:', typeof err);
-      window.console.log('Error message:', err.message);
-      window.console.log('Error code:', err.code);
-      window.console.log('Error stack:', err.stack);
-      window.console.log('=== FORGOT PASSWORD ERROR DEBUG END ===');
-      
+      console.error('Forgot password error:', err);
       setError(err.message || 'Failed to send reset code');
       setMessage('');
     } finally {
@@ -278,12 +98,6 @@ export function LoginForm({ onLoginSuccess }) {
     setError('');
 
     try {
-      window.console.log('=== RESET PASSWORD DEBUG START ===');
-      window.console.log('Email:', forgotPasswordEmail);
-      window.console.log('Reset Code:', resetCode);
-      window.console.log('New Password:', newPassword);
-      window.console.log('Confirm Password:', confirmPassword);
-      
       // Check if passwords match
       if (newPassword !== confirmPassword) {
         throw new Error('Passwords do not match');
@@ -297,12 +111,6 @@ export function LoginForm({ onLoginSuccess }) {
       // Import the confirmResetPassword function
       const { confirmResetPassword } = await import('aws-amplify/auth');
       
-      window.console.log('confirmResetPassword function available:', typeof confirmResetPassword);
-      
-      if (typeof confirmResetPassword !== 'function') {
-        throw new Error('confirmResetPassword function is not available');
-      }
-      
       // Confirm the password reset
       const result = await confirmResetPassword({
         username: forgotPasswordEmail,
@@ -310,21 +118,11 @@ export function LoginForm({ onLoginSuccess }) {
         newPassword: newPassword
       });
       
-      window.console.log('Password reset result:', result);
-      
       setMessageWithType('Password reset successful! You can now sign in with your new password.', 'success');
       setShowResetCodeForm(false);
       setShowForgotPassword(false);
-      
-      window.console.log('=== RESET PASSWORD DEBUG END ===');
     } catch (err) {
-      window.console.log('=== RESET PASSWORD ERROR DEBUG ===');
-      window.console.error('Reset password error:', err);
-      window.console.log('Error type:', typeof err);
-      window.console.log('Error message:', err.message);
-      window.console.log('Error code:', err.code);
-      window.console.log('Error stack:', err.stack);
-      window.console.log('=== RESET PASSWORD ERROR DEBUG END ===');
+      console.error('Reset password error:', err);
       
       if (err.code === 'CodeMismatchException') {
         setError('Invalid reset code. Please check your email and try again.');
@@ -352,305 +150,13 @@ export function LoginForm({ onLoginSuccess }) {
             Sign in to True Tickets
           </h2>
           <p className="mt-2 text-center text-sm" style={{color:'var(--md-sys-color-outline)'}}>
-            Choose your preferred login method
+            Enter your credentials to sign in
           </p>
         </div>
 
         {!showForgotPassword ? (
           <div className="md-card p-8">
-            {/* Tab Navigation */}
-            <div className="flex mb-6 bg-gray-800 rounded-lg p-1">
-              <button
-                onClick={() => {
-                  setActiveTab('otp');
-                  resetForm();
-                }}
-                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'otp'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                OTP Login
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('password');
-                  resetForm();
-                }}
-                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'password'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Password Login
-              </button>
-            </div>
-
-            {/* OTP Tab Content */}
-            {activeTab === 'otp' && (
-              <>
-                {!otpSent ? (
-                  <form className="space-y-6" onSubmit={handleSendOtp}>
-                    <div>
-                      <label htmlFor="email" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
-                        Email Address
-                      </label>
-                      <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        required
-                        className="md-input"
-                        placeholder="Enter your email address"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                      />
-                    </div>
-
-                    {error && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="rounded-md p-4"
-                        style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
-                      >
-                        <div className="text-sm">{error}</div>
-                      </motion.div>
-                    )}
-
-                    {message && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="rounded-md p-4"
-                        style={{
-                          backgroundColor: messageType === 'success' 
-                            ? 'var(--md-sys-color-primary-container)' 
-                            : messageType === 'info'
-                            ? 'var(--md-sys-color-secondary-container)'
-                            : 'var(--md-sys-color-error)',
-                          color: messageType === 'success' 
-                            ? 'var(--md-sys-color-on-primary-container)' 
-                            : messageType === 'info'
-                            ? 'var(--md-sys-color-on-secondary-container)'
-                            : 'var(--md-sys-color-on-error)'
-                        }}
-                      >
-                        <div className="text-sm">{message}</div>
-                      </motion.div>
-                    )}
-
-                    <div>
-                      <motion.button
-                        type="submit"
-                        disabled={sendingOtp}
-                        className="md-btn-primary w-full flex justify-center"
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        {sendingOtp ? (
-                          <div className="flex items-center">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Sending OTP...
-                          </div>
-                        ) : (
-                          'Send OTP'
-                        )}
-                      </motion.button>
-                    </div>
-                  </form>
-                ) : (
-                  <form className="space-y-6" onSubmit={handleOtpLogin}>
-                    <div>
-                      <label htmlFor="otp" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
-                        Enter OTP
-                      </label>
-                      <input
-                        id="otp"
-                        name="otp"
-                        type="text"
-                        required
-                        className="md-input"
-                        placeholder="Enter 6-digit OTP"
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value)}
-                        maxLength="6"
-                      />
-                      <p className="text-xs mt-1" style={{color:'var(--md-sys-color-outline)'}}>
-                        OTP sent to {email}
-                      </p>
-                    </div>
-
-                    {error && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="rounded-md p-4"
-                        style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
-                      >
-                        <div className="text-sm">{error}</div>
-                      </motion.div>
-                    )}
-
-                    {message && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="rounded-md p-4"
-                        style={{
-                          backgroundColor: messageType === 'success' 
-                            ? 'var(--md-sys-color-primary-container)' 
-                            : messageType === 'info'
-                            ? 'var(--md-sys-color-secondary-container)'
-                            : 'var(--md-sys-color-error)',
-                          color: messageType === 'success' 
-                            ? 'var(--md-sys-color-on-primary-container)' 
-                            : messageType === 'info'
-                            ? 'var(--md-sys-color-on-secondary-container)'
-                            : 'var(--md-sys-color-on-error)'
-                        }}
-                      >
-                        <div className="text-sm">{message}</div>
-                      </motion.div>
-                    )}
-
-                    <div className="flex space-x-3">
-                      <motion.button
-                        type="button"
-                        onClick={() => {
-                          setOtpSent(false);
-                          setOtp('');
-                          setError('');
-                        }}
-                        className="md-btn-surface flex-1"
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        Back
-                      </motion.button>
-                      <motion.button
-                        type="submit"
-                        disabled={loading}
-                        className="md-btn-primary flex-1"
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        {loading ? (
-                          <div className="flex items-center">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Verifying...
-                          </div>
-                        ) : (
-                          'Verify OTP'
-                        )}
-                      </motion.button>
-                    </div>
-                  </form>
-                )}
-              </>
-            )}
-
-            {/* Password Tab Content */}
-            {activeTab === 'password' && (
-              <form className="space-y-6" onSubmit={handlePasswordLogin}>
-                <div>
-                  <label htmlFor="email-password" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
-                    Email Address
-                  </label>
-                  <input
-                    id="email-password"
-                    name="email"
-                    type="email"
-                    required
-                    className="md-input"
-                    placeholder="Enter your email address"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
-                    Password
-                  </label>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    required
-                    className="md-input"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
-
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-md p-4"
-                    style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
-                  >
-                    <div className="text-sm">{error}</div>
-                  </motion.div>
-                )}
-
-                {message && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-md p-4"
-                    style={{
-                      backgroundColor: messageType === 'success' 
-                        ? 'var(--md-sys-color-primary-container)' 
-                        : messageType === 'info'
-                        ? 'var(--md-sys-color-secondary-container)'
-                        : 'var(--md-sys-color-error)',
-                      color: messageType === 'success' 
-                        ? 'var(--md-sys-color-on-primary-container)' 
-                        : messageType === 'info'
-                        ? 'var(--md-sys-color-on-secondary-container)'
-                        : 'var(--md-sys-color-on-error)'
-                    }}
-                  >
-                    <div className="text-sm">{message}</div>
-                  </motion.div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setShowForgotPassword(true)}
-                    className="text-sm flex items-center gap-1"
-                    style={{color:'var(--md-sys-color-primary)'}}
-                  >
-                    <Mail className="w-4 h-4" />
-                    Forgot password?
-                  </button>
-                </div>
-
-                <div>
-                  <motion.button
-                    type="submit"
-                    disabled={loading}
-                    className="md-btn-primary w-full flex justify-center"
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    {loading ? (
-                      <div className="flex items-center">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Signing in...
-                      </div>
-                    ) : (
-                      'Sign in'
-                    )}
-                  </motion.button>
-                </div>
-              </form>
-            )}
-          </div>
-        ) : (
-          <div className="md-card p-8">
-            <form className="space-y-6" onSubmit={handleForgotPassword}>
+            <form className="space-y-6" onSubmit={handlePasswordLogin}>
               <div>
                 <label htmlFor="email" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
                   Email Address
@@ -658,6 +164,104 @@ export function LoginForm({ onLoginSuccess }) {
                 <input
                   id="email"
                   name="email"
+                  type="email"
+                  required
+                  className="md-input"
+                  placeholder="Enter your email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                  Password
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  className="md-input"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-md p-4"
+                  style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
+                >
+                  <div className="text-sm">{error}</div>
+                </motion.div>
+              )}
+
+              {message && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-md p-4"
+                  style={{
+                    backgroundColor: messageType === 'success' 
+                      ? 'var(--md-sys-color-primary-container)' 
+                      : messageType === 'info'
+                      ? 'var(--md-sys-color-secondary-container)'
+                      : 'var(--md-sys-color-error)',
+                    color: messageType === 'success' 
+                      ? 'var(--md-sys-color-on-primary-container)' 
+                      : messageType === 'info'
+                      ? 'var(--md-sys-color-on-secondary-container)'
+                      : 'var(--md-sys-color-on-error)'
+                  }}
+                >
+                  <div className="text-sm">{message}</div>
+                </motion.div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-sm flex items-center gap-1"
+                  style={{color:'var(--md-sys-color-primary)'}}
+                >
+                  <Mail className="w-4 h-4" />
+                  Forgot password?
+                </button>
+              </div>
+
+              <div>
+                <motion.button
+                  type="submit"
+                  disabled={loading}
+                  className="md-btn-primary w-full flex justify-center"
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {loading ? (
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Signing in...
+                    </div>
+                  ) : (
+                    'Sign in'
+                  )}
+                </motion.button>
+              </div>
+            </form>
+          </div>
+        ) : !showResetCodeForm ? (
+          <div className="md-card p-8">
+            <form className="space-y-6" onSubmit={handleForgotPassword}>
+              <div>
+                <label htmlFor="forgotPasswordEmail" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                  Email Address
+                </label>
+                <input
+                  id="forgotPasswordEmail"
+                  name="forgotPasswordEmail"
                   type="email"
                   required
                   className="md-input"
@@ -727,11 +331,11 @@ export function LoginForm({ onLoginSuccess }) {
               </div>
             </form>
           </div>
-        )}
+        ) : null}
 
         {/* Reset Code Form */}
         {showResetCodeForm && (
-          <div className="md-card p-8">
+          <div key="reset-code-form" className="md-card p-8">
             <div className="text-center mb-6">
               <h3 className="text-lg font-semibold" style={{color:'var(--md-sys-color-primary)'}}>
                 Enter Reset Code
@@ -756,6 +360,10 @@ export function LoginForm({ onLoginSuccess }) {
                   value={resetCode}
                   onChange={(e) => setResetCode(e.target.value)}
                   maxLength={6}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
                 />
               </div>
 
@@ -877,6 +485,7 @@ export function AuthWrapper({ children }) {
       // Get user groups for permission checking
       const groups = currentUser.signInDetails?.loginId ? 
         (await fetchAuthSession()).tokens.idToken?.payload?.['cognito:groups'] || [] : [];
+      console.log('AuthWrapper - User groups from token:', groups);
       setUserGroups(groups);
     } catch (error) {
       console.log('No authenticated user:', error);
@@ -918,12 +527,13 @@ export function AuthWrapper({ children }) {
   }
 
   return (
-    <div className="min-h-screen material-surface">
-      {/* Main content */}
-      <div className="flex-1">
-        {children}
+    <UserGroupsContext.Provider value={{ userGroups, setUserGroups }}>
+      <div className="min-h-screen material-surface">
+        {/* Main content */}
+        <div className="flex-1">
+          {children}
+        </div>
       </div>
-
-    </div>
+    </UserGroupsContext.Provider>
   );
 }

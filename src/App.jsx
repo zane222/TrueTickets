@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, Settings, Plus, Loader2, Printer, UserPlus, ExternalLink, Edit, User, LogOut } from "lucide-react";
 import html2pdf from 'html2pdf.js';
 import { Amplify } from 'aws-amplify';
-import { AuthWrapper } from './components/Auth';
+import { AuthWrapper, useUserGroups } from './components/Auth';
 import LambdaClient from './api/lambdaClient';
 import awsconfig from './aws-exports';
 
@@ -379,37 +379,38 @@ function TicketCard({
 function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings, showUserMenu, setShowUserMenu, userGroups, canInviteUsers, canManageUsers, onInviteUser, onManageUsers, onLogout }) {
     return (
         <div className="sticky top-0 z-30 w-full material-app-bar backdrop-blur-md">
-            <div className="mx-auto max-w-7xl px-6 py-4 flex items-center gap-4">{/* larger again */}
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 flex items-center gap-2 sm:gap-4">{/* larger again */}
                 <button
                     onClick={onHome}
-                    className="text-xl font-bold tracking-wide flex-1 text-left cursor-pointer"
+                    className="text-lg sm:text-xl font-bold tracking-wide flex-1 text-left cursor-pointer truncate"
                 >
-                    True Tickets - Computer and Cellphone Inc
+                    <span className="hidden sm:inline">True Tickets - Computer and Cellphone Inc</span>
+                    <span className="sm:hidden">True Tickets</span>
                 </button>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                     <button
                         onClick={onSearchClick}
                         title="Search"
-                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-11 h-11 rounded-full"
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-full"
                     >
-                        <Search className="w-5.5 h-5.5" />
+                        <Search className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
                     </button>
                     <button
                         onClick={onNewCustomer}
                         title="New Customer"
-                        className="md-btn-primary elev-2 inline-flex items-center justify-center w-11 h-11 rounded-full"
+                        className="md-btn-primary elev-2 inline-flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-full"
                     >
-                        <UserPlus className="w-5.5 h-5.5" />
+                        <UserPlus className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
                     </button>
                     
                     {/* User menu dropdown */}
                     <div className="relative">
                         <motion.button
                             onClick={() => setShowUserMenu(!showUserMenu)}
-                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-11 h-11 rounded-full"
+                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-full"
                             whileTap={{ scale: 0.95 }}
                         >
-                            <Settings className="w-5.5 h-5.5" />
+                            <Settings className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
                         </motion.button>
 
                         {showUserMenu && (
@@ -419,33 +420,45 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings, showUserMenu
                                 className="absolute right-0 mt-2 w-48 md-card py-1 z-50"
                             >
                                 {canInviteUsers && (
-                                    <button
+                                    <motion.button
                                         onClick={onInviteUser}
-                                        className="flex items-center w-full px-4 py-2 text-sm hover:bg-opacity-10 hover:bg-white"
+                                        className="flex items-center w-full px-4 py-2 text-sm rounded-md transition-colors duration-10"
                                         style={{color:'var(--md-sys-color-on-surface)'}}
+                                        whileHover={{ 
+                                            backgroundColor: 'rgba(255, 255, 255, 0.08)'
+                                        }}
+                                        whileTap={{ scale: 0.98 }}
                                     >
                                         <UserPlus className="w-4 h-4 mr-3" />
                                         Invite User
-                                    </button>
+                                    </motion.button>
                                 )}
                                 {canManageUsers && (
-                                    <button
+                                    <motion.button
                                         onClick={onManageUsers}
-                                        className="flex items-center w-full px-4 py-2 text-sm hover:bg-opacity-10 hover:bg-white"
+                                        className="flex items-center w-full px-4 py-2 text-sm rounded-md transition-colors duration-100"
                                         style={{color:'var(--md-sys-color-on-surface)'}}
+                                        whileHover={{ 
+                                            backgroundColor: 'rgba(255, 255, 255, 0.08)'
+                                        }}
+                                        whileTap={{ scale: 0.98 }}
                                     >
                                         <User className="w-4 h-4 mr-3" />
                                         Manage Users
-                                    </button>
+                                    </motion.button>
                                 )}
-                                <button
+                                <motion.button
                                     onClick={onLogout}
-                                    className="flex items-center w-full px-4 py-2 text-sm hover:bg-opacity-10 hover:bg-white"
+                                    className="flex items-center w-full px-4 py-2 text-sm rounded-md transition-colors duration-200"
                                     style={{color:'var(--md-sys-color-on-surface)'}}
+                                    whileHover={{ 
+                                        backgroundColor: 'rgba(255, 255, 255, 0.08)'
+                                    }}
+                                    whileTap={{ scale: 0.98 }}
                                 >
                                     <LogOut className="w-4 h-4 mr-3" />
                                     Sign Out
-                                </button>
+                                </motion.button>
                             </motion.div>
                         )}
                     </div>
@@ -483,7 +496,7 @@ function SettingsModal({ open, onClose }) {
                         </p>
                     </div>
                 </div>
-                <div className="flex justify-end gap-3 pt-4">
+                <div className="flex justify-end gap-2 sm:gap-3 pt-4">
                     <button
                         onClick={onClose}
                         className="md-btn-surface elev-1"
@@ -669,10 +682,19 @@ function TicketListView({ goTo }) {
     async function fetchTickets(reset = false) {
         setLoading(true);
         try {
-            let data = await api.get(`/tickets?page=${reset ? 1 : page}`);
+            const currentPage = reset ? 1 : page + 1;
+            let data = await api.get(`/tickets?page=${currentPage}`);
             const tickets = data.tickets || data || [];
-            setItems(reset ? tickets : [...items, ...tickets]);
-            setPage(currentPage => reset ? 1 : currentPage);
+            if (reset) {
+                setItems(tickets);
+                setPage(1);
+            } else {
+                // Filter out any duplicates by ticket ID
+                const existingIds = new Set(items.map(item => item.id));
+                const newTickets = tickets.filter(ticket => !existingIds.has(ticket.id));
+                setItems(prev => [...prev, ...newTickets]);
+                setPage(currentPage);
+            }
         } catch (error) { console.error(error); } finally { setLoading(false); }
     }
 
@@ -687,7 +709,7 @@ function TicketListView({ goTo }) {
     });
 
     return (
-        <div className="mx-auto max-w-7xl px-6 py-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 sm:py-6">
             <div className="flex items-center gap-3 mb-4">
                 <div className="text-sm" style={{color:'var(--md-sys-color-on-surface)'}}>Status filter:</div>
                 <div className="flex flex-wrap gap-2">
@@ -849,7 +871,12 @@ function CustomerView({ id, goTo }) {
         try {
             const data = await api.get(`/tickets?customer_id=${encodeURIComponent(id)}&page=${tPage}`);
             const tickets = data.tickets || data || [];
-            setTickets(previous => [...previous, ...tickets]);
+            // Filter out duplicates by ticket ID
+            setTickets(previous => {
+                const existingIds = new Set(previous.map(ticket => ticket.id));
+                const newTickets = tickets.filter(ticket => !existingIds.has(ticket.id));
+                return [...previous, ...newTickets];
+            });
             setTPage(currentPage => currentPage + 1);
             if (!tickets || tickets.length === 0) setTHasMore(false);
         } catch (error) { console.error(error); setTHasMore(false); } finally { setTLoading(false); }
@@ -861,10 +888,10 @@ function CustomerView({ id, goTo }) {
     if (loading) return <Loading />;
     if (!customer) return <ErrorMsg text="Customer not found" />;
     return (
-        <div className="mx-auto max-w-6xl px-6 py-6 grid md:grid-cols-3 gap-8">
-            <div className="md:col-span-2 space-y-6">
-                <div className="md-card p-8">
-                    <div className="text-2xl font-bold mb-2">{customer.business_and_full_name || customer.fullname}</div>
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 sm:py-6 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-8">
+            <div className="md:col-span-2 space-y-4 sm:space-y-6">
+                <div className="md-card p-4 sm:p-8">
+                    <div className="text-xl sm:text-2xl font-bold mb-2">{customer.business_and_full_name || customer.fullname}</div>
                     <div className="mb-1" style={{color:'var(--md-sys-color-outline)'}}>{customer.email}</div>
                     <div className="space-y-1">
                         {allPhones.length > 0 ? (
@@ -881,17 +908,17 @@ function CustomerView({ id, goTo }) {
                         )}
                     </div>
                 </div>
-                <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                     <button
                         onClick={() => goTo(`/$${id}?newticket`)}
-                        className="md-btn-primary elev-1 inline-flex items-center gap-2"
+                        className="md-btn-primary elev-1 inline-flex items-center justify-center gap-2"
                     >
                         <Plus className="w-5 h-5" />
                         New Ticket
                     </button>
                     <button
                         onClick={() => goTo(`/$${id}?edit`)}
-                        className="md-btn-surface elev-1 inline-flex items-center gap-2"
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2"
                     >
                         <ExternalLink className="w-5 h-5" />
                         Edit
@@ -900,8 +927,8 @@ function CustomerView({ id, goTo }) {
 
                 {/* Tickets List */}
                 <div className="md-card">
-                    <div className="px-6 py-4 font-semibold">Tickets</div>
-                    <div className="grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3">
+                    <div className="px-4 sm:px-6 py-4 font-semibold">Tickets</div>
+                    <div className="hidden sm:grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3">
                         <div className="col-span-2 font-semibold">Number</div>
                         <div className="col-span-4 font-semibold">Subject</div>
                         <div className="col-span-2 font-semibold">Status</div>
@@ -909,17 +936,32 @@ function CustomerView({ id, goTo }) {
                         <div className="col-span-2 font-semibold">Created</div>
                     </div>
                     <div className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
-                        {(tickets || []).map(ticket => (
+                        {(tickets || []).map((ticket, index) => (
                             <button
-                                key={ticket.id}
+                                key={`${ticket.id}-${index}`}
                                 onClick={() => goTo(`/&${ticket.id}`)}
-                                className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
+                                className="md-row-box w-full text-left px-4 py-3 transition-all duration-150 group"
                             >
-                                <div className="col-span-2 truncate">#{ticket.number ?? ticket.id}</div>
-                                <div className="col-span-4 truncate">{ticket.subject}</div>
-                                <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
-                                <div className="col-span-2 truncate">{getTicketDeviceInfo(ticket).device}</div>
-                                <div className="col-span-2 truncate">{fmtDate(ticket.created_at)}</div>
+                                {/* Desktop grid layout */}
+                                <div className="hidden sm:grid grid-cols-12">
+                                    <div className="col-span-2 truncate">#{ticket.number ?? ticket.id}</div>
+                                    <div className="col-span-4 truncate">{ticket.subject}</div>
+                                    <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
+                                    <div className="col-span-2 truncate">{getTicketDeviceInfo(ticket).device}</div>
+                                    <div className="col-span-2 truncate">{fmtDate(ticket.created_at)}</div>
+                                </div>
+                                {/* Mobile card layout */}
+                                <div className="sm:hidden space-y-2">
+                                    <div className="flex justify-between items-start">
+                                        <div className="font-semibold">#{ticket.number ?? ticket.id}</div>
+                                        <div className="text-sm" style={{color:'var(--md-sys-color-outline)'}}>{fmtDate(ticket.created_at)}</div>
+                                    </div>
+                                    <div className="font-medium">{ticket.subject}</div>
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span>{convertStatus(ticket.status)}</span>
+                                        <span style={{color:'var(--md-sys-color-outline)'}}>{getTicketDeviceInfo(ticket).device}</span>
+                                    </div>
+                                </div>
                             </button>
                         ))}
                         {tLoading && (
@@ -1172,8 +1214,8 @@ function NewCustomer({ goTo, customerId }) {
         } catch (error) { console.error(error); } finally { setSaving(false); }
     }
     return (
-        <div className="mx-auto max-w-2xl px-6 py-6">
-            <div className="md-card p-8 space-y-6">
+        <div className="mx-auto max-w-2xl px-4 sm:px-6 py-4 sm:py-6">
+            <div className="md-card p-4 sm:p-8 space-y-4 sm:space-y-6">
                 <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                     {customerId ? "Edit Customer" : "New Customer"}
                 </div>
@@ -1249,7 +1291,7 @@ function NewCustomer({ goTo, customerId }) {
                         autoComplete={'email'}
                     />
                 </div>
-                <div className="flex justify-end gap-3 pt-4">
+                <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4">
                     <button
                         onClick={() => goTo(customerId ? `/$${customerId}` : '/')}
                         className="md-btn-surface elev-1"
@@ -1390,9 +1432,9 @@ function TicketView({ id, goTo }) {
     };
 
     return (
-        <div className="mx-auto max-w-6xl px-6 py-6">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 sm:py-6">
             {/* Top Action Buttons */}
-            <div className="flex justify-end gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4 mb-4 sm:mb-6">
                 <button
                     onClick={() => goTo(`/$${ticket.customer?.id || ticket.customer_id}`)}
                     className="md-btn-surface elev-1 inline-flex items-center gap-2"
@@ -1416,11 +1458,11 @@ function TicketView({ id, goTo }) {
                 </button>
             </div>
 
-            <div className="grid grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
                 {/* LEFT SIDE: Ticket + statuses */}
-                <div className="col-span-12 lg:col-span-4 space-y-20">
+                <div className="lg:col-span-4 space-y-8 lg:space-y-20">
                     {/* Ticket Card - Scaled up */}
-                    <div className="transform scale-148 origin-top-left bg-white rounded-md shadow-lg">
+                    <div className="transform scale-100 sm:scale-148 origin-top-left bg-white rounded-md shadow-lg">
                         <div ref={ticketCardRef}>
                             <TicketCard
                                 password={getTicketPassword(ticket)}
@@ -1435,7 +1477,7 @@ function TicketView({ id, goTo }) {
                     </div>
 
                     {/* Status buttons */}
-                    <div className="md-card p-4 space-y-3" style={{ width: "240px" }}>
+                    <div className="md-card p-4 space-y-3 w-full sm:w-60">
                         <p className="text-md font-semibold">Status:</p>
                         <div className="flex flex-col gap-2">
                             {STATUSES.map((status, index) => {
@@ -1509,8 +1551,8 @@ function TicketView({ id, goTo }) {
                 </div>
 
                 {/* RIGHT SIDE: Comments */}
-                <aside className="col-span-12 lg:col-start-7 lg:col-span-6">
-                    <div className="md-card p-6">
+                <aside className="lg:col-start-7 lg:col-span-6">
+                    <div className="md-card p-4 sm:p-6">
                         <div className="text-lg font-semibold mb-4">Comments</div>
                         <CommentsBox ticketId={ticket.id} comments={ticket.comments} goTo={goTo} />
                     </div>
@@ -1757,13 +1799,13 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     if (loading) return <Loading />;
 
     return (
-        <div className="mx-auto max-w-4xl px-6 py-6">
-            <div className="md-card p-8 space-y-6">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 py-4 sm:py-6">
+            <div className="md-card p-4 sm:p-8 space-y-4 sm:space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                         {ticketId ? "Edit Ticket" : "New Ticket"}
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                         <button
                             onClick={() => goTo(ticketId ? `/&${ticketId}` : '/')}
                             className="md-btn-surface elev-1"
@@ -1824,9 +1866,9 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                     />
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     {/* Basic Information */}
-                    <div className="space-y-6">
+                    <div className="space-y-4 md:space-y-6">
 
                         {/* Password */}
                         <div className="space-y-2">
@@ -1858,7 +1900,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                     </div>
 
                     {/* Device Information */}
-                    <div className="space-y-6">
+                    <div className="space-y-4 md:space-y-6">
                         {/* Device Type - single select radio-style pills */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Device Type</label>
@@ -1913,6 +1955,7 @@ function ErrorMsg({ text }) { return <div className="mx-auto max-w-3xl px-3 py-1
  * App
  *************************/
 export default function App() {
+    const { userGroups = [] } = useUserGroups();
     const { path, navigate } = useRoute();
     const [showSettings, setShowSettings] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
@@ -1920,7 +1963,6 @@ export default function App() {
     const [showInviteUser, setShowInviteUser] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteLoading, setInviteLoading] = useState(false);
-    const [userGroups, setUserGroups] = useState([]);
     const [showUserManagement, setShowUserManagement] = useState(false);
     const [users, setUsers] = useState([]);
     const [usersLoading, setUsersLoading] = useState(false);
@@ -1940,24 +1982,15 @@ export default function App() {
         setInviteLoading(true);
         
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/invite-user`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(await fetchAuthSession()).tokens.accessToken.toString()}`
-                },
-                body: JSON.stringify({ email: inviteEmail })
-            });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                alert(`Invitation sent successfully to ${inviteEmail}. The user will receive an email with login instructions.`);
-                setInviteEmail('');
-                setShowInviteUser(false);
-            } else {
-                throw new Error(result.error || 'Failed to send invitation');
-            }
+            console.log('Inviting user with LambdaClient:', inviteEmail);
+            
+            const api = new LambdaClient(import.meta.env.VITE_API_GATEWAY_URL);
+            const result = await api.post('/invite-user', { email: inviteEmail });
+            
+            console.log('Invite user result:', result);
+            alert(`Invitation sent successfully to ${inviteEmail}. The user will receive an email with login instructions.`);
+            setInviteEmail('');
+            setShowInviteUser(false);
             
         } catch (error) {
             console.error('Invite user error:', error);
@@ -1982,20 +2015,13 @@ export default function App() {
     const loadUsers = async () => {
         setUsersLoading(true);
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/users`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(await fetchAuthSession()).tokens.accessToken.toString()}`
-                }
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                setUsers(result.users || []);
-            } else {
-                throw new Error('Failed to load users');
-            }
+            console.log('Loading users with LambdaClient');
+            
+            const api = new LambdaClient(import.meta.env.VITE_API_GATEWAY_URL);
+            const result = await api.get('/users');
+            
+            console.log('Users loaded:', result);
+            setUsers(result.users || []);
         } catch (error) {
             console.error('Error loading users:', error);
             alert('Failed to load users. Please try again.');
@@ -2006,24 +2032,16 @@ export default function App() {
 
     const updateUserGroup = async (username, newGroup) => {
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/update-user-group`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(await fetchAuthSession()).tokens.accessToken.toString()}`
-                },
-                body: JSON.stringify({ username, group: newGroup })
-            });
-
-            if (response.ok) {
-                alert('User group updated successfully');
-                loadUsers(); // Refresh the user list
-                setShowUserEdit(false);
-                setSelectedUser(null);
-            } else {
-                const result = await response.json();
-                throw new Error(result.error || 'Failed to update user group');
-            }
+            console.log('Updating user group with LambdaClient:', username, newGroup);
+            
+            const api = new LambdaClient(import.meta.env.VITE_API_GATEWAY_URL);
+            const result = await api.post('/update-user-group', { username, group: newGroup });
+            
+            console.log('User group updated:', result);
+            alert('User group updated successfully');
+            loadUsers(); // Refresh the user list
+            setShowUserEdit(false);
+            setSelectedUser(null);
         } catch (error) {
             console.error('Error updating user group:', error);
             alert('Failed to update user group. Please try again.');
@@ -2036,27 +2054,24 @@ export default function App() {
         }
 
         try {
-            const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_URL}/remove-user`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(await fetchAuthSession()).tokens.accessToken.toString()}`
-                },
-                body: JSON.stringify({ username })
-            });
-
-            if (response.ok) {
-                alert('User removed successfully');
-                loadUsers(); // Refresh the user list
-            } else {
-                const result = await response.json();
-                throw new Error(result.error || 'Failed to remove user');
-            }
+            console.log('Removing user with LambdaClient:', username);
+            
+            const api = new LambdaClient(import.meta.env.VITE_API_GATEWAY_URL);
+            const result = await api.post('/remove-user', { username });
+            
+            console.log('User removed:', result);
+            alert('User removed successfully');
+            loadUsers(); // Refresh the user list
         } catch (error) {
             console.error('Error removing user:', error);
             alert('Failed to remove user. Please try again.');
         }
     };
+
+    // Debug user groups
+    console.log('User groups received:', userGroups);
+    console.log('User groups type:', typeof userGroups);
+    console.log('User groups length:', userGroups?.length);
 
     // User permission checks
     const canInviteUsers = userGroups.includes('TrueTickets-Cacell-ApplicationAdmin') || 
@@ -2065,6 +2080,9 @@ export default function App() {
 
     const canManageUsers = userGroups.includes('TrueTickets-Cacell-ApplicationAdmin') || 
                           userGroups.includes('TrueTickets-Cacell-Owner');
+
+    console.log('Can invite users:', canInviteUsers);
+    console.log('Can manage users:', canManageUsers);
 
     // User management handlers
     const handleInviteUserClick = () => setShowInviteUser(true);
@@ -2075,7 +2093,8 @@ export default function App() {
     const handleLogout = async () => {
         try {
             await signOut();
-            // The AuthWrapper will handle the logout state
+            // Force a page reload to ensure clean logout state
+            window.location.reload();
         } catch (error) {
             console.error('Logout error:', error);
         }
@@ -2093,23 +2112,22 @@ export default function App() {
     }, [path]);
 
     return (
-        <AuthWrapper>
-            <ApiProvider>
-                <div className="min-h-screen material-surface">
-                    <TopBar
-                        onHome={() => navigate("/")}
-                        onSearchClick={() => setShowSearch(true)}
-                        onNewCustomer={() => navigate("/newcustomer")}
-                        onSettings={() => setShowSettings(true)}
-                        showUserMenu={showUserMenu}
-                        setShowUserMenu={setShowUserMenu}
-                        userGroups={userGroups}
-                        canInviteUsers={canInviteUsers}
-                        canManageUsers={canManageUsers}
-                        onInviteUser={handleInviteUserClick}
-                        onManageUsers={handleManageUsersClick}
-                        onLogout={handleLogout}
-                    />
+        <ApiProvider>
+            <div className="min-h-screen material-surface">
+                <TopBar
+                    onHome={() => navigate("/")}
+                    onSearchClick={() => setShowSearch(true)}
+                    onNewCustomer={() => navigate("/newcustomer")}
+                    onSettings={() => setShowSettings(true)}
+                    showUserMenu={showUserMenu}
+                    setShowUserMenu={setShowUserMenu}
+                    userGroups={userGroups}
+                    canInviteUsers={canInviteUsers}
+                    canManageUsers={canManageUsers}
+                    onInviteUser={handleInviteUserClick}
+                    onManageUsers={handleManageUsersClick}
+                    onLogout={handleLogout}
+                />
 
                     {route.view === "home" && <TicketListView goTo={navigate} />}
                     {route.view === "customer" && <CustomerView id={route.id} goTo={navigate} />}
@@ -2287,7 +2305,6 @@ export default function App() {
                     )}
                 </div>
             </ApiProvider>
-        </AuthWrapper>
     );
 }
 function TicketByNumber({ number, goTo }) {

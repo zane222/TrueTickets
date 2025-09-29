@@ -101,7 +101,6 @@ def handle_repairshopr_proxy(event, context):
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "deflate"
     }
     
     # Prepare request data
@@ -142,7 +141,7 @@ def handle_repairshopr_proxy(event, context):
         }
 
 
-def handle_user_invitation(event):
+def handle_user_invitation(event, context):
     body = json.loads(event.get("body", "{}"))
     email = body.get("email")
     
@@ -211,6 +210,8 @@ def get_user_groups_from_event(event):
         groups = claims.get("cognito:groups", [])
         if isinstance(groups, str):
             groups = groups.split(",")
+        elif isinstance(groups, set):
+            groups = list(groups)
         
         return groups
     except Exception as e:
@@ -273,11 +274,20 @@ def handle_list_users(event, context):
                 'created': user['UserCreateDate'].isoformat() if 'UserCreateDate' in user else None
             })
         
-        return {
-            "statusCode": 200,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"users": users})
-        }
+        try:
+            return {
+                "statusCode": 200,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"users": users})
+            }
+        except Exception as json_error:
+            print(f"JSON serialization error: {json_error}")
+            print(f"Users data: {users}")
+            return {
+                "statusCode": 500,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"error": f"JSON serialization failed: {str(json_error)}"})
+            }
         
     except Exception as e:
         return {

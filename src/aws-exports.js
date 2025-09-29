@@ -36,7 +36,7 @@ const awsconfig = {
         custom_header: async () => {
           const { fetchAuthSession } = await import('aws-amplify/auth');
           const session = await fetchAuthSession();
-          return { Authorization: `Bearer ${session.tokens.accessToken.toString()}` }
+          return { Authorization: `Bearer ${session.tokens.idToken.toString()}` }
         }
       }
     }

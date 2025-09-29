@@ -21,8 +21,19 @@ class LambdaClient {
 
   async request(path, options = {}) {
     const { method = 'GET', body } = options;
-    // Add /api prefix for RepairShopr API calls
-    const fullPath = path.startsWith('/api') ? path : `/api${path}`;
+    
+    // Define user management endpoints that should NOT get /api prefix
+    const userManagementEndpoints = [
+      '/invite-user',
+      '/users', 
+      '/update-user-group',
+      '/remove-user',
+      '/send-otp',
+      '/verify-otp'
+    ];
+    
+    // Add /api prefix only for RepairShopr API calls, not for user management
+    const fullPath = path.startsWith('/api') || userManagementEndpoints.includes(path) ? path : `/api${path}`;
     const url = `${this.baseUrl}${fullPath}`;
     
     try {
