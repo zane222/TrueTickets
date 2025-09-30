@@ -566,6 +566,7 @@ function SearchModal({ open, onClose, goTo }) {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
+    const [searchType, setSearchType] = useState("tickets"); // "tickets" or "customers"
     
     // Reset search state when modal closes
     useEffect(() => {
@@ -574,11 +575,16 @@ function SearchModal({ open, onClose, goTo }) {
             setResults([]);
             setLoading(false);
             setHasSearched(false);
+            setSearchType("tickets");
         }
     }, [open]);
-    // New Customer autofill helpers
+
+    // Enhanced phone number parsing
     const parsePhoneNumber = (s = "") => (s || "").replace(/\D/g, "");
-    const isLikelyPhone = (digits) => digits.length >= 7; // permissive; adjust if needed
+    const isLikelyPhone = (digits) => digits.length >= 7 && digits.length <= 11;
+    const canParse = (str) => !isNaN(parseInt(str)) && str.trim() !== "";
+    
+    // New Customer autofill helpers
     const handleNewCustomer = () => {
         const query = search.trim();
         if (!query) { goTo("/newcustomer"); return; }
@@ -602,30 +608,77 @@ function SearchModal({ open, onClose, goTo }) {
         goTo(url);
     };
 
-    async function fetchTickets() {
-        if (!search.trim()) {
+    // Smart search logic based on Unity code
+    const performSearch = async (query) => {
+        if (!query.trim()) {
             setResults([]);
             setHasSearched(false);
+            setSearchType("tickets");
             return;
         }
 
         setLoading(true);
         setHasSearched(true);
+
         try {
-            const data = await api.get(`/tickets?query=${encodeURIComponent(search.trim())}`);
-            const tickets = data.tickets || data || [];
-            setResults(tickets);
+            const trimmedQuery = query.trim();
+            const phoneDigits = parsePhoneNumber(trimmedQuery);
+            
+            // Check if it's a phone number search
+            if (isLikelyPhone(phoneDigits)) {
+                setSearchType("customers");
+                const data = await api.get(`/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`);
+                setResults(data.customers || data || []);
+            }
+            // Check if it's a ticket number search (numeric and reasonable length)
+            else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
+                setSearchType("tickets");
+                const data = await api.get(`/tickets?number=${encodeURIComponent(trimmedQuery)}`);
+                setResults(data.tickets || data || []);
+            }
+            // Check if it's a partial phone number (has dashes, dots, etc.)
+            else if (phoneDigits.length >= 3 && phoneDigits.length < 7 && /[\d\-\.\(\)\s]/.test(trimmedQuery)) {
+                setSearchType("customers");
+                const data = await api.get(`/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`);
+                setResults(data.customers || data || []);
+            }
+            // For text queries, search both customers and tickets, show the best results
+            else {
+                try {
+                    const [customersData, ticketsData] = await Promise.all([
+                        api.get(`/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`),
+                        api.get(`/tickets?query=${encodeURIComponent(trimmedQuery)}`)
+                    ]);
+                    
+                    const customers = customersData.customers || customersData || [];
+                    const tickets = ticketsData.tickets || ticketsData || [];
+                    
+                    // If we have customers with good matches, show customers
+                    if (customers.length > 0) {
+                        setSearchType("customers");
+                        setResults(customers);
+                    } else {
+                        setSearchType("tickets");
+                        setResults(tickets);
+                    }
+                } catch (error) {
+                    // Fallback to ticket search if both fail
+                    setSearchType("tickets");
+                    const data = await api.get(`/tickets?query=${encodeURIComponent(trimmedQuery)}`);
+                    setResults(data.tickets || data || []);
+                }
+            }
         } catch (error) {
-            console.error(error);
+            console.error("Search error:", error);
             setResults([]);
         } finally {
             setLoading(false);
         }
-    }
+    };
 
     useEffect(() => {
         const timeoutId = setTimeout(() => {
-            fetchTickets();
+            performSearch(search);
         }, 300);
         return () => clearTimeout(timeoutId);
     }, [search]);
@@ -637,7 +690,7 @@ function SearchModal({ open, onClose, goTo }) {
             <div className="w-full max-w-6xl h-[85vh] sm:h-[80vh] md-card p-4 sm:p-8 space-y-4 sm:space-y-6 flex flex-col">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-2">
                     <div className="text-xl sm:text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
-                        Search Tickets
+                        Search {searchType === "customers" ? "Customers" : "Tickets"}
                     </div>
                     <div className="flex items-center gap-2">
                         <button
@@ -670,12 +723,22 @@ function SearchModal({ open, onClose, goTo }) {
 
                 {/* Results */}
                 <div className="md-card overflow-hidden flex-1 overflow-y-auto">
-                    {/* Desktop table header */}
+                    {/* Dynamic table header based on search type */}
                     <div className="hidden sm:grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3" style={{color:'var(--md-sys-color-on-surface)'}}>
-                        <div className="col-span-2 font-semibold">Number</div>
-                        <div className="col-span-5 font-semibold">Subject</div>
-                        <div className="col-span-2 font-semibold">Status</div>
-                        <div className="col-span-3 font-semibold">Customer</div>
+                        {searchType === "customers" ? (
+                            <>
+                                <div className="col-span-5 font-semibold">Name</div>
+                                <div className="col-span-3 font-semibold">Phone</div>
+                                <div className="col-span-4 font-semibold">Created</div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="col-span-1 font-semibold">Number</div>
+                                <div className="col-span-7 font-semibold">Subject</div>
+                                <div className="col-span-2 font-semibold">Status</div>
+                                <div className="col-span-2 font-semibold">Customer</div>
+                            </>
+                        )}
                     </div>
                     <div className="divide-y" style={{borderColor:'var(--md-sys-color-outline)'}}>
                         {loading && (
@@ -686,46 +749,86 @@ function SearchModal({ open, onClose, goTo }) {
                         )}
                         {!loading && hasSearched && results.length === 0 && (
                             <div className="flex items-center justify-center p-6 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
-                                No tickets found for "{search}"
+                                No {searchType} found for "{search}"
                             </div>
                         )}
                         {!loading && !hasSearched && (
                             <div className="flex items-center justify-center p-6 text-sm" style={{color:'var(--md-sys-color-outline)'}}>
-                                Start typing to search tickets...
+                                Start typing to search {searchType}...
                             </div>
                         )}
-                        {!loading && results
-                            .map((ticket) => (
-                                <motion.button
-                                    key={ticket.id}
-                                    initial={{ opacity: 0, y: 4 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    onClick={() => { onClose(); goTo(`/&${ticket.id}`); }}
-                                    className="md-row-box w-full text-left transition-all duration-150 group"
-                                >
-                                    {/* Desktop layout */}
-                                    <div className="hidden sm:grid grid-cols-12 px-4 py-3">
-                                        <div className="col-span-2 font-mono">#{ticket.number ?? ticket.id}</div>
-                                        <div className="col-span-5 truncate">{ticket.subject}</div>
-                                        <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
-                                        <div className="col-span-3 truncate">{ticket.customer_business_then_name ?? ticket.customer?.business_and_full_name}</div>
-                                    </div>
-                                    
-                                    {/* Mobile layout */}
-                                    <div className="sm:hidden px-4 py-3 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <div className="font-semibold text-sm font-mono">#{ticket.number ?? ticket.id}</div>
-                                            <div className="text-xs px-2 py-1 rounded-full" style={{backgroundColor:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)'}}>
-                                                {convertStatus(ticket.status)}
+                        {!loading && results.map((item) => (
+                            <motion.button
+                                key={item.id}
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                onClick={() => { 
+                                    onClose(); 
+                                    if (searchType === "customers") {
+                                        goTo(`/$${item.id}`);
+                                    } else {
+                                        goTo(`/&${item.id}`);
+                                    }
+                                }}
+                                className="md-row-box w-full text-left transition-all duration-150 group"
+                            >
+                                {searchType === "customers" ? (
+                                    <>
+                                        {/* Customer Desktop layout */}
+                                        <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                                            <div className="col-span-5 truncate">
+                                                {item.business_then_name || `${item.first_name} ${item.last_name}`}
+                                            </div>
+                                            <div className="col-span-3 truncate">
+                                                {item.phone ? formatPhone(item.phone) : "—"}
+                                            </div>
+                                            <div className="col-span-4 truncate text-sm">
+                                                {item.created_at ? new Date(item.created_at).toLocaleDateString() : "—"}
                                             </div>
                                         </div>
-                                        <div className="text-sm font-medium truncate">{ticket.subject}</div>
-                                        <div className="text-sm truncate" style={{color:'var(--md-sys-color-on-surface)'}}>
-                                            {ticket.customer_business_then_name ?? ticket.customer?.business_and_full_name}
+                                        
+                                        {/* Customer Mobile layout */}
+                                        <div className="sm:hidden px-4 py-3 space-y-2">
+                                            <div className="text-sm">
+                                                {item.business_then_name || `${item.first_name} ${item.last_name}`}
+                                            </div>
+                                            <div className="flex items-center justify-between text-sm">
+                                                {item.phone && (
+                                                    <span>{formatPhone(item.phone)}</span>
+                                                )}
+                                                <span className="text-xs" style={{color:'var(--md-sys-color-on-surface)'}}>
+                                                    {item.created_at ? new Date(item.created_at).toLocaleDateString() : "—"}
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
-                                </motion.button>
-                            ))}
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Ticket Desktop layout */}
+                                        <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                                            <div className="col-span-1 font-mono">#{item.number ?? item.id}</div>
+                                            <div className="col-span-7 truncate">{item.subject}</div>
+                                            <div className="col-span-2 truncate">{convertStatus(item.status)}</div>
+                                            <div className="col-span-2 truncate">{item.customer_business_then_name ?? item.customer?.business_and_full_name}</div>
+                                        </div>
+                                        
+                                        {/* Ticket Mobile layout */}
+                                        <div className="sm:hidden px-4 py-3 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="font-semibold text-sm font-mono">#{item.number ?? item.id}</div>
+                                                <div className="text-xs px-2 py-1 rounded-full" style={{backgroundColor:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)'}}>
+                                                    {convertStatus(item.status)}
+                                                </div>
+                                            </div>
+                                            <div className="text-sm font-medium truncate">{item.subject}</div>
+                                            <div className="text-sm truncate" style={{color:'var(--md-sys-color-on-surface)'}}>
+                                                {item.customer_business_then_name ?? item.customer?.business_and_full_name}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </motion.button>
+                        ))}
                     </div>
                 </div>
             </div>
