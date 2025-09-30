@@ -143,10 +143,10 @@ export function LoginForm({ onLoginSuccess }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center material-surface py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="min-h-screen flex items-center justify-center material-surface py-6 sm:py-12 px-3 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-6 sm:space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold" style={{color:'var(--md-sys-color-primary)'}}>
+          <h2 className="mt-4 sm:mt-6 text-center text-2xl sm:text-3xl font-extrabold" style={{color:'var(--md-sys-color-primary)'}}>
             Sign in to True Tickets
           </h2>
           <p className="mt-2 text-center text-sm" style={{color:'var(--md-sys-color-outline)'}}>
@@ -155,8 +155,8 @@ export function LoginForm({ onLoginSuccess }) {
         </div>
 
         {!showForgotPassword ? (
-          <div className="md-card p-8">
-            <form className="space-y-6" onSubmit={handlePasswordLogin}>
+          <div className="md-card p-4 sm:p-8">
+            <form className="space-y-4 sm:space-y-6" onSubmit={handlePasswordLogin}>
               <div>
                 <label htmlFor="email" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
                   Email Address
@@ -166,7 +166,7 @@ export function LoginForm({ onLoginSuccess }) {
                   name="email"
                   type="email"
                   required
-                  className="md-input"
+                  className="md-input text-sm sm:text-base py-3 sm:py-2"
                   placeholder="Enter your email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -181,7 +181,7 @@ export function LoginForm({ onLoginSuccess }) {
                   name="password"
                   type="password"
                   required
-                  className="md-input"
+                  className="md-input text-sm sm:text-base py-3 sm:py-2"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -237,7 +237,7 @@ export function LoginForm({ onLoginSuccess }) {
                 <motion.button
                   type="submit"
                   disabled={loading}
-                  className="md-btn-primary w-full flex justify-center"
+                  className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   {loading ? (
@@ -253,8 +253,8 @@ export function LoginForm({ onLoginSuccess }) {
             </form>
           </div>
         ) : !showResetCodeForm ? (
-          <div className="md-card p-8">
-            <form className="space-y-6" onSubmit={handleForgotPassword}>
+          <div className="md-card p-4 sm:p-8">
+            <form className="space-y-4 sm:space-y-6" onSubmit={handleForgotPassword}>
               <div>
                 <label htmlFor="forgotPasswordEmail" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
                   Email Address
@@ -264,7 +264,7 @@ export function LoginForm({ onLoginSuccess }) {
                   name="forgotPasswordEmail"
                   type="email"
                   required
-                  className="md-input"
+                  className="md-input text-sm sm:text-base py-3 sm:py-2"
                   placeholder="Enter your email address"
                   value={forgotPasswordEmail}
                   onChange={(e) => setForgotPasswordEmail(e.target.value)}
@@ -304,11 +304,11 @@ export function LoginForm({ onLoginSuccess }) {
                 </motion.div>
               )}
 
-              <div className="flex space-x-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:space-x-3">
                 <motion.button
                   type="button"
                   onClick={() => setShowForgotPassword(false)}
-                  className="md-btn-surface flex-1"
+                  className="md-btn-surface flex-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   Back to Login
@@ -316,7 +316,7 @@ export function LoginForm({ onLoginSuccess }) {
                 <motion.button
                   type="submit"
                   disabled={forgotPasswordLoading}
-                  className="md-btn-primary flex-1"
+                  className="md-btn-primary flex-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   {forgotPasswordLoading ? (
@@ -335,8 +335,8 @@ export function LoginForm({ onLoginSuccess }) {
 
         {/* Reset Code Form */}
         {showResetCodeForm && (
-          <div key="reset-code-form" className="md-card p-8">
-            <div className="text-center mb-6">
+          <div key="reset-code-form" className="md-card p-4 sm:p-8">
+            <div className="text-center mb-4 sm:mb-6">
               <h3 className="text-lg font-semibold" style={{color:'var(--md-sys-color-primary)'}}>
                 Enter Reset Code
               </h3>
@@ -345,7 +345,7 @@ export function LoginForm({ onLoginSuccess }) {
               </p>
             </div>
 
-            <form className="space-y-6" onSubmit={handleResetPassword}>
+            <form className="space-y-4 sm:space-y-6" onSubmit={handleResetPassword}>
               <div>
                 <label htmlFor="resetCode" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
                   Reset Code
@@ -355,7 +355,7 @@ export function LoginForm({ onLoginSuccess }) {
                   name="resetCode"
                   type="text"
                   required
-                  className="md-input"
+                  className="md-input text-sm sm:text-base py-3 sm:py-2"
                   placeholder="Enter 6-digit code"
                   value={resetCode}
                   onChange={(e) => setResetCode(e.target.value)}
@@ -376,7 +376,7 @@ export function LoginForm({ onLoginSuccess }) {
                   name="newPassword"
                   type="password"
                   required
-                  className="md-input"
+                  className="md-input text-sm sm:text-base py-3 sm:py-2"
                   placeholder="Enter new password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -392,7 +392,7 @@ export function LoginForm({ onLoginSuccess }) {
                   name="confirmPassword"
                   type="password"
                   required
-                  className="md-input"
+                  className="md-input text-sm sm:text-base py-3 sm:py-2"
                   placeholder="Confirm new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -432,14 +432,14 @@ export function LoginForm({ onLoginSuccess }) {
                 </motion.div>
               )}
 
-              <div className="flex space-x-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:space-x-3">
                 <motion.button
                   type="button"
                   onClick={() => {
                     setShowResetCodeForm(false);
                     setShowForgotPassword(false);
                   }}
-                  className="md-btn-surface flex-1"
+                  className="md-btn-surface flex-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   Cancel
@@ -447,7 +447,7 @@ export function LoginForm({ onLoginSuccess }) {
                 <motion.button
                   type="submit"
                   disabled={resetPasswordLoading}
-                  className="md-btn-primary flex-1"
+                  className="md-btn-primary flex-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   {resetPasswordLoading ? (

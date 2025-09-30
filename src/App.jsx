@@ -6,52 +6,17 @@ import { Amplify } from 'aws-amplify';
 import { AuthWrapper, useUserGroups } from './components/Auth';
 import LambdaClient from './api/lambdaClient';
 import awsconfig from './aws-exports';
-
-// Debug Amplify import
-console.log('Amplify import:', Amplify);
-console.log('Amplify.Auth before config:', Amplify.Auth);
-
-// Try alternative import for Amplify v6
 import { getCurrentUser, signIn, signOut, confirmSignIn, resetPassword, fetchAuthSession } from 'aws-amplify/auth';
-console.log('Auth functions imported:', { getCurrentUser, signIn, signOut, confirmSignIn, fetchAuthSession, resetPassword });
 
 // Configure Amplify
 try {
-  console.log('=== AMPLIFY CONFIGURATION DEBUG ===');
-  console.log('awsconfig:', awsconfig);
-  console.log('awsconfig.Auth:', awsconfig.Auth);
-  console.log('userPoolId:', awsconfig.Auth.Cognito.userPoolId);
-  console.log('userPoolClientId:', awsconfig.Auth.Cognito.userPoolClientId);
-  console.log('region:', awsconfig.Auth.Cognito.region);
-  
   if (awsconfig.Auth.Cognito.userPoolId && awsconfig.Auth.Cognito.userPoolClientId) {
     try {
       Amplify.configure(awsconfig);
-      console.log('Amplify configured successfully');
-      console.log('Amplify configured successfully - Auth functions should be available');
-      console.log('Auth functions imported:', { getCurrentUser, signIn, signOut, confirmSignIn, fetchAuthSession, resetPassword });
-      
-      // Test if Auth methods are available
-      console.log('signIn function type:', typeof signIn);
-      console.log('confirmSignIn function type:', typeof confirmSignIn);
-      
-      if (typeof signIn !== 'function') {
-        console.error('❌ signIn function is not available after configuration');
-        console.error('This might be an Amplify version issue or configuration problem');
-      }
     } catch (configError) {
       console.error('Amplify configuration failed with error:', configError);
       throw configError;
     }
-  } else {
-    console.error('Amplify configuration skipped - missing required environment variables');
-    console.error('Missing userPoolId:', !awsconfig.Auth.Cognito.userPoolId);
-    console.error('Missing userPoolClientId:', !awsconfig.Auth.Cognito.userPoolClientId);
-    
-    // Provide helpful error message
-    console.error('🔧 SOLUTION: Create a .env file with your AWS credentials');
-    console.error('Run: node setup-env.js');
-    console.error('Then edit .env with your actual AWS values');
   }
 } catch (error) {
   console.error('Amplify configuration failed:', error);
@@ -110,7 +75,7 @@ const STATUSES = [
     "Resolved",
 ];
 const DEVICES = ["Phone", "Tablet", "Watch", "Console", "Laptop", "Desktop", "All in one", "Other"];
-const ITEMS_LEFT = ["Charger", "Case", "Controller", "Other"];
+const ITEMS_LEFT = ["Charger", "Case", "Controller", "Bag", "Other"];
 
 const STATUS_MAP = {
     "New": "Diagnosing",
@@ -127,6 +92,17 @@ const STATUS_MAP = {
 const convertStatus = (status) => {
     if (!status) return "";
     return STATUS_MAP[status] || status;
+};
+
+const convertStatusToOriginal = (displayStatus) => {
+    if (!displayStatus) return "";
+    // Find the original status that maps to this display status
+    for (const [original, display] of Object.entries(STATUS_MAP)) {
+        if (display === displayStatus) {
+            return original;
+        }
+    }
+    return displayStatus; // Return as-is if no mapping found
 };
 
 /*************************
@@ -190,25 +166,19 @@ function getTicketPassword(ticket) {
 
 function getTicketDeviceInfo(ticket) {
     try {
-        const techNotes = ticket?.properties?.["Tech Notes"] || "";
-        if (techNotes.startsWith("v1")) {
-            const data = JSON.parse(techNotes.substring(2));
+        const model = ticket?.properties?.["Model"] || "";
+        if (model.startsWith("vT")) {
+            const data = JSON.parse(model.substring(2));
             return {
                 device: data.device || "Other",
                 itemsLeft: data.itemsLeft || [],
-                howLong: data.howLong || ""
+                estimatedTime: data.estimatedTime || ""
             };
-        } else if (techNotes.startsWith("v2")) {
-            const data = JSON.parse(techNotes.substring(2));
-            return {
-                device: data.device || "Other",
-                itemsLeft: data.itemsLeft || [],
-                howLong: data.estimatedTime || ""
-            };
+        } else {
+            return { device: "Other", itemsLeft: [], estimatedTime: "" };
         }
-        return { device: "Other", itemsLeft: [], howLong: "" };
     } catch { 
-        return { device: "Other", itemsLeft: [], howLong: "" };
+        return { device: "Other", itemsLeft: [], estimatedTime: "" };
     }
 }
 
@@ -241,8 +211,10 @@ function useHotkeys(map) {
                 return;
             }
             
-            // Fallback to simple key
-            if (map[key]) map[key](event);
+            // Only fallback to simple key if NO modifier keys are pressed
+            if (!event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey && map[key]) {
+                map[key](event);
+            }
         }
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
@@ -379,38 +351,38 @@ function TicketCard({
 function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings, showUserMenu, setShowUserMenu, userGroups, canInviteUsers, canManageUsers, onInviteUser, onManageUsers, onLogout }) {
     return (
         <div className="sticky top-0 z-30 w-full material-app-bar backdrop-blur-md">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 flex items-center gap-2 sm:gap-4">{/* larger again */}
+            <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-4">
                 <button
                     onClick={onHome}
-                    className="text-lg sm:text-xl font-bold tracking-wide flex-1 text-left cursor-pointer truncate"
+                    className="text-base sm:text-xl font-bold tracking-wide flex-1 text-left cursor-pointer truncate min-w-0"
                 >
                     <span className="hidden sm:inline">True Tickets - Computer and Cellphone Inc</span>
                     <span className="sm:hidden">True Tickets</span>
                 </button>
-                <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-1.5 sm:gap-3">
                     <button
                         onClick={onSearchClick}
                         title="Search"
-                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-full"
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full touch-manipulation"
                     >
-                        <Search className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
+                        <Search className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
                     </button>
                     <button
                         onClick={onNewCustomer}
                         title="New Customer"
-                        className="md-btn-primary elev-2 inline-flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-full"
+                        className="md-btn-primary elev-2 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full touch-manipulation"
                     >
-                        <UserPlus className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
+                        <UserPlus className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
                     </button>
                     
                     {/* User menu dropdown */}
                     <div className="relative">
                         <motion.button
                             onClick={() => setShowUserMenu(!showUserMenu)}
-                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-9 h-9 sm:w-11 sm:h-11 rounded-full"
+                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full touch-manipulation"
                             whileTap={{ scale: 0.95 }}
                         >
-                            <Settings className="w-4 h-4 sm:w-5.5 sm:h-5.5" />
+                            <Settings className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
                         </motion.button>
 
                         {showUserMenu && (
@@ -471,9 +443,9 @@ function SettingsModal({ open, onClose }) {
     const api = useApi();
     if (!open) return null;
     return (
-        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-lg md-card p-8 space-y-6">
-                <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+            <div className="w-full max-w-lg md-card p-4 sm:p-8 space-y-4 sm:space-y-6">
+                <div className="text-xl sm:text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                     API Configuration
                 </div>
                 <div className="space-y-3">
@@ -582,23 +554,23 @@ function SearchModal({ open, onClose, goTo }) {
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
-            <div className="w-full max-w-6xl h-[80vh] md-card p-8 space-y-6 flex flex-col">
-                <div className="flex items-center justify-between">
-                    <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
+        <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+            <div className="w-full max-w-6xl h-[85vh] sm:h-[80vh] md-card p-4 sm:p-8 space-y-4 sm:space-y-6 flex flex-col">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-2">
+                    <div className="text-xl sm:text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                         Search Tickets
                     </div>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleNewCustomer}
                             title="New Customer"
-                            className="md-btn-primary elev-1"
+                            className="md-btn-primary elev-1 text-sm sm:text-base px-3 py-2 sm:px-4 sm:py-2"
                         >
                             New Customer
                         </button>
                         <button
                             onClick={onClose}
-                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-8 h-8 p-0"
+                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 p-0 touch-manipulation"
                         >
                             ×
                         </button>
@@ -606,20 +578,21 @@ function SearchModal({ open, onClose, goTo }) {
                 </div>
 
                 {/* Search Input */}
-                <div className="relative pl-12">
+                <div className="relative pl-10 sm:pl-12">
                     <input
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Search..."
-                        className="md-input pl-12"
+                        className="md-input w-full text-sm sm:text-base py-3 sm:py-2 pl-10 sm:pl-12"
                         autoFocus
                     />
-                    <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
                 {/* Results */}
                 <div className="md-card overflow-hidden flex-1 overflow-y-auto">
-                    <div className="grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3" style={{color:'var(--md-sys-color-on-surface)'}}>
+                    {/* Desktop table header */}
+                    <div className="hidden sm:grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3" style={{color:'var(--md-sys-color-on-surface)'}}>
                         <div className="col-span-2 font-semibold">Number</div>
                         <div className="col-span-5 font-semibold">Subject</div>
                         <div className="col-span-2 font-semibold">Status</div>
@@ -649,12 +622,29 @@ function SearchModal({ open, onClose, goTo }) {
                                     initial={{ opacity: 0, y: 4 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     onClick={() => { onClose(); goTo(`/&${ticket.id}`); }}
-                                    className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
+                                    className="md-row-box w-full text-left transition-all duration-150 group"
                                 >
-                                    <div className="col-span-2 font-mono">#{ticket.number ?? ticket.id}</div>
-                                    <div className="col-span-5 truncate">{ticket.subject}</div>
-                                    <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
-                                    <div className="col-span-3 truncate">{ticket.customer?.business_and_full_name ?? ticket.customer?.fullname}</div>
+                                    {/* Desktop layout */}
+                                    <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                                        <div className="col-span-2 font-mono">#{ticket.number ?? ticket.id}</div>
+                                        <div className="col-span-5 truncate">{ticket.subject}</div>
+                                        <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
+                                        <div className="col-span-3 truncate">{ticket.customer_business_then_name ?? ticket.customer?.business_and_full_name}</div>
+                                    </div>
+                                    
+                                    {/* Mobile layout */}
+                                    <div className="sm:hidden px-4 py-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="font-semibold text-sm font-mono">#{ticket.number ?? ticket.id}</div>
+                                            <div className="text-xs px-2 py-1 rounded-full" style={{backgroundColor:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)'}}>
+                                                {convertStatus(ticket.status)}
+                                            </div>
+                                        </div>
+                                        <div className="text-sm font-medium truncate">{ticket.subject}</div>
+                                        <div className="text-sm truncate" style={{color:'var(--md-sys-color-on-surface)'}}>
+                                            {ticket.customer_business_then_name ?? ticket.customer?.business_and_full_name}
+                                        </div>
+                                    </div>
                                 </motion.button>
                             ))}
                     </div>
@@ -709,15 +699,15 @@ function TicketListView({ goTo }) {
     });
 
     return (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 sm:py-6">
-            <div className="flex items-center gap-3 mb-4">
-                <div className="text-sm" style={{color:'var(--md-sys-color-on-surface)'}}>Status filter:</div>
-                <div className="flex flex-wrap gap-2">
+        <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4">
+                <div className="text-sm font-medium" style={{color:'var(--md-sys-color-on-surface)'}}>Status filter:</div>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                     {STATUSES.map((status, index) => (
                         <button
                             key={status}
                             onClick={() => toggleStatus(status)}
-                            className={cx("md-chip",
+                            className={cx("md-chip text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1.5",
                                 statusHidden.has(status) ? "" : "md-chip--on")}
                         >
                             {status}
@@ -725,9 +715,9 @@ function TicketListView({ goTo }) {
                     ))}
                 </div>
             </div>
-            <div className="flex items-center gap-3 mb-6">
-                <div className="text-sm" style={{color:'var(--md-sys-color-on-surface)'}}>Device filter:</div>
-                <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-6">
+                <div className="text-sm font-medium" style={{color:'var(--md-sys-color-on-surface)'}}>Device filter:</div>
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                     {DEVICES.map((device, index) => {
                         const isSelected = selectedDevices.has(index);
                         return (
@@ -740,7 +730,7 @@ function TicketListView({ goTo }) {
                                         return next;
                                     });
                                 }}
-                                className={cx("md-chip", isSelected ? "md-chip--on" : "")}
+                                className={cx("md-chip text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1.5", isSelected ? "md-chip--on" : "")}
                             >
                                 {device || "Other"}
                             </button>
@@ -750,7 +740,8 @@ function TicketListView({ goTo }) {
             </div>
 
             <div className="md-card overflow-hidden">
-                <div className="grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3" style={{color:'var(--md-sys-color-on-surface)'}}>
+                {/* Desktop table header */}
+                <div className="hidden sm:grid grid-cols-12 text-xs uppercase tracking-wider px-5 py-3" style={{color:'var(--md-sys-color-on-surface)'}}>
                     <div className="col-span-1 font-semibold">Number</div>
                     <div className="col-span-5 font-semibold">Subject</div>
                     <div className="col-span-2 font-semibold">Status</div>
@@ -778,14 +769,35 @@ function TicketListView({ goTo }) {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0 }}
                                     onClick={() => goTo(`/&${ticket.id}`)}
-                                    className="md-row-box grid grid-cols-12 w-full text-left px-4 py-3 transition-all duration-150 group"
+                                    className="md-row-box w-full text-left transition-all duration-150 group"
                                 >
-                                    <div className="col-span-1 truncate">#{ticket.number ?? ticket.id}</div>
-                                    <div className="col-span-5 truncate">{ticket.subject}</div>
-                                    <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
-                                    <div className="col-span-1 truncate">{getTicketDeviceInfo(ticket).device}</div>
-                                    <div className="col-span-1 truncate">{fmtDate(ticket.created_at)}</div>
-                                    <div className="col-span-2 truncate">{ticket.customer?.business_and_full_name ?? ticket.customer?.fullname}</div>
+                                    {/* Desktop layout */}
+                                    <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                                        <div className="col-span-1 truncate">#{ticket.number ?? ticket.id}</div>
+                                        <div className="col-span-5 truncate">{ticket.subject}</div>
+                                        <div className="col-span-2 truncate">{convertStatus(ticket.status)}</div>
+                                        <div className="col-span-1 truncate">{getTicketDeviceInfo(ticket).device}</div>
+                                        <div className="col-span-1 truncate">{fmtDate(ticket.created_at)}</div>
+                                        <div className="col-span-2 truncate">{ticket.customer_business_then_name ?? ticket.customer?.business_and_full_name}</div>
+                                    </div>
+                                    
+                                    {/* Mobile layout */}
+                                    <div className="sm:hidden px-4 py-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="font-semibold text-sm">#{ticket.number ?? ticket.id}</div>
+                                            <div className="text-xs px-2 py-1 rounded-full" style={{backgroundColor:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)'}}>
+                                                {convertStatus(ticket.status)}
+                                            </div>
+                                        </div>
+                                        <div className="text-sm font-medium truncate">{ticket.subject}</div>
+                                        <div className="flex items-center justify-between text-xs" style={{color:'var(--md-sys-color-outline)'}}>
+                                            <span>{getTicketDeviceInfo(ticket).device}</span>
+                                            <span>{fmtDate(ticket.created_at)}</span>
+                                        </div>
+                                        <div className="text-sm truncate" style={{color:'var(--md-sys-color-on-surface)'}}>
+                                            {ticket.customer_business_then_name ?? ticket.customer?.business_and_full_name}
+                                        </div>
+                                    </div>
                                 </motion.button>
                             ))}
                     </AnimatePresence>
@@ -881,18 +893,52 @@ function CustomerView({ id, goTo }) {
             if (!tickets || tickets.length === 0) setTHasMore(false);
         } catch (error) { console.error(error); setTHasMore(false); } finally { setTLoading(false); }
     }
+
+    async function loadAllTickets() {
+        if (!id || tLoading) return;
+        setTLoading(true);
+        setTickets([]);
+        setTPage(1);
+        setTHasMore(true);
+        
+        try {
+            let allTickets = [];
+            let currentPage = 1;
+            let hasMore = true;
+            
+            while (hasMore) {
+                const data = await api.get(`/tickets?customer_id=${encodeURIComponent(id)}&page=${currentPage}`);
+                const tickets = data.tickets || data || [];
+                
+                if (tickets.length === 0) {
+                    hasMore = false;
+                } else {
+                    allTickets = [...allTickets, ...tickets];
+                    currentPage++;
+                }
+            }
+            
+            setTickets(allTickets);
+            setTHasMore(false);
+        } catch (error) { 
+            console.error(error); 
+            setTHasMore(false); 
+        } finally { 
+            setTLoading(false); 
+        }
+    }
     useEffect(() => {
-        loadMoreTickets();
+        loadAllTickets();
         // eslint-disable-next-line
     }, [id]);
     if (loading) return <Loading />;
     if (!customer) return <ErrorMsg text="Customer not found" />;
     return (
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 sm:py-6 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-8">
-            <div className="md:col-span-2 space-y-4 sm:space-y-6">
-                <div className="md-card p-4 sm:p-8">
-                    <div className="text-xl sm:text-2xl font-bold mb-2">{customer.business_and_full_name || customer.fullname}</div>
-                    <div className="mb-1" style={{color:'var(--md-sys-color-outline)'}}>{customer.email}</div>
+        <div className="mx-auto max-w-6xl px-3 sm:px-6 py-3 sm:py-6 grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-8">
+            <div className="md:col-span-2 space-y-3 sm:space-y-6">
+                <div className="md-card p-3 sm:p-8">
+                    <div className="text-lg sm:text-2xl font-bold mb-2">{customer.business_and_full_name || customer.fullname}</div>
+                    <div className="mb-1 text-sm sm:text-base" style={{color:'var(--md-sys-color-outline)'}}>{customer.email}</div>
                     <div className="space-y-1">
                         {allPhones.length > 0 ? (
                             allPhones.map((phone, index) => (
@@ -911,14 +957,14 @@ function CustomerView({ id, goTo }) {
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                     <button
                         onClick={() => goTo(`/$${id}?newticket`)}
-                        className="md-btn-primary elev-1 inline-flex items-center justify-center gap-2"
+                        className="md-btn-primary elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                     >
                         <Plus className="w-5 h-5" />
                         New Ticket
                     </button>
                     <button
                         onClick={() => goTo(`/$${id}?edit`)}
-                        className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2"
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                     >
                         <ExternalLink className="w-5 h-5" />
                         Edit
@@ -976,16 +1022,7 @@ function CustomerView({ id, goTo }) {
                             </div>
                         )}
                     </div>
-                    {tHasMore && (
-                        <div className="px-6 py-4">
-                            <button
-                                onClick={loadMoreTickets}
-                                className="md-btn-surface elev-1 text-sm"
-                            >
-                                Load more
-                            </button>
-                        </div>
-                    )}
+                    {/* Load more button removed - all tickets load automatically */}
                 </div>
             </div>
             <div className="space-y-6">
@@ -999,13 +1036,13 @@ function CustomerView({ id, goTo }) {
                         </div>
                     </div>
                 )}
-                <div className="md-card p-6">
+                {/* <div className="md-card p-6">
                     <div className="text-lg font-semibold mb-4">Notes</div>
                     <textarea
                         className="md-textarea h-32"
                         placeholder="Customer notes…"
                     />
-                </div>
+                </div> */}
             </div>
         </div>
     );
@@ -1214,23 +1251,23 @@ function NewCustomer({ goTo, customerId }) {
         } catch (error) { console.error(error); } finally { setSaving(false); }
     }
     return (
-        <div className="mx-auto max-w-2xl px-4 sm:px-6 py-4 sm:py-6">
-            <div className="md-card p-4 sm:p-8 space-y-4 sm:space-y-6">
-                <div className="text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
+        <div className="mx-auto max-w-2xl px-3 sm:px-6 py-3 sm:py-6">
+            <div className="md-card p-3 sm:p-8 space-y-4 sm:space-y-6">
+                <div className="text-xl sm:text-2xl font-bold" style={{color:'var(--md-sys-color-primary)'}}>
                     {customerId ? "Edit Customer" : "New Customer"}
                 </div>
                 {["first_name", "last_name", "business_name"].map(fieldKey => (
                     <div key={fieldKey} className="space-y-2">
                         <label className="text-sm font-medium capitalize">{fieldKey.replace('_', ' ')}</label>
                         <input
-                            className="md-input"
+                            className="md-input text-sm sm:text-base py-3 sm:py-2"
                             value={form[fieldKey]}
                             onChange={event => setForm({ ...form, [fieldKey]: event.target.value })}
                         />
                     </div>
                 ))}
                 <div className="space-y-2">
-                    <label className="text-sm font-medium">Phone Numbers</label>
+                    <label className="text-sm font-medium">Phone Numbers (make box empty to erase)</label>
                     <div className="space-y-3">
                         {allPhones.map((phone, index) => {
                             const isPrimary = index === primaryPhoneIndex;
@@ -1252,7 +1289,7 @@ function NewCustomer({ goTo, customerId }) {
                                         )}
                                     </button>
                                     <input
-                                        className="md-input flex-1"
+                                        className="md-input flex-1 text-sm sm:text-base py-3 sm:py-2"
                                         value={phone}
                                         onChange={event => {
                                             const value = event.target.value;
@@ -1274,7 +1311,7 @@ function NewCustomer({ goTo, customerId }) {
                         <div>
                             <button
                                 type="button"
-                                className="md-btn-surface elev-1 text-xs"
+                                className="md-btn-surface elev-1 text-sm sm:text-xs py-2 px-3 touch-manipulation"
                                 onClick={() => setAllPhones([...allPhones, ""]) }
                             >
                                 + Add another phone
@@ -1285,7 +1322,7 @@ function NewCustomer({ goTo, customerId }) {
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Email</label>
                     <input
-                        className="md-input"
+                        className="md-input text-sm sm:text-base py-3 sm:py-2"
                         value={form.email}
                         onChange={event => setForm({ ...form, email: event.target.value })}
                         autoComplete={'email'}
@@ -1294,7 +1331,7 @@ function NewCustomer({ goTo, customerId }) {
                 <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4">
                     <button
                         onClick={() => goTo(customerId ? `/$${customerId}` : '/')}
-                        className="md-btn-surface elev-1"
+                        className="md-btn-surface elev-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                         disabled={saving || applying}
                     >
                         Cancel
@@ -1302,7 +1339,7 @@ function NewCustomer({ goTo, customerId }) {
                     <motion.button
                         onClick={save}
                         disabled={saving || applying}
-                        className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden"
+                        className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                         whileTap={{ scale: (saving || applying) ? 1 : 0.95 }}
                         animate={(saving || applying) ? { 
                             backgroundColor: "var(--md-sys-color-primary-container)",
@@ -1363,9 +1400,18 @@ function TicketView({ id, goTo }) {
             const searchEvent = new CustomEvent('openSearch');
             window.dispatchEvent(searchEvent);
         },
-        "c": () => goTo(`/$${t?.customer?.id || t?.customer_id}`),
+        "c": () => goTo(`/$${ticket?.customer?.id || ticket?.customer_id}`),
         "e": () => goTo(`/&${id}?edit`),
-        "p": () => generatePDF()
+        "p": () => generatePDF(),
+        // Status change shortcuts
+        "d": () => updateTicketStatus(STATUSES[0]), // Diagnosing
+        "f": () => updateTicketStatus(STATUSES[1]), // Finding Price
+        "a": () => updateTicketStatus(STATUSES[2]), // Approval Needed
+        "w": () => updateTicketStatus(STATUSES[3]), // Waiting for Parts
+        "o": () => updateTicketStatus(STATUSES[4]), // Waiting (Other)
+        "i": () => updateTicketStatus(STATUSES[5]), // In Progress
+        "r": () => updateTicketStatus(STATUSES[6]), // Ready
+        "x": () => updateTicketStatus(STATUSES[7])  // Resolved
     });
 
     const fetchTicket = async () => {
@@ -1377,6 +1423,25 @@ function TicketView({ id, goTo }) {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const updateTicketStatus = async (status) => {
+        if (!ticket || updatingStatus) return; // Prevent multiple updates
+        
+        setUpdatingStatus(status);
+        try {
+            // Convert the display status back to the original status before uploading
+            const originalStatus = convertStatusToOriginal(status);
+            // Send the full ticket object with updated status
+            const updatedTicket = { ...ticket, status: originalStatus };
+            await api.put(`/tickets/${ticket.id}`, updatedTicket);
+            setTicket(updatedTicket);
+        } catch (error) {
+            console.error(error);
+            alert(`Failed to update status: ${error.message}`);
+        } finally {
+            setUpdatingStatus(null);
         }
     };
 
@@ -1432,26 +1497,26 @@ function TicketView({ id, goTo }) {
     };
 
     return (
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 sm:py-6">
+        <div className="mx-auto max-w-6xl px-3 sm:px-6 py-3 sm:py-6">
             {/* Top Action Buttons */}
             <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4 mb-4 sm:mb-6">
                 <button
                     onClick={() => goTo(`/$${ticket.customer?.id || ticket.customer_id}`)}
-                    className="md-btn-surface elev-1 inline-flex items-center gap-2"
+                    className="md-btn-surface elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                 >
                     <User className="w-5 h-5" />
                     View Customer
                 </button>
                 <button
                     onClick={generatePDF}
-                    className="md-btn-surface elev-1 inline-flex items-center gap-2"
+                    className="md-btn-surface elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                 >
                     <Printer className="w-5 h-5" />
                     Print PDF
                 </button>
                 <button
                     onClick={() => goTo(`/&${ticket.id}?edit`)}
-                    className="md-btn-primary elev-1 inline-flex items-center gap-2"
+                    className="md-btn-primary elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
                 >
                     <Edit className="w-5 h-5" />
                     Edit Ticket
@@ -1467,7 +1532,7 @@ function TicketView({ id, goTo }) {
                             <TicketCard
                                 password={getTicketPassword(ticket)}
                                 ticketNumber={ticket.number ?? ticket.id}
-                                subject={ticket.subject}
+                                subject={ticket.subject + (getTicketDeviceInfo(ticket).estimatedTime ? (" [" + getTicketDeviceInfo(ticket).estimatedTime + "]") : "")}
                                 itemsLeft={formatItemsLeft(getTicketDeviceInfo(ticket).itemsLeft)}
                                 name={ticket.customer?.business_and_full_name || ticket.customer?.fullname || ""}
                                 creationDate={fmtDateAndTime(ticket.created_at)}
@@ -1477,8 +1542,8 @@ function TicketView({ id, goTo }) {
                     </div>
 
                     {/* Status buttons */}
-                    <div className="md-card p-4 space-y-3 w-full sm:w-60">
-                        <p className="text-md font-semibold">Status:</p>
+                    <div className="md-card p-3 sm:p-4 space-y-3 w-full sm:w-60">
+                        <p className="text-sm sm:text-md font-semibold">Status:</p>
                         <div className="flex flex-col gap-2">
                             {STATUSES.map((status, index) => {
                                 const active = convertStatus(ticket.status) === status;
@@ -1486,34 +1551,19 @@ function TicketView({ id, goTo }) {
                                 return (
                                     <motion.button
                                         key={status}
-                                        onClick={async () => {
-                                            if (isUpdating) return; // Prevent multiple clicks
-                                            
-                                            setUpdatingStatus(status);
-                                            try {
-                                                // Send the full ticket object with updated status
-                                                const updatedTicket = { ...ticket, status: status };
-                                                await api.put(`/tickets/${ticket.id}`, updatedTicket);
-                                                setTicket(updatedTicket);
-                                            } catch (error) {
-                                                console.error(error);
-                                                alert(`Failed to update status: ${error.message}`);
-                                            } finally {
-                                                setUpdatingStatus(null);
-                                            }
-                                        }}
+                                        onClick={() => updateTicketStatus(status)}
                                         disabled={isUpdating}
-                                        className={`${active ? 'md-btn-primary' : 'md-btn-surface'} text-left relative overflow-hidden ${
+                                        className={`${active ? 'md-btn-primary' : 'md-btn-surface'} text-left relative overflow-hidden py-3 sm:py-2 text-sm sm:text-base touch-manipulation ${
                                             isUpdating ? 'cursor-not-allowed' : ''
                                         }`}
                                         style={active ? { borderRadius: '12px' } : {}}
                                         whileTap={{ scale: 0.95 }}
                                         animate={isUpdating ? { 
                                             backgroundColor: active ? "var(--md-sys-color-primary)" : "var(--md-sys-color-primary-container)",
-                                            color: "black"
+                                            color: "#000000"
                                         } : {
                                             backgroundColor: active ? "var(--md-sys-color-primary)" : "#2c2c2f",
-                                            color: active ? "black" : "var(--md-sys-color-on-surface)"
+                                            color: active ? "#000000" : "var(--md-sys-color-on-surface)"
                                         }}
                                         transition={{ duration: 0.15 }}
                                     >
@@ -1566,11 +1616,14 @@ function CommentsBox({ ticketId, comments, goTo }) {
     const api = useApi();
     const [text, setText] = useState("");
     const [list, setList] = useState([]);
+    const [createLoading, setCreateLoading] = useState(false);
     useEffect(() => {
         setList(comments);
     }, [comments]);
 
     async function create() { 
+        if (createLoading) return; // Prevent multiple submissions
+        setCreateLoading(true);
         try { 
             await api.post(`/tickets/${ticketId}/comment`, { 
                 subject: "Update",
@@ -1583,6 +1636,7 @@ function CommentsBox({ ticketId, comments, goTo }) {
             // Trigger a refresh event to reload the ticket data
             window.dispatchEvent(new CustomEvent('refreshTicket'));
         } catch (error) { console.error(error); } 
+        finally { setCreateLoading(false); }
     }
 
     return (
@@ -1595,9 +1649,10 @@ function CommentsBox({ ticketId, comments, goTo }) {
             />
             <button
                 onClick={create}
+                disabled={createLoading}
                 className="w-full md-btn-primary elev-1"
             >
-                Create Comment
+                {createLoading ? 'Creating...' : 'Create Comment'}
             </button>
             <div className="space-y-3">
                 {(list || []).filter(comment => {
@@ -1667,7 +1722,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                     setItemsLeft(previous => [...previous, "Charger"]);
                 }
                 
-                // Parse device info from Tech Notes (v1 or v2)
+                // Parse device info from model (vT)
                 const deviceInfo = getTicketDeviceInfo(ticket);
                 
                 // Set device from JSON
@@ -1684,8 +1739,8 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                 }
                 
                 // Set estimated time from JSON
-                if (deviceInfo.howLong) {
-                    setTimeEstimate(deviceInfo.howLong);
+                if (deviceInfo.estimatedTime) {
+                    setTimeEstimate(deviceInfo.estimatedTime);
                 }
                 
             } catch (error) {
@@ -1727,39 +1782,46 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                 properties["Tech Notes"] = "";
             }
             
+            let model = { };
             let result;
             if (ticketId) {
                 // Implement ChangeTicketTypeIdToComputer logic to preserve fields
                 const currentTicketTypeId = previousTicket?.ticket_type_id || previousTicket?.ticket_fields?.[0]?.ticket_type_id;
-                let legacyOptions = "";
                 
                 // Build legacy options based on current ticket type
                 if (currentTicketTypeId === 9836) {
-                    if (properties.Model && properties.Model !== "") legacyOptions += "Model: " + properties.Model;
-                    if (properties.imeiOrSn && properties.imeiOrSn !== "") legacyOptions += "\nIMEI or S/N: " + properties.imeiOrSn;
-                    legacyOptions += "\nEver been Wet: " + (properties.EverBeenWet || "Unknown");
-                    if (properties.previousDamageOrIssues && properties.previousDamageOrIssues !== "") legacyOptions += "\nPrevious Damage or Issues: " + properties.previousDamageOrIssues;
-                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) legacyOptions += "\nTech notes: " + properties.techNotes;
-                    if (properties.currentIssue && properties.currentIssue !== "") legacyOptions += "\nCurrent issue: " + properties.currentIssue;
-                    if (properties.Size && properties.Size !== "") legacyOptions += "\nSize: " + properties.Size;
+                    if (properties.Model && properties.Model !== "") model["Model: "] = properties.Model;
+                    if (properties.imeiOrSn && properties.imeiOrSn !== "") model["IMEI or S/N: "] = properties.imeiOrSn;
+                    model["Ever been Wet: "] = (properties.EverBeenWet || "Unknown");
+                    if (properties.previousDamageOrIssues && properties.previousDamageOrIssues !== "") model["Previous Damage or Issues: "] = properties.previousDamageOrIssues;
+                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) model["Tech notes: "] = properties.techNotes;
+                    if (properties.currentIssue && properties.currentIssue !== "") model["Current issue: "] = properties.currentIssue;
+                    if (properties.Size && properties.Size !== "") model["Size: "] = properties.Size;
                 }
                 if (currentTicketTypeId === 9801) {
-                    if (properties.Model && properties.Model !== "") legacyOptions += "Model: " + properties.Model;
-                    if (properties.imeiOrSnForPhone && properties.imeiOrSnForPhone !== "") legacyOptions += "\nIMEI or S/N: " + properties.imeiOrSnForPhone;
-                    legacyOptions += "\nEver been Wet: " + (properties.EverBeenWet || "Unknown");
-                    if (properties.previousDamageOrIssues && properties.previousDamageOrIssues !== "") legacyOptions += "\nPrevious Damage or Issues: " + properties.previousDamageOrIssues;
-                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) legacyOptions += "\nTech notes: " + properties.techNotes;
-                    if (properties.currentIssue && properties.currentIssue !== "") legacyOptions += "\nCurrent issue: " + properties.currentIssue;
+                    if (properties.Model && properties.Model !== "") model["Model: "] = properties.Model;
+                    if (properties.imeiOrSnForPhone && properties.imeiOrSnForPhone !== "") model["IMEI or S/N: "] = properties.imeiOrSnForPhone;
+                    model["Ever been Wet: "] = (properties.EverBeenWet || "Unknown");
+                    if (properties.previousDamageOrIssues && properties.previousDamageOrIssues !== "") model["Previous Damage or Issues: "] = properties.previousDamageOrIssues;
+                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) model["Tech notes: "] = properties.techNotes;
+                    if (properties.currentIssue && properties.currentIssue !== "") model["Current issue: "] = properties.currentIssue;
                     properties.Password = properties.passwordForPhone || "";
                 }
                 if (currentTicketTypeId === 23246) {
-                    if (properties.Model && properties.Model !== "") legacyOptions += "\nModel: " + properties.Model;
-                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) legacyOptions += "\nTech notes: " + properties.techNotes;
+                    if (properties.Model && properties.Model !== "") model["Model: "] = properties.Model;
+                    if (properties.techNotes && properties.techNotes !== "" && !properties.techNotes.includes("{")) model["Tech notes: "] = properties.techNotes;
                 }
                 
                 // Set password and preserve legacy options in Model
                 properties.Password = (password || "").trim() !== "" ? password : "n";
-                properties.Model = legacyOptions;
+                
+                model = {
+                    ...model,
+                    device: DEVICES[deviceIdx] || "Other",
+                    itemsLeft: itemsLeft,
+                    estimatedTime: timeEstimate
+                };
+                properties.Model = "vT" + JSON.stringify(model);
                 
                 const updatedTicket = { 
                     ...previousTicket,
@@ -1772,12 +1834,12 @@ function TicketEditor({ ticketId, customerId, goTo }) {
             } else {
                 // For new tickets, create the full payload
                 // Create techNotes JSON with device, items left, and estimated time
-                const techNotesData = {
+                model = {
                     device: DEVICES[deviceIdx] || "Other",
                     itemsLeft: itemsLeft,
                     estimatedTime: timeEstimate
                 };
-                properties["Tech Notes"] = "v2" + JSON.stringify(techNotesData, null, 2);
+                properties.Model = "vT" + JSON.stringify(model, null, 2);
                 
                 const payload = {
                     customer_id: customerId || previousTicket?.customer_id || previousTicket?.id,
@@ -2067,12 +2129,6 @@ export default function App() {
             alert('Failed to remove user. Please try again.');
         }
     };
-
-    // Debug user groups
-    console.log('User groups received:', userGroups);
-    console.log('User groups type:', typeof userGroups);
-    console.log('User groups length:', userGroups?.length);
-
     // User permission checks
     const canInviteUsers = userGroups.includes('TrueTickets-Cacell-ApplicationAdmin') || 
                           userGroups.includes('TrueTickets-Cacell-Owner') || 

@@ -136,6 +136,36 @@ html, body, #root {
 .md-btn-surface:hover { background: color-mix(in oklab, #2c2c2f 90%, white); }
 .md-btn-primary:hover { filter: brightness(1.05); }
 
+/* Mobile-specific improvements */
+@media (max-width: 640px) {
+  .md-input {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 0.75rem 0.875rem;
+  }
+  
+  .md-textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 0.75rem 0.875rem;
+  }
+  
+  .md-chip {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  
+  /* Ensure touch targets are at least 44px */
+  button, .md-btn-primary, .md-btn-surface, .md-btn-tonal {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Improve text readability on mobile */
+  body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
 
 .md-row-box {
   background: #2c2c2f;
