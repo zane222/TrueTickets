@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState, createContext, useContext } from "react";
+import React, { useEffect, useMemo, useRef, useState, createContext, useContext, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Settings, Plus, Loader2, Printer, UserPlus, ExternalLink, Edit, User, LogOut } from "lucide-react";
+import { Search, Settings, Plus, Loader2, Printer, UserPlus, ExternalLink, Edit, User, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
 import html2pdf from 'html2pdf.js';
 import { Amplify } from 'aws-amplify';
 import { AuthWrapper, useUserGroups } from './components/Auth';
@@ -109,6 +109,85 @@ const convertStatusToOriginal = (displayStatus) => {
  * Utility helpers
  *************************/
 function cx(...xs) { return xs.filter(Boolean).join(" "); }
+
+// Custom hook for change detection polling
+function useChangeDetection(api, endpoint, intervalMs = 30000) {
+    const [hasChanged, setHasChanged] = useState(false);
+    const [originalData, setOriginalData] = useState(null);
+    const [isPolling, setIsPolling] = useState(false);
+    const intervalRef = useRef(null);
+    const originalDataRef = useRef(null);
+
+    const startPolling = useCallback((initialData) => {
+        setOriginalData(initialData);
+        originalDataRef.current = initialData; // Store in ref for stable reference
+        setIsPolling(true);
+        setHasChanged(false);
+        
+        intervalRef.current = setInterval(async () => {
+            try {
+                const currentData = await api.get(endpoint);
+                const data = currentData.ticket || currentData.customer || currentData;
+                
+                // Compare with original data using the ref
+                const originalStr = JSON.stringify(originalDataRef.current);
+                const currentStr = JSON.stringify(data);
+                
+                console.log('Change detection:', {
+                    endpoint,
+                    originalLength: originalStr?.length,
+                    currentLength: currentStr?.length,
+                    isEqual: originalStr === currentStr
+                });
+                
+                if (originalDataRef.current && originalStr !== currentStr) {
+                    console.log('Change detected!', { endpoint });
+                    setHasChanged(true);
+                    setIsPolling(false);
+                    if (intervalRef.current) {
+                        clearInterval(intervalRef.current);
+                        intervalRef.current = null;
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking for changes:', error);
+            }
+        }, intervalMs);
+    }, [api, endpoint, intervalMs]);
+
+    const stopPolling = useCallback(() => {
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        setIsPolling(false);
+    }, []);
+
+    const resetPolling = useCallback((newData) => {
+        stopPolling();
+        setOriginalData(newData);
+        originalDataRef.current = newData; // Update the ref as well
+        setHasChanged(false);
+    }, [stopPolling]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+        };
+    }, []);
+
+    return {
+        hasChanged,
+        isPolling,
+        startPolling,
+        stopPolling,
+        resetPolling
+    };
+}
+
 function fmtDate(dateString) {
     try {
         return new Date(dateString).toLocaleString(undefined, {
@@ -363,26 +442,26 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, onSettings, showUserMenu
                     <button
                         onClick={onSearchClick}
                         title="Search"
-                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full touch-manipulation"
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
                     >
-                        <Search className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+                        <Search className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
                     </button>
                     <button
                         onClick={onNewCustomer}
                         title="New Customer"
-                        className="md-btn-primary elev-2 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full touch-manipulation"
+                        className="md-btn-primary elev-2 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
                     >
-                        <UserPlus className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+                        <UserPlus className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
                     </button>
                     
                     {/* User menu dropdown */}
                     <div className="relative">
                         <motion.button
                             onClick={() => setShowUserMenu(!showUserMenu)}
-                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-full touch-manipulation"
+                            className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
                             whileTap={{ scale: 0.95 }}
                         >
-                            <Settings className="w-5 h-5 sm:w-5.5 sm:h-5.5" />
+                            <Settings className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
                         </motion.button>
 
                         {showUserMenu && (
@@ -659,15 +738,54 @@ function SearchModal({ open, onClose, goTo }) {
  *************************/
 function TicketListView({ goTo }) {
     const api = useApi();
-    const [statusHidden, setStatusHidden] = useState(() => new Set(["Resolved"]));
-    const [selectedDevices, setSelectedDevices] = useState(() => new Set(Array.from({ length: DEVICES.length }, (_, i) => i))); // default: all selected
+    
+    // Load filter states from localStorage with defaults
+    const [statusHidden, setStatusHidden] = useState(() => {
+        const saved = localStorage.getItem('ticketStatusHidden');
+        return saved ? new Set(JSON.parse(saved)) : new Set(["Resolved"]);
+    });
+    const [selectedDevices, setSelectedDevices] = useState(() => {
+        const saved = localStorage.getItem('ticketSelectedDevices');
+        return saved ? new Set(JSON.parse(saved)) : new Set(Array.from({ length: DEVICES.length }, (_, i) => i));
+    });
+    const [statusFilterCollapsed, setStatusFilterCollapsed] = useState(() => {
+        const saved = localStorage.getItem('ticketStatusFilterCollapsed');
+        return saved ? JSON.parse(saved) : true; // default: collapsed
+    });
+    const [deviceFilterCollapsed, setDeviceFilterCollapsed] = useState(() => {
+        const saved = localStorage.getItem('ticketDeviceFilterCollapsed');
+        return saved ? JSON.parse(saved) : true; // default: collapsed
+    });
+    
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const listRef = useRef(null);
     const [showSearch, setShowSearch] = useState(false);
 
-    const toggleStatus = (status) => { const newStatusHidden = new Set(statusHidden); newStatusHidden.has(status) ? newStatusHidden.delete(status) : newStatusHidden.add(status); setStatusHidden(newStatusHidden); };
+    // Save state changes to localStorage
+    useEffect(() => {
+        localStorage.setItem('ticketStatusHidden', JSON.stringify([...statusHidden]));
+    }, [statusHidden]);
+
+    useEffect(() => {
+        localStorage.setItem('ticketSelectedDevices', JSON.stringify([...selectedDevices]));
+    }, [selectedDevices]);
+
+    useEffect(() => {
+        localStorage.setItem('ticketStatusFilterCollapsed', JSON.stringify(statusFilterCollapsed));
+    }, [statusFilterCollapsed]);
+
+    useEffect(() => {
+        localStorage.setItem('ticketDeviceFilterCollapsed', JSON.stringify(deviceFilterCollapsed));
+    }, [deviceFilterCollapsed]);
+
+    const toggleStatus = (status) => { 
+        const newStatusHidden = new Set(statusHidden); 
+        newStatusHidden.has(status) ? newStatusHidden.delete(status) : newStatusHidden.add(status); 
+        setStatusHidden(newStatusHidden);
+        localStorage.setItem('ticketStatusHidden', JSON.stringify([...newStatusHidden]));
+    };
 
     async function fetchTickets(reset = false) {
         setLoading(true);
@@ -701,41 +819,88 @@ function TicketListView({ goTo }) {
     return (
         <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-6">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4">
-                <div className="text-sm font-medium" style={{color:'var(--md-sys-color-on-surface)'}}>Status filter:</div>
-                <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                    {STATUSES.map((status, index) => (
-                        <button
-                            key={status}
-                            onClick={() => toggleStatus(status)}
-                            className={cx("md-chip text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1.5",
-                                statusHidden.has(status) ? "" : "md-chip--on")}
-                        >
-                            {status}
-                        </button>
-                    ))}
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setStatusFilterCollapsed(!statusFilterCollapsed)}
+                        className="flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
+                        style={{color:'var(--md-sys-color-on-surface)'}}
+                    >
+                        <span>Status filter:</span>
+                        {statusFilterCollapsed ? (
+                            <ChevronRight className="w-4 h-4" />
+                        ) : (
+                            <ChevronLeft className="w-4 h-4" />
+                        )}
+                    </button>
+                    <AnimatePresence>
+                        {!statusFilterCollapsed && (
+                            <motion.div
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                transition={{ duration: 0.2, ease: "easeInOut" }}
+                                className="flex flex-wrap gap-1.5 sm:gap-2"
+                            >
+                                {STATUSES.map((status, index) => (
+                                    <button
+                                        key={status}
+                                        onClick={() => toggleStatus(status)}
+                                        className={cx("md-chip text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1.5",
+                                            statusHidden.has(status) ? "" : "md-chip--on")}
+                                    >
+                                        {status}
+                                    </button>
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-6">
-                <div className="text-sm font-medium" style={{color:'var(--md-sys-color-on-surface)'}}>Device filter:</div>
-                <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                    {DEVICES.map((device, index) => {
-                        const isSelected = selectedDevices.has(index);
-                        return (
-                            <button
-                                key={`${device || "Other"}-${index}`}
-                                onClick={() => {
-                                    setSelectedDevices(previous => {
-                                        const next = new Set(previous);
-                                        if (next.has(index)) next.delete(index); else next.add(index);
-                                        return next;
-                                    });
-                                }}
-                                className={cx("md-chip text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1.5", isSelected ? "md-chip--on" : "")}
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setDeviceFilterCollapsed(!deviceFilterCollapsed)}
+                        className="flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity"
+                        style={{color:'var(--md-sys-color-on-surface)'}}
+                    >
+                        <span>Device filter:</span>
+                        {deviceFilterCollapsed ? (
+                            <ChevronRight className="w-4 h-4" />
+                        ) : (
+                            <ChevronLeft className="w-4 h-4" />
+                        )}
+                    </button>
+                    <AnimatePresence>
+                        {!deviceFilterCollapsed && (
+                            <motion.div
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                transition={{ duration: 0.2, ease: "easeInOut" }}
+                                className="flex flex-wrap gap-1.5 sm:gap-2"
                             >
-                                {device || "Other"}
-                            </button>
-                        );
-                    })}
+                                {DEVICES.map((device, index) => {
+                                    const isSelected = selectedDevices.has(index);
+                                    return (
+                                        <button
+                                            key={`${device || "Other"}-${index}`}
+                                            onClick={() => {
+                                                setSelectedDevices(previous => {
+                                                    const next = new Set(previous);
+                                                    if (next.has(index)) next.delete(index); else next.add(index);
+                                                    localStorage.setItem('ticketSelectedDevices', JSON.stringify([...next]));
+                                                    return next;
+                                                });
+                                            }}
+                                            className={cx("md-chip text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1.5", isSelected ? "md-chip--on" : "")}
+                                        >
+                                            {device || "Other"}
+                                        </button>
+                                    );
+                                })}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
 
@@ -837,6 +1002,9 @@ function CustomerView({ id, goTo }) {
     const [tLoading, setTLoading] = useState(false);
     const [tHasMore, setTHasMore] = useState(true);
     const [allPhones, setAllPhones] = useState([]);
+    
+    // Change detection
+    const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, `/customers/${id}`);
     const passwords = useMemo(() => {
         try {
             const set = new Set();
@@ -851,7 +1019,11 @@ function CustomerView({ id, goTo }) {
         (async () => { 
             try { 
                 const data = await api.get(`/customers/${id}`); 
-                setCustomer(data.customer || data); 
+                const customerData = data.customer || data;
+                setCustomer(customerData);
+                
+                // Start change detection polling
+                startPolling(customerData); 
                 
                 // Load all phone numbers
                 try {
@@ -876,6 +1048,24 @@ function CustomerView({ id, goTo }) {
             } 
         })(); 
     }, [id]);
+
+    // Show alert when changes are detected
+    useEffect(() => {
+        if (hasChanged) {
+            alert("The customer has just been edited, reload to see the changes.");
+            // Refresh the customer data
+            (async () => {
+                try {
+                    const data = await api.get(`/customers/${id}`);
+                    const customerData = data.customer || data;
+                    setCustomer(customerData);
+                    resetPolling(customerData);
+                } catch (error) {
+                    console.error(error);
+                }
+            })();
+        }
+    }, [hasChanged]);
     useEffect(() => { setTickets([]); setTPage(1); setTHasMore(true); }, [id]);
     async function loadMoreTickets() {
         if (!id || tLoading || !tHasMore) return;
@@ -1059,6 +1249,9 @@ function NewCustomer({ goTo, customerId }) {
     const [applying, setApplying] = useState(false);
     const [storedCustomer, setStoredCustomer] = useState(null);
     
+    // Change detection (only when editing existing customer)
+    const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, customerId ? `/customers/${customerId}` : null);
+    
     // Keybinds from Unity NewCustomerManager
     useHotkeys({
         "h": () => goTo("/"),
@@ -1098,6 +1291,9 @@ function NewCustomer({ goTo, customerId }) {
                 const data = await api.get(`/customers/${customerId}`);
                 const customer = data.customer || data;
                 setStoredCustomer(customer); // Store the customer data
+                
+                // Start change detection polling
+                startPolling(customer);
                 
                 setForm({
                     first_name: customer.firstname || customer.first_name || "",
@@ -1139,6 +1335,24 @@ function NewCustomer({ goTo, customerId }) {
             } catch (e) { console.error(e); }
         })();
     }, [customerId]);
+
+    // Show alert when changes are detected
+    useEffect(() => {
+        if (hasChanged && customerId) {
+            alert("The customer has just been edited by someone else, reload to see the changes. Any changes saved may overwrite the changes just now made by someone else");
+            // Refresh the customer data
+            (async () => {
+                try {
+                    const data = await api.get(`/customers/${customerId}`);
+                    const customer = data.customer || data;
+                    setStoredCustomer(customer);
+                    resetPolling(customer);
+                } catch (error) {
+                    console.error(error);
+                }
+            })();
+        }
+    }, [hasChanged, customerId]);
     const [saving, setSaving] = useState(false);
 
     // Helpers for phone syncing and reordering
@@ -1393,6 +1607,9 @@ function TicketView({ id, goTo }) {
     const [refreshKey, setRefreshKey] = useState(0);
     const [updatingStatus, setUpdatingStatus] = useState(null); // Track which status is being updated
     
+    // Change detection
+    const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, `/tickets/${id}`);
+    
     useHotkeys({
         "h": () => goTo("/"),
         "s": () => {
@@ -1418,13 +1635,26 @@ function TicketView({ id, goTo }) {
         setLoading(true);
         try {
             const data = await api.get(`/tickets/${id}`);
-            setTicket(data.ticket || data);
+            const ticketData = data.ticket || data;
+            setTicket(ticketData);
+            
+            // Start change detection polling
+            startPolling(ticketData);
         } catch (error) {
             console.error(error);
         } finally {
             setLoading(false);
         }
     };
+
+    // Show alert when changes are detected
+    useEffect(() => {
+        if (hasChanged) {
+            alert("The ticket has just been edited, reload to see the changes. Any changes to the status or comments made may overwrite the changes just now made by someone else");
+            // Refresh the ticket data
+            fetchTicket();
+        }
+    }, [hasChanged]);
 
     const updateTicketStatus = async (status) => {
         if (!ticket || updatingStatus) return; // Prevent multiple updates
@@ -1695,6 +1925,9 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     const [saving, setSaving] = useState(false);
     const [existingProperties, setExistingProperties] = useState({});
     
+    // Change detection
+    const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, `/tickets/${ticketId}`);
+    
     // Load existing ticket data when editing
     useEffect(() => {
         if (!ticketId) {
@@ -1707,6 +1940,9 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                 const data = await api.get(`/tickets/${ticketId}`);
                 const ticket = data.ticket || data;
                 setPreviousTicket(ticket);
+                
+                // Start change detection polling
+                startPolling(ticket);
                 setSubject(ticket.subject || "");
                 
                 // Load existing properties to preserve them
@@ -1750,6 +1986,24 @@ function TicketEditor({ ticketId, customerId, goTo }) {
             }
         })();
     }, [ticketId, api]);
+
+    // Show alert when changes are detected
+    useEffect(() => {
+        if (hasChanged) {
+            alert("The ticket has just been edited by someone else, reload to see the changes. If you save your changes that may overwrite the changes the other person just now made to the ticket");
+            // Refresh the ticket data
+            (async () => {
+                try {
+                    const data = await api.get(`/tickets/${ticketId}`);
+                    const ticket = data.ticket || data;
+                    setPreviousTicket(ticket);
+                    resetPolling(ticket);
+                } catch (error) {
+                    console.error(error);
+                }
+            })();
+        }
+    }, [hasChanged]);
 
     useHotkeys({
         "h": () => goTo("/"),
