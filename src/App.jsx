@@ -567,6 +567,7 @@ function SearchModal({ open, onClose, goTo }) {
     const [loading, setLoading] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
     const [searchType, setSearchType] = useState("tickets"); // "tickets" or "customers"
+    const [latestTicketNumber, setLatestTicketNumber] = useState(null);
     
     // Reset search state when modal closes
     useEffect(() => {
@@ -579,10 +580,75 @@ function SearchModal({ open, onClose, goTo }) {
         }
     }, [open]);
 
+    // Get latest ticket number when modal opens
+    useEffect(() => {
+        if (open && !latestTicketNumber) {
+            const fetchLatestTicketNumber = async () => {
+                try {
+                    const data = await api.get('/tickets?page=1');
+                    const tickets = data.tickets || data || [];
+                    if (tickets.length > 0) {
+                        const highestNumber = Math.max(...tickets.map(ticket => parseInt(ticket.number || ticket.id) || 0));
+                        setLatestTicketNumber(highestNumber);
+                    }
+                } catch (error) {
+                    console.error('Error fetching latest ticket number:', error);
+                }
+            };
+            fetchLatestTicketNumber();
+        }
+    }, [open, latestTicketNumber, api]);
+
     // Enhanced phone number parsing
     const parsePhoneNumber = (s = "") => (s || "").replace(/\D/g, "");
     const isLikelyPhone = (digits) => digits.length >= 7 && digits.length <= 11;
     const canParse = (str) => !isNaN(parseInt(str)) && str.trim() !== "";
+
+    // Smart ticket number search for exactly 3 digits
+    const searchTicketNumber = async (query) => {
+        if (!latestTicketNumber || query.length !== 3) {
+            // Fallback to simple search if no latest ticket number or not 3 digits
+            const data = await api.get(`/tickets?number=${encodeURIComponent(query)}`);
+            setResults(data.tickets || data || []);
+            return;
+        }
+
+        const latestTicketStr = latestTicketNumber.toString();
+        const responses = [];
+        
+        // Find tickets ending with the 3-digit query
+        // For "035" with latest 36039, we want 35035 and 34035
+        const queryNum = parseInt(query);
+        const latestNum = parseInt(latestTicketStr);
+        
+        // Calculate the base number by replacing the last 3 digits
+        const baseNumber = parseInt(latestTicketStr.slice(0, -3) + query);
+        
+        // If the calculated number is higher than latest, subtract 1000
+        let searchNumber = baseNumber;
+        if (searchNumber > latestNum) {
+            searchNumber -= 1000;
+        }
+        
+        // Search for the last 2 tickets ending with the query
+        for (let i = 0; i < 2; i++) {
+            const number = searchNumber - (i * 1000);
+            
+            if (number < 1) break;
+            
+            try {
+                const data = await api.get(`/tickets?number=${number}`);
+                const tickets = data.tickets || data || [];
+                if (tickets.length > 0) {
+                    responses.push(...tickets);
+                }
+            } catch (error) {
+                console.error(`Error fetching ticket ${number}:`, error);
+            }
+        }
+        
+        setResults(responses);
+    };
     
     // New Customer autofill helpers
     const handleNewCustomer = () => {
@@ -630,7 +696,12 @@ function SearchModal({ open, onClose, goTo }) {
                 const data = await api.get(`/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`);
                 setResults(data.customers || data || []);
             }
-            // Check if it's a ticket number search (numeric and reasonable length)
+            // Check if it's a 3-digit ticket number search
+            else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
+                setSearchType("tickets");
+                await searchTicketNumber(trimmedQuery);
+            }
+            // Check if it's a regular ticket number search (not 3 digits)
             else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
                 setSearchType("tickets");
                 const data = await api.get(`/tickets?number=${encodeURIComponent(trimmedQuery)}`);
@@ -676,6 +747,20 @@ function SearchModal({ open, onClose, goTo }) {
         }
     };
 
+    // Clear results immediately when search changes
+    useEffect(() => {
+        if (search.trim() === "") {
+            setResults([]);
+            setHasSearched(false);
+            setSearchType("tickets");
+        } else {
+            // Clear results immediately when user starts typing
+            setResults([]);
+            setHasSearched(false);
+        }
+    }, [search]);
+
+    // Debounced search with 300ms delay
     useEffect(() => {
         const timeoutId = setTimeout(() => {
             performSearch(search);
@@ -864,7 +949,6 @@ function TicketListView({ goTo }) {
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const listRef = useRef(null);
-    const [showSearch, setShowSearch] = useState(false);
 
     // Save state changes to localStorage
     useEffect(() => {
@@ -915,7 +999,11 @@ function TicketListView({ goTo }) {
 
     useHotkeys({
         "h": () => goTo("/"),
-        "s": () => setShowSearch(true),
+        "s": () => {
+            // Trigger search modal from parent
+            const searchEvent = new CustomEvent('openSearch');
+            window.dispatchEvent(searchEvent);
+        },
         "n": () => goTo("/newcustomer"),
     });
 
@@ -1950,18 +2038,36 @@ function CommentsBox({ ticketId, comments, goTo }) {
     const [text, setText] = useState("");
     const [list, setList] = useState([]);
     const [createLoading, setCreateLoading] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
+    
     useEffect(() => {
         setList(comments);
     }, [comments]);
+
+    // Get current user information
+    useEffect(() => {
+        const getCurrentUserInfo = async () => {
+            try {
+                const user = await getCurrentUser();
+                setCurrentUser(user);
+            } catch (error) {
+                console.error('Error getting current user:', error);
+            }
+        };
+        getCurrentUserInfo();
+    }, []);
 
     async function create() { 
         if (createLoading) return; // Prevent multiple submissions
         setCreateLoading(true);
         try { 
+            // Get the current user's username or email for the tech field
+            const techName = currentUser?.username || currentUser?.signInDetails?.loginId || "True Tickets";
+            
             await api.post(`/tickets/${ticketId}/comment`, { 
                 subject: "Update",
                 body: text,
-                tech: "True Tickets",
+                tech: techName,
                 hidden: true,
                 do_not_email: true
             }); 
