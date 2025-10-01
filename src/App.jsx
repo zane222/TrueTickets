@@ -6,7 +6,7 @@ import { Amplify } from 'aws-amplify';
 import { AuthWrapper, useUserGroups } from './components/Auth';
 import LambdaClient from './api/lambdaClient';
 import awsconfig from './aws-exports';
-import { getCurrentUser, signIn, signOut, confirmSignIn, resetPassword, fetchAuthSession } from 'aws-amplify/auth';
+import { getCurrentUser, signIn, signOut, confirmSignIn, resetPassword, fetchAuthSession, fetchUserAttributes } from 'aws-amplify/auth';
 
 // Configure Amplify
 try {
@@ -264,6 +264,33 @@ function getTicketDeviceInfo(ticket) {
 function formatItemsLeft(itemsLeft) {
     if (!Array.isArray(itemsLeft) || itemsLeft.length === 0) return "";
     return "They left: " + itemsLeft.join(", ").toLowerCase();
+}
+
+function formatCommentWithLinks(text) {
+    if (!text) return '';
+    
+    // URL regex pattern to match http/https URLs
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    
+    // Split text by URLs and create array of text and link elements
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, index) => {
+        if (urlRegex.test(part)) {
+            return (
+                <a
+                    key={index}
+                    href={part}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-600 underline"
+                >
+                    {part}
+                </a>
+            );
+        }
+        return part;
+    });
 }
 
 function useHotkeys(map) {
@@ -2061,8 +2088,29 @@ function CommentsBox({ ticketId, comments, goTo }) {
         if (createLoading) return; // Prevent multiple submissions
         setCreateLoading(true);
         try { 
-            // Get the current user's username or email for the tech field
-            const techName = currentUser?.username || currentUser?.signInDetails?.loginId || "True Tickets";
+            // Get the current user's name from Cognito attributes
+            let techName = "True Tickets";
+            try {
+                // Try to get user attributes directly
+                const userAttributes = await fetchUserAttributes();
+                
+                // Also try ID token
+                const session = await fetchAuthSession();
+                const idTokenPayload = session.tokens?.idToken?.payload;
+                
+                // Try multiple sources for the name
+                techName = userAttributes?.['custom:given_name'] || 
+                          userAttributes?.given_name || 
+                          userAttributes?.name || 
+                          idTokenPayload?.['custom:given_name'] ||
+                          idTokenPayload?.['given_name'] || 
+                          idTokenPayload?.['name'] || 
+                          currentUser?.username || 
+                          "True Tickets";
+            } catch (error) {
+                console.error('Error getting user attributes:', error);
+                techName = currentUser?.username || "True Tickets";
+            }
             
             await api.post(`/tickets/${ticketId}/comment`, { 
                 subject: "Update",
@@ -2111,7 +2159,9 @@ function CommentsBox({ ticketId, comments, goTo }) {
                         </div>
 
                         {/* Body */}
-                        <div className="whitespace-pre-wrap leading-relaxed pt-5 text-base">{comment.body || comment.comment || ''}</div>
+                        <div className="whitespace-pre-wrap leading-relaxed pt-5 text-base">
+                            {formatCommentWithLinks(comment.body || comment.comment || '')}
+                        </div>
                     </div>
                 ))}
             </div>
@@ -2487,6 +2537,7 @@ export default function App() {
     const [showUserMenu, setShowUserMenu] = useState(false);
     const [showInviteUser, setShowInviteUser] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteFirstName, setInviteFirstName] = useState('');
     const [inviteLoading, setInviteLoading] = useState(false);
     const [showUserManagement, setShowUserManagement] = useState(false);
     const [users, setUsers] = useState([]);
@@ -2510,11 +2561,12 @@ export default function App() {
             console.log('Inviting user with LambdaClient:', inviteEmail);
             
             const api = new LambdaClient(import.meta.env.VITE_API_GATEWAY_URL);
-            const result = await api.post('/invite-user', { email: inviteEmail });
+            const result = await api.post('/invite-user', { email: inviteEmail, firstName: inviteFirstName });
             
             console.log('Invite user result:', result);
             alert(`Invitation sent successfully to ${inviteEmail}. The user will receive an email with login instructions.`);
             setInviteEmail('');
+            setInviteFirstName('');
             setShowInviteUser(false);
             
         } catch (error) {
@@ -2600,8 +2652,6 @@ export default function App() {
     const canManageUsers = userGroups.includes('TrueTickets-Cacell-ApplicationAdmin') || 
                           userGroups.includes('TrueTickets-Cacell-Owner');
 
-    console.log('Can invite users:', canInviteUsers);
-    console.log('Can manage users:', canManageUsers);
 
     // User management handlers
     const handleInviteUserClick = () => setShowInviteUser(true);
@@ -2669,6 +2719,20 @@ export default function App() {
                             >
                                 <h3 className="text-lg font-medium mb-4" style={{color:'var(--md-sys-color-primary)'}}>Invite User</h3>
                                 <form onSubmit={handleInviteUser}>
+                                    <div className="mb-4">
+                                        <label htmlFor="inviteFirstName" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                                            First Name
+                                        </label>
+                                        <input
+                                            id="inviteFirstName"
+                                            type="text"
+                                            required
+                                            value={inviteFirstName}
+                                            onChange={(e) => setInviteFirstName(e.target.value)}
+                                            className="md-input"
+                                            placeholder="Enter first name"
+                                        />
+                                    </div>
                                     <div className="mb-4">
                                         <label htmlFor="inviteEmail" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
                                             Email Address

@@ -31,10 +31,6 @@ def lambda_handler(event, context): # main()
             response = handle_update_user_group(event, context)
         elif path == "/remove-user" and method == "POST":
             response = handle_remove_user(event, context)
-        elif path == "/send-otp" and method == "POST":
-            response = handle_send_otp(event, context)
-        elif path == "/verify-otp" and method == "POST":
-            response = handle_verify_otp(event, context)
         elif path.startswith("/api"):
             event["path"] = path[4:] # Remove '/api' prefix and pass the rest to RepairShopr
             response = handle_repairshopr_proxy(event, context)
@@ -65,7 +61,12 @@ def lambda_handler(event, context): # main()
         
     except Exception as e:
         print(f"ERROR: Internal server error (rt): {str(e)}")
-        print(f"Event: {json.dumps(event, default=str)}")
+        # Safely serialize event for logging
+        try:
+            event_str = json.dumps(event, default=str)
+            print(f"Event: {event_str}")
+        except:
+            print(f"Event: {str(event)}")
         return {
             "statusCode": 500,
             "headers": {
@@ -144,6 +145,7 @@ def handle_repairshopr_proxy(event, context):
 def handle_user_invitation(event, context):
     body = json.loads(event.get("body", "{}"))
     email = body.get("email")
+    first_name = body.get("firstName", "")
     
     if not email:
         return {
@@ -165,15 +167,21 @@ def handle_user_invitation(event, context):
         
         temp_password = generate_temp_password() # Generate secure temporary password
         
+        # Prepare user attributes
+        user_attributes = [
+            {'Name': 'email', 'Value': email},
+            {'Name': 'email_verified', 'Value': 'true'}
+        ]
+        
+        # Add first name if provided
+        if first_name:
+            user_attributes.append({'Name': 'custom:given_name', 'Value': first_name})
+        
         response = cognito.admin_create_user( # Create user
             UserPoolId=USER_POOL_ID,
             Username=email,
-            UserAttributes=[
-                {'Name': 'email', 'Value': email},
-                {'Name': 'email_verified', 'Value': 'true'}
-            ],
+            UserAttributes=user_attributes,
             TemporaryPassword=temp_password,
-            MessageAction='SEND',
             DesiredDeliveryMediums=['EMAIL']
         )
         
@@ -183,12 +191,22 @@ def handle_user_invitation(event, context):
             GroupName="TrueTickets-Cacell-Employee"
         )
 
+        # Safely extract user info from response
+        user_info = {}
+        if 'User' in response:
+            user = response['User']
+            user_info = {
+                'username': user.get('Username', ''),
+                'enabled': user.get('Enabled', False),
+                'created': user.get('UserCreateDate', '').isoformat() if user.get('UserCreateDate') else None
+            }
+        
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps({
                 "message": f"Invitation sent successfully to {email}",
-                "user": response.get('User', {})
+                "user": user_info
             })
         }
 
@@ -196,7 +214,7 @@ def handle_user_invitation(event, context):
         return {
             "statusCode": 409,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({f"Could not invite user: {group_error}"})
+            "body": json.dumps({"error": f"Could not invite user: {str(group_error)}"})
         }
 
 def get_user_groups_from_event(event):
@@ -208,10 +226,19 @@ def get_user_groups_from_event(event):
         
         # Extract groups from Cognito claims
         groups = claims.get("cognito:groups", [])
+        
+        # Handle different types of groups data
         if isinstance(groups, str):
             groups = groups.split(",")
         elif isinstance(groups, set):
             groups = list(groups)
+        elif isinstance(groups, (list, tuple)):
+            groups = list(groups)
+        else:
+            groups = []
+        
+        # Ensure all group names are strings
+        groups = [str(group).strip() for group in groups if group]
         
         return groups
     except Exception as e:
@@ -430,6 +457,6 @@ def can_manage_users(user_groups):
 def generate_temp_password():
     """Generate a secure temporary password that meets Cognito requirements"""
     # Generate 8 random characters
-    password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+    password = ''.join(secrets.choice(string.digits) for _ in range(6))
     # Add required special characters and ensure complexity
     return password + 'A1!'

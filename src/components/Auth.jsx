@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Amplify } from 'aws-amplify';
-import { getCurrentUser, signIn, signOut, resetPassword } from 'aws-amplify/auth';
+import { getCurrentUser, signIn, signOut, resetPassword, confirmSignIn } from 'aws-amplify/auth';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { motion } from 'framer-motion';
 import { UserPlus, LogOut, Settings, Mail, Key } from 'lucide-react';
@@ -31,6 +31,8 @@ export function LoginForm({ onLoginSuccess }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [showNewPasswordForm, setShowNewPasswordForm] = useState(false);
+  const [challengeSession, setChallengeSession] = useState(null);
 
   // Clear reset code when form is first shown
   useEffect(() => {
@@ -48,6 +50,8 @@ export function LoginForm({ onLoginSuccess }) {
     setResetCode('');
     setNewPassword('');
     setConfirmPassword('');
+    setShowNewPasswordForm(false);
+    setChallengeSession(null);
   };
 
   const setMessageWithType = (messageText, type = 'error') => {
@@ -64,11 +68,50 @@ export function LoginForm({ onLoginSuccess }) {
 
     try {
       const user = await signIn({ username: email, password: password });
-      onLoginSuccess(user);
+      
+      // Check if user needs to change password
+      if (user.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
+        setChallengeSession(user);
+        setShowNewPasswordForm(true);
+        setMessage('Please set a new password to continue');
+        setMessageType('info');
+      } else {
+        onLoginSuccess(user);
+      }
     } catch (err) {
       console.error('Login error:', err);
       setError(err.message || 'Login failed');
       setMessage('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNewPasswordSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters long');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const user = await confirmSignIn({
+        challengeResponse: newPassword
+      });
+      onLoginSuccess(user);
+    } catch (err) {
+      console.error('Password change error:', err);
+      setError(err.message || 'Failed to set new password');
     } finally {
       setLoading(false);
     }
@@ -154,7 +197,7 @@ export function LoginForm({ onLoginSuccess }) {
           </p>
         </div>
 
-        {!showForgotPassword ? (
+        {!showForgotPassword && !showNewPasswordForm ? (
           <div className="md-card p-4 sm:p-8">
             <form className="space-y-4 sm:space-y-6" onSubmit={handlePasswordLogin}>
               <div>
@@ -247,6 +290,92 @@ export function LoginForm({ onLoginSuccess }) {
                     </div>
                   ) : (
                     'Sign in'
+                  )}
+                </motion.button>
+              </div>
+            </form>
+          </div>
+        ) : showNewPasswordForm ? (
+          <div className="md-card p-4 sm:p-8">
+            <form className="space-y-4 sm:space-y-6" onSubmit={handleNewPasswordSubmit}>
+              <div>
+                <label htmlFor="newPassword" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                  New Password
+                </label>
+                <input
+                  id="newPassword"
+                  name="newPassword"
+                  type="password"
+                  required
+                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  placeholder="Enter your new password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                  Confirm New Password
+                </label>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  required
+                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  placeholder="Confirm your new password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-md p-4"
+                  style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
+                >
+                  <div className="text-sm">{error}</div>
+                </motion.div>
+              )}
+
+              {message && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-md p-4"
+                  style={{
+                    backgroundColor: messageType === 'success' 
+                      ? 'var(--md-sys-color-primary-container)' 
+                      : messageType === 'info'
+                      ? 'var(--md-sys-color-secondary-container)'
+                      : 'var(--md-sys-color-error)',
+                    color: messageType === 'success' 
+                      ? 'var(--md-sys-color-on-primary-container)' 
+                      : messageType === 'info'
+                      ? 'var(--md-sys-color-on-secondary-container)'
+                      : 'var(--md-sys-color-on-error)'
+                  }}
+                >
+                  <div className="text-sm">{message}</div>
+                </motion.div>
+              )}
+
+              <div>
+                <motion.button
+                  type="submit"
+                  disabled={loading}
+                  className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {loading ? (
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Setting password...
+                    </div>
+                  ) : (
+                    'Set New Password'
                   )}
                 </motion.button>
               </div>
@@ -483,9 +612,10 @@ export function AuthWrapper({ children }) {
       setUser(currentUser);
       
       // Get user groups for permission checking
+      const session = await fetchAuthSession();
+      const idTokenPayload = session.tokens?.idToken?.payload;
       const groups = currentUser.signInDetails?.loginId ? 
-        (await fetchAuthSession()).tokens.idToken?.payload?.['cognito:groups'] || [] : [];
-      console.log('AuthWrapper - User groups from token:', groups);
+        idTokenPayload?.['cognito:groups'] || [] : [];
       setUserGroups(groups);
     } catch (error) {
       console.log('No authenticated user:', error);
@@ -498,8 +628,10 @@ export function AuthWrapper({ children }) {
   const handleLoginSuccess = async (user) => {
     setUser(user);
     // Get user groups after login
+    const session = await fetchAuthSession();
+    const idTokenPayload = session.tokens?.idToken?.payload;
     const groups = user.signInDetails?.loginId ? 
-      (await fetchAuthSession()).tokens.idToken?.payload?.['cognito:groups'] || [] : [];
+      idTokenPayload?.['cognito:groups'] || [] : [];
     setUserGroups(groups);
   };
 

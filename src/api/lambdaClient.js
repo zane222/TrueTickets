@@ -28,8 +28,6 @@ class LambdaClient {
       '/users', 
       '/update-user-group',
       '/remove-user',
-      '/send-otp',
-      '/verify-otp'
     ];
     
     // Add /api prefix only for RepairShopr API calls, not for user management
