@@ -226,6 +226,10 @@ function TicketView({ id, goTo }) {
                                         }`}
                                         style={active ? { borderRadius: '12px' } : {}}
                                         whileTap={{ scale: 0.95 }}
+                                        whileHover={!active && !isUpdating ? {
+                                            backgroundColor: active ? "var(--md-sys-color-primary)" : "color-mix(in oklab, #2c2c2f 90%, white)",
+                                            filter: active ? "brightness(1.05)" : "none"
+                                        } : {}}
                                         animate={isUpdating ? { 
                                             backgroundColor: active ? "var(--md-sys-color-primary)" : "var(--md-sys-color-primary-container)",
                                             color: active ? "var(--md-sys-color-on-primary)" : "var(--md-sys-color-on-primary-container)"

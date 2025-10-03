@@ -6,6 +6,7 @@ import { useApi } from '../hooks/useApi';
 import { useAlertMethods } from './AlertSystem';
 import { useChangeDetection } from '../hooks/useChangeDetection';
 import { useHotkeys } from '../hooks/useHotkeys';
+import { LoadingSpinnerWithText } from './LoadingSpinner';
 
 function NewCustomer({ goTo, customerId }) {
     const api = useApi();
@@ -15,6 +16,7 @@ function NewCustomer({ goTo, customerId }) {
     const [primaryPhoneIndex, setPrimaryPhoneIndex] = useState(0); // Track which phone is primary
     const [applying, setApplying] = useState(false);
     const [storedCustomer, setStoredCustomer] = useState(null);
+    const [loading, setLoading] = useState(!!customerId); // Show loading when editing existing customer
     
     // Change detection (only when editing existing customer)
     const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, customerId ? `/customers/${customerId}` : null);
@@ -100,7 +102,11 @@ function NewCustomer({ goTo, customerId }) {
                     setPrimaryPhoneIndex(0);
                     setForm(previous => ({ ...previous, phone: formattedPhone }));
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) { 
+                console.error(e); 
+            } finally {
+                setLoading(false);
+            }
         })();
     }, [customerId]);
 
@@ -260,6 +266,8 @@ function NewCustomer({ goTo, customerId }) {
             setSaving(false); 
         }
     }
+    
+    if (loading) return <LoadingSpinnerWithText text="Loading customer data..." className="mx-auto max-w-2xl px-3 sm:px-6 py-3 sm:py-6 text-center" />;
     
     return (
         <div className="mx-auto max-w-2xl px-3 sm:px-6 py-3 sm:py-6">

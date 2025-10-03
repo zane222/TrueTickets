@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 /**
  * TicketCard component template for creating printable ticket to stick to the device
  * Must be kept the same to have the same look and feel as the previously used website's ticket card
  */
+// Function to count the number of lines in an element
+function NumberOfLines(element) {
+    if (!element) return 0;
+    const lineHeight = parseFloat(window.getComputedStyle(element).lineHeight);
+    const height = element.offsetHeight;
+    return Math.round(height / lineHeight);
+}
+
 export function TicketCard({
     password = "",
     ticketNumber = "",
@@ -13,6 +21,28 @@ export function TicketCard({
     creationDate = "",
     phoneNumber = ""
 }) {
+    const subjectRef = useRef(null);
+
+    // Effect to adjust font size if subject text exceeds 3 lines
+    useEffect(() => {
+        const subjectElement = subjectRef.current;
+        if (subjectElement) {
+            // Reset font size to default
+            subjectElement.style.fontSize = '10.35pt';
+            
+            // Check if text exceeds 3 lines and reduce font size if needed
+            while (NumberOfLines(subjectElement) > 3) {
+                const updatedFontSize = parseFloat(subjectElement.style.fontSize) - 0.1;
+                console.log("Lines: ", NumberOfLines(subjectElement), "UpdatedFontSize: ", updatedFontSize);
+                subjectElement.style.fontSize = updatedFontSize + "pt";
+                
+                // Prevent infinite loop by setting a minimum font size
+                if (updatedFontSize < 6) {
+                    break;
+                }
+            }
+        }
+    }, [subject]); // Re-run when subject changes
     return (
         <div
             id="result"
@@ -49,7 +79,7 @@ export function TicketCard({
             </div>
 
             {/* Subject */}
-            <p style={{ position: "absolute", width: "294px" }}>
+            <p ref={subjectRef} style={{ position: "absolute", width: "294px" }}>
                 {subject}
             </p>
 

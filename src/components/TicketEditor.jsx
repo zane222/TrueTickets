@@ -19,7 +19,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     const [loading, setLoading] = useState(true);
     const [subject, setSubject] = useState("");
     const [password, setPassword] = useState("");
-    const [deviceIdx, setDeviceIdx] = useState(0);
+    const [deviceIdx, setDeviceIdx] = useState(null);
     const [timeEstimate, setTimeEstimate] = useState("");
     const [itemsLeft, setItemsLeft] = useState([]);
     const [saving, setSaving] = useState(false);

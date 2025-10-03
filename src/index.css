@@ -169,6 +169,8 @@ button, [role="button"] {
 }
 .md-btn-surface:hover { background: color-mix(in oklab, #2c2c2f 90%, white); }
 
+/* Removed conflicting CSS hover effects - using Framer Motion instead */
+
 /* Mobile-specific improvements */
 @media (max-width: 640px) {
   .md-input {

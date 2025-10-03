@@ -12,8 +12,12 @@ export function LoadingSpinner({ size = 'md', className = '' }) {
   };
 
   return (
-    <div className={`animate-spin rounded-full border-b-2 ${sizeClasses[size]} ${className}`} 
-         style={{ borderColor: 'var(--md-sys-color-primary)' }}>
+    <div className={`relative ${sizeClasses[size]} ${className}`}>
+      <div className="absolute inset-0 rounded-full border-4" 
+           style={{ borderColor: 'var(--md-sys-color-surface-variant)' }}></div>
+      <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-4 animate-spin" 
+           style={{ borderTopColor: 'var(--md-sys-color-primary)' }}>
+      </div>
     </div>
   );
 }
@@ -23,7 +27,7 @@ export function LoadingSpinner({ size = 'md', className = '' }) {
  */
 export function LoadingSpinnerWithText({ text = 'Loading...', size = 'md', className = '' }) {
   return (
-    <div className={`flex items-center justify-center ${className}`}>
+    <div className={`flex items-center justify-center mt-18 ${className}`}>
       <LoadingSpinner size={size} className="mr-2" />
       <span className="text-md" style={{ color: 'var(--md-sys-color-on-surface)' }}>
         {text}
