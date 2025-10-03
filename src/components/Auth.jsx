@@ -4,6 +4,8 @@ import { getCurrentUser, signIn, signOut, resetPassword, confirmSignIn } from 'a
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { motion } from 'framer-motion';
 import { UserPlus, LogOut, Settings, Mail, Key } from 'lucide-react';
+import { LoadingSpinner, LoadingSpinnerWithText } from './LoadingSpinner';
+import { InlineMessage, InlineSuccessMessage, InlineWarningMessage, InlineInfoMessage, InlineErrorMessage, ALERT_TYPES } from './AlertSystem';
 
 // Create context for user groups
 const UserGroupsContext = createContext();
@@ -189,10 +191,10 @@ export function LoginForm({ onLoginSuccess }) {
     <div className="min-h-screen flex items-center justify-center material-surface py-6 sm:py-12 px-3 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-6 sm:space-y-8">
         <div>
-          <h2 className="mt-4 sm:mt-6 text-center text-2xl sm:text-3xl font-extrabold" style={{color:'var(--md-sys-color-primary)'}}>
+          <h2 className="mt-4 sm:mt-6 text-center text-2xl sm:text-3xl font-extrabold text-primary">
             Sign in to True Tickets
           </h2>
-          <p className="mt-2 text-center text-sm" style={{color:'var(--md-sys-color-outline)'}}>
+          <p className="mt-2 text-center text-md text-outline">
             Enter your credentials to sign in
           </p>
         </div>
@@ -201,7 +203,7 @@ export function LoginForm({ onLoginSuccess }) {
           <div className="md-card p-4 sm:p-8">
             <form className="space-y-4 sm:space-y-6" onSubmit={handlePasswordLogin}>
               <div>
-                <label htmlFor="email" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                <label htmlFor="email" className="block text-md font-medium mb-2 text-on-surface">
                   Email Address
                 </label>
                 <input
@@ -209,14 +211,14 @@ export function LoginForm({ onLoginSuccess }) {
                   name="email"
                   type="email"
                   required
-                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  className="md-input text-md sm:text-base py-3 sm:py-2"
                   placeholder="Enter your email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
               <div>
-                <label htmlFor="password" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                <label htmlFor="password" className="block text-md font-medium mb-2 text-on-surface">
                   Password
                 </label>
                 <input
@@ -224,52 +226,21 @@ export function LoginForm({ onLoginSuccess }) {
                   name="password"
                   type="password"
                   required
-                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  className="md-input text-md sm:text-base py-3 sm:py-2"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
 
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-md p-4"
-                  style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
-                >
-                  <div className="text-sm">{error}</div>
-                </motion.div>
-              )}
-
-              {message && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-md p-4"
-                  style={{
-                    backgroundColor: messageType === 'success' 
-                      ? 'var(--md-sys-color-primary-container)' 
-                      : messageType === 'info'
-                      ? 'var(--md-sys-color-secondary-container)'
-                      : 'var(--md-sys-color-error)',
-                    color: messageType === 'success' 
-                      ? 'var(--md-sys-color-on-primary-container)' 
-                      : messageType === 'info'
-                      ? 'var(--md-sys-color-on-secondary-container)'
-                      : 'var(--md-sys-color-on-error)'
-                  }}
-                >
-                  <div className="text-sm">{message}</div>
-                </motion.div>
-              )}
+              {error && <InlineErrorMessage message={error} />}
+              {message && <InlineMessage message={message} type={messageType} />}
 
               <div className="flex items-center justify-between">
                 <button
                   type="button"
                   onClick={() => setShowForgotPassword(true)}
-                  className="text-sm flex items-center gap-1"
-                  style={{color:'var(--md-sys-color-primary)'}}
+                  className="text-md flex items-center gap-1 text-primary"
                 >
                   <Mail className="w-4 h-4" />
                   Forgot password?
@@ -280,7 +251,7 @@ export function LoginForm({ onLoginSuccess }) {
                 <motion.button
                   type="submit"
                   disabled={loading}
-                  className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
+                  className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-md sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   {loading ? (
@@ -299,7 +270,7 @@ export function LoginForm({ onLoginSuccess }) {
           <div className="md-card p-4 sm:p-8">
             <form className="space-y-4 sm:space-y-6" onSubmit={handleNewPasswordSubmit}>
               <div>
-                <label htmlFor="newPassword" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                <label htmlFor="newPassword" className="block text-md font-medium mb-2 text-on-surface">
                   New Password
                 </label>
                 <input
@@ -307,14 +278,14 @@ export function LoginForm({ onLoginSuccess }) {
                   name="newPassword"
                   type="password"
                   required
-                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  className="md-input text-md sm:text-base py-3 sm:py-2"
                   placeholder="Enter your new password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
               </div>
               <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                <label htmlFor="confirmPassword" className="block text-md font-medium mb-2 text-on-surface">
                   Confirm New Password
                 </label>
                 <input
@@ -322,51 +293,21 @@ export function LoginForm({ onLoginSuccess }) {
                   name="confirmPassword"
                   type="password"
                   required
-                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  className="md-input text-md sm:text-base py-3 sm:py-2"
                   placeholder="Confirm your new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
 
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-md p-4"
-                  style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
-                >
-                  <div className="text-sm">{error}</div>
-                </motion.div>
-              )}
-
-              {message && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-md p-4"
-                  style={{
-                    backgroundColor: messageType === 'success' 
-                      ? 'var(--md-sys-color-primary-container)' 
-                      : messageType === 'info'
-                      ? 'var(--md-sys-color-secondary-container)'
-                      : 'var(--md-sys-color-error)',
-                    color: messageType === 'success' 
-                      ? 'var(--md-sys-color-on-primary-container)' 
-                      : messageType === 'info'
-                      ? 'var(--md-sys-color-on-secondary-container)'
-                      : 'var(--md-sys-color-on-error)'
-                  }}
-                >
-                  <div className="text-sm">{message}</div>
-                </motion.div>
-              )}
+              {error && <InlineErrorMessage message={error} />}
+              {message && <InlineMessage message={message} type={messageType} />}
 
               <div>
                 <motion.button
                   type="submit"
                   disabled={loading}
-                  className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
+                  className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-md sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   {loading ? (
@@ -385,7 +326,7 @@ export function LoginForm({ onLoginSuccess }) {
           <div className="md-card p-4 sm:p-8">
             <form className="space-y-4 sm:space-y-6" onSubmit={handleForgotPassword}>
               <div>
-                <label htmlFor="forgotPasswordEmail" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                <label htmlFor="forgotPasswordEmail" className="block text-md font-medium mb-2 text-on-surface">
                   Email Address
                 </label>
                 <input
@@ -393,51 +334,21 @@ export function LoginForm({ onLoginSuccess }) {
                   name="forgotPasswordEmail"
                   type="email"
                   required
-                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  className="md-input text-md sm:text-base py-3 sm:py-2"
                   placeholder="Enter your email address"
                   value={forgotPasswordEmail}
                   onChange={(e) => setForgotPasswordEmail(e.target.value)}
                 />
               </div>
 
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-md p-4"
-                  style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
-                >
-                  <div className="text-sm">{error}</div>
-                </motion.div>
-              )}
-
-              {message && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-md p-4"
-                  style={{
-                    backgroundColor: messageType === 'success' 
-                      ? 'var(--md-sys-color-primary-container)' 
-                      : messageType === 'info'
-                      ? 'var(--md-sys-color-secondary-container)'
-                      : 'var(--md-sys-color-error)',
-                    color: messageType === 'success' 
-                      ? 'var(--md-sys-color-on-primary-container)' 
-                      : messageType === 'info'
-                      ? 'var(--md-sys-color-on-secondary-container)'
-                      : 'var(--md-sys-color-on-error)'
-                  }}
-                >
-                  <div className="text-sm">{message}</div>
-                </motion.div>
-              )}
+              {error && <InlineErrorMessage message={error} />}
+              {message && <InlineMessage message={message} type={messageType} />}
 
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:space-x-3">
                 <motion.button
                   type="button"
                   onClick={() => setShowForgotPassword(false)}
-                  className="md-btn-surface flex-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
+                  className="md-btn-surface flex-1 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   Back to Login
@@ -445,7 +356,7 @@ export function LoginForm({ onLoginSuccess }) {
                 <motion.button
                   type="submit"
                   disabled={forgotPasswordLoading}
-                  className="md-btn-primary flex-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
+                  className="md-btn-primary flex-1 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   {forgotPasswordLoading ? (
@@ -466,17 +377,17 @@ export function LoginForm({ onLoginSuccess }) {
         {showResetCodeForm && (
           <div key="reset-code-form" className="md-card p-4 sm:p-8">
             <div className="text-center mb-4 sm:mb-6">
-              <h3 className="text-lg font-semibold" style={{color:'var(--md-sys-color-primary)'}}>
+              <h3 className="text-lg font-semibold text-primary">
                 Enter Reset Code
               </h3>
-              <p className="text-sm mt-2" style={{color:'var(--md-sys-color-outline)'}}>
+              <p className="text-md mt-2 text-outline">
                 We sent a 6-digit code to {forgotPasswordEmail}
               </p>
             </div>
 
             <form className="space-y-4 sm:space-y-6" onSubmit={handleResetPassword}>
               <div>
-                <label htmlFor="resetCode" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                <label htmlFor="resetCode" className="block text-md font-medium mb-2 text-on-surface">
                   Reset Code
                 </label>
                 <input
@@ -484,7 +395,7 @@ export function LoginForm({ onLoginSuccess }) {
                   name="resetCode"
                   type="text"
                   required
-                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  className="md-input text-md sm:text-base py-3 sm:py-2"
                   placeholder="Enter 6-digit code"
                   value={resetCode}
                   onChange={(e) => setResetCode(e.target.value)}
@@ -497,7 +408,7 @@ export function LoginForm({ onLoginSuccess }) {
               </div>
 
               <div>
-                <label htmlFor="newPassword" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                <label htmlFor="newPassword" className="block text-md font-medium mb-2 text-on-surface">
                   New Password
                 </label>
                 <input
@@ -505,7 +416,7 @@ export function LoginForm({ onLoginSuccess }) {
                   name="newPassword"
                   type="password"
                   required
-                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  className="md-input text-md sm:text-base py-3 sm:py-2"
                   placeholder="Enter new password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -513,7 +424,7 @@ export function LoginForm({ onLoginSuccess }) {
               </div>
 
               <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2" style={{color:'var(--md-sys-color-on-surface)'}}>
+                <label htmlFor="confirmPassword" className="block text-md font-medium mb-2 text-on-surface">
                   Confirm New Password
                 </label>
                 <input
@@ -521,45 +432,15 @@ export function LoginForm({ onLoginSuccess }) {
                   name="confirmPassword"
                   type="password"
                   required
-                  className="md-input text-sm sm:text-base py-3 sm:py-2"
+                  className="md-input text-md sm:text-base py-3 sm:py-2"
                   placeholder="Confirm new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
 
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-md p-4"
-                  style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
-                >
-                  <div className="text-sm">{error}</div>
-                </motion.div>
-              )}
-
-              {message && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-md p-4"
-                  style={{
-                    backgroundColor: messageType === 'success' 
-                      ? 'var(--md-sys-color-primary-container)' 
-                      : messageType === 'info'
-                      ? 'var(--md-sys-color-secondary-container)'
-                      : 'var(--md-sys-color-error)',
-                    color: messageType === 'success' 
-                      ? 'var(--md-sys-color-on-primary-container)' 
-                      : messageType === 'info'
-                      ? 'var(--md-sys-color-on-secondary-container)'
-                      : 'var(--md-sys-color-on-error)'
-                  }}
-                >
-                  <div className="text-sm">{message}</div>
-                </motion.div>
-              )}
+              {error && <InlineErrorMessage message={error} />}
+              {message && <InlineMessage message={message} type={messageType} />}
 
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:space-x-3">
                 <motion.button
@@ -568,7 +449,7 @@ export function LoginForm({ onLoginSuccess }) {
                     setShowResetCodeForm(false);
                     setShowForgotPassword(false);
                   }}
-                  className="md-btn-surface flex-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
+                  className="md-btn-surface flex-1 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   Cancel
@@ -576,7 +457,7 @@ export function LoginForm({ onLoginSuccess }) {
                 <motion.button
                   type="submit"
                   disabled={resetPasswordLoading}
-                  className="md-btn-primary flex-1 py-3 sm:py-2 text-sm sm:text-base touch-manipulation"
+                  className="md-btn-primary flex-1 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
                 >
                   {resetPasswordLoading ? (
@@ -606,17 +487,61 @@ export function AuthWrapper({ children }) {
     checkAuthState();
   }, []);
 
+  // Watch for user changes and refresh groups
+  useEffect(() => {
+    if (user) {
+      const refreshUserGroups = async () => {
+        try {
+          // Use cached session instead of forceRefresh to avoid extra Cognito calls
+          const session = await fetchAuthSession();
+          const idTokenPayload = session.tokens?.idToken?.payload;
+          const groups = idTokenPayload?.['cognito:groups'] || [];
+          setUserGroups(groups);
+        } catch (error) {
+          console.error('Error refreshing user groups:', error);
+        }
+      };
+      
+      // Small delay to ensure session is ready
+      const timeoutId = setTimeout(refreshUserGroups, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [user]);
+
   const checkAuthState = async () => {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
       
-      // Get user groups for permission checking
-      const session = await fetchAuthSession();
-      const idTokenPayload = session.tokens?.idToken?.payload;
-      const groups = currentUser.signInDetails?.loginId ? 
-        idTokenPayload?.['cognito:groups'] || [] : [];
-      setUserGroups(groups);
+      // Get user groups for permission checking with retry mechanism
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          // Use cached session to avoid unnecessary Cognito calls
+          const session = await fetchAuthSession();
+          const idTokenPayload = session.tokens?.idToken?.payload;
+          const groups = currentUser.signInDetails?.loginId ? 
+            idTokenPayload?.['cognito:groups'] || [] : [];
+          
+          // If we got groups or this is our last attempt, set them
+          if (groups.length > 0 || attempts === maxAttempts - 1) {
+            setUserGroups(groups);
+            break;
+          }
+          
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 500));
+          attempts++;
+        } catch (error) {
+          console.error('Error fetching session in checkAuthState:', error);
+          attempts++;
+          if (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      }
     } catch (error) {
       console.log('No authenticated user:', error);
       setUser(null);
@@ -627,12 +552,39 @@ export function AuthWrapper({ children }) {
 
   const handleLoginSuccess = async (user) => {
     setUser(user);
-    // Get user groups after login
-    const session = await fetchAuthSession();
-    const idTokenPayload = session.tokens?.idToken?.payload;
-    const groups = user.signInDetails?.loginId ? 
-      idTokenPayload?.['cognito:groups'] || [] : [];
-    setUserGroups(groups);
+    
+    // Force a fresh session fetch to get user groups
+    const fetchUserGroups = async () => {
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          // Use cached session instead of forceRefresh to avoid extra Cognito calls
+          const session = await fetchAuthSession();
+          const idTokenPayload = session.tokens?.idToken?.payload;
+          const groups = idTokenPayload?.['cognito:groups'] || [];
+          
+          if (groups.length > 0) {
+            setUserGroups(groups);
+            return;
+          }
+          
+          // Wait and retry if no groups found
+          await new Promise(resolve => setTimeout(resolve, 500));
+          attempts++;
+        } catch (error) {
+          console.error('Error fetching session:', error);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          attempts++;
+        }
+      }
+      
+      // Set empty groups as fallback
+      setUserGroups([]);
+    };
+    
+    fetchUserGroups();
   };
 
   const handleLogout = async () => {
@@ -649,7 +601,7 @@ export function AuthWrapper({ children }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center material-surface">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2" style={{borderColor:'var(--md-sys-color-primary)'}}></div>
+        <LoadingSpinner size="xl" />
       </div>
     );
   }
@@ -658,8 +610,25 @@ export function AuthWrapper({ children }) {
     return <LoginForm onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const refreshUserGroups = async () => {
+    if (user) {
+      try {
+        // Use cached session instead of forceRefresh to avoid extra Cognito calls
+        const session = await fetchAuthSession();
+        const idTokenPayload = session.tokens?.idToken?.payload;
+        const groups = idTokenPayload?.['cognito:groups'] || [];
+        setUserGroups(groups);
+        return groups;
+      } catch (error) {
+        console.error('Error manually refreshing user groups:', error);
+        return [];
+      }
+    }
+    return [];
+  };
+
   return (
-    <UserGroupsContext.Provider value={{ userGroups, setUserGroups }}>
+    <UserGroupsContext.Provider value={{ userGroups, setUserGroups, refreshUserGroups }}>
       <div className="min-h-screen material-surface">
         {/* Main content */}
         <div className="flex-1">

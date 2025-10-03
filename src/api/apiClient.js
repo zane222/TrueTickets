@@ -1,13 +1,30 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 
-class LambdaClient {
+class ApiClient {
   constructor(baseUrl) {
     this.baseUrl = baseUrl;
+    this.cachedSession = null;
+    this.sessionExpiry = null;
   }
 
   async getAuthHeaders() {
     try {
+      // Check if we have a cached session that's still valid
+      if (this.cachedSession && this.sessionExpiry && Date.now() < this.sessionExpiry) {
+        const token = this.cachedSession.tokens.idToken.toString();
+        return {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        };
+      }
+
+      // Fetch new session and cache it
       const session = await fetchAuthSession();
+      this.cachedSession = session;
+      
+      // Cache for 5 minutes (tokens typically last 1 hour, but we refresh every 5 min to be safe)
+      this.sessionExpiry = Date.now() + (5 * 60 * 1000);
+      
       const token = session.tokens.idToken.toString();
       return {
         'Content-Type': 'application/json',
@@ -45,9 +62,10 @@ class LambdaClient {
 
       if (!response.ok) {
         if (response.status === 401) {
-          // Token might be expired, try to refresh
+          // Token might be expired, clear cache and try to refresh
           try {
-            await fetchAuthSession();
+            this.cachedSession = null;
+            this.sessionExpiry = null;
             const newHeaders = await this.getAuthHeaders();
             const retryResponse = await fetch(url, {
               method,
@@ -91,4 +109,9 @@ class LambdaClient {
   }
 }
 
-export default LambdaClient;
+// Create a default instance
+const apiClient = new ApiClient(import.meta.env.VITE_API_BASE_URL || 'https://your-api-url.com');
+
+// Export both the class and the instance
+export default apiClient;
+export { ApiClient };

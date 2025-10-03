@@ -28,19 +28,8 @@ const awsconfig = {
     }
   },
   
-  API: {
-    REST: {
-      "true-tickets-api": {
-        endpoint: import.meta.env.VITE_API_GATEWAY_URL,
-        region: import.meta.env.VITE_AWS_REGION || 'us-east-2',
-        custom_header: async () => {
-          const { fetchAuthSession } = await import('aws-amplify/auth');
-          const session = await fetchAuthSession();
-          return { Authorization: `Bearer ${session.tokens.idToken.toString()}` }
-        }
-      }
-    }
-  }
+  // API configuration removed - using custom LambdaClient instead
+  // This prevents unnecessary Cognito calls from Amplify's built-in API client
 };
 
 export default awsconfig;
