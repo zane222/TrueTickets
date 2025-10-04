@@ -207,8 +207,29 @@ button, [role="button"] {
   border: 1px solid color-mix(in oklab, var(--md-sys-color-on-surface) 8%, transparent);
   border-radius: 14px;
   box-shadow: 0 1px 0 rgba(0,0,0,.25);
+  overflow-wrap: break-word;
 }
-.md-row-box:hover { background: color-mix(in oklab, #2c2c2f 92%, var(--md-sys-color-on-surface, #e5e8ee)); }
+.md-row-box:hover {
+  background: color-mix(in oklab, #2c2c2f 90%, white);
+}
+
+/* Disable hover effect for comment boxes */
+.space-y-3 .md-row-box:hover {
+  background: #2c2c2f; /* Keep original background, no hover effect */
+}
+
+/* Only break long URLs, not normal words in the comment box */
+.md-row-box a {
+  word-break: break-all;
+  overflow-wrap: break-word;
+  color: #60a5fa; /* Light blue */
+  text-decoration: underline;
+}
+
+.md-row-box a:hover {
+  color: #93c5fd; /* Lighter blue on hover */
+  text-decoration: underline;
+}
 
 /* Utility classes for text colors with fallbacks */
 .text-primary { color: var(--md-sys-color-primary, #1e88ff); }

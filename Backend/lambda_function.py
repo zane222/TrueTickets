@@ -17,12 +17,33 @@ USER_POOL_ID = os.environ.get("USER_POOL_ID")
 
 def lambda_handler(event, context): # main()
     try:
-        method = event["httpMethod"]
+        # Validate that this is an API Gateway event
+        if "httpMethod" not in event:
+            return {
+                "statusCode": 400,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({
+                    "error": "Invalid event format",
+                    "details": "This Lambda function only accepts API Gateway events"
+                })
+            }
+        
+        method = event.get("httpMethod", "UNKNOWN")
         path = event.get("path", "")
         
         # Handle user management requests
         if method == "OPTIONS":
-            response = { "statusCode": 200, "body": "" }
+            return {
+                "statusCode": 200,
+                "headers": {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+                    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+                    "Access-Control-Max-Age": "86400",
+                    "Content-Type": "application/json"
+                },
+                "body": ""
+            }
         if path == "/invite-user" and method == "POST":
             response = handle_user_invitation(event, context)
         elif path == "/users" and method == "GET":
@@ -51,6 +72,9 @@ def lambda_handler(event, context): # main()
                 })
             }
 
+        # Ensure CORS headers are always present
+        if "headers" not in response:
+            response["headers"] = {}
         response["headers"] |= {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
@@ -61,12 +85,6 @@ def lambda_handler(event, context): # main()
         
     except Exception as e:
         print(f"ERROR: Internal server error (rt): {str(e)}")
-        # Safely serialize event for logging
-        try:
-            event_str = json.dumps(event, default=str)
-            print(f"Event: {event_str}")
-        except:
-            print(f"Event: {str(event)}")
         return {
             "statusCode": 500,
             "headers": {
@@ -276,45 +294,45 @@ def handle_list_users(event, context):
         
         users = []
         for user in response.get('Users', []):
-            # Get user groups
-            try:
-                groups_response = cognito.admin_list_groups_for_user(
-                    UserPoolId=USER_POOL_ID,
-                    Username=user['Username']
-                )
-                user_groups_list = [group['GroupName'] for group in groups_response.get('Groups', [])]
-            except:
-                user_groups_list = []
+            # Check user confirmation status
+            user_status = user.get('UserStatus', '')
+            user_groups_list = []
             
-            # Extract email from attributes
+            # Only get groups if user is not in "FORCE_CHANGE_PASSWORD" status
+            if user_status != 'FORCE_CHANGE_PASSWORD':
+                try:
+                    groups_response = cognito.admin_list_groups_for_user(
+                        UserPoolId=USER_POOL_ID,
+                        Username=user['Username']
+                    )
+                    user_groups_list = [group['GroupName'] for group in groups_response.get('Groups', [])]
+                except:
+                    user_groups_list = []
+            
+            # Extract email and given name from attributes
             email = None
+            given_name = None
             for attr in user.get('Attributes', []):
                 if attr['Name'] == 'email':
                     email = attr['Value']
-                    break
+                elif attr['Name'] == 'custom:given_name':
+                    given_name = attr['Value']
             
             users.append({
                 'username': user['Username'],
                 'email': email,
+                'given_name': given_name,
                 'enabled': user['Enabled'],
                 'groups': user_groups_list,
-                'created': user['UserCreateDate'].isoformat() if 'UserCreateDate' in user else None
+                'created': user['UserCreateDate'].isoformat() if 'UserCreateDate' in user else None,
+                'user_status': user_status  # Include status for debugging
             })
         
-        try:
-            return {
-                "statusCode": 200,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"users": users})
-            }
-        except Exception as json_error:
-            print(f"JSON serialization error: {json_error}")
-            print(f"Users data: {users}")
-            return {
-                "statusCode": 500,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": f"JSON serialization failed: {str(json_error)}"})
-            }
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"users": users})
+        }
         
     except Exception as e:
         return {
@@ -433,10 +451,11 @@ def handle_remove_user(event, context):
             Username=username
         )
         
+        response_body = {"message": f"User {username} removed successfully"}
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"message": f"User {username} removed successfully"})
+            "body": json.dumps(response_body)
         }
         
     except Exception as e:

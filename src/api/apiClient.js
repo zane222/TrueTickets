@@ -51,6 +51,11 @@ class ApiClient {
     const fullPath = path.startsWith('/api') || userManagementEndpoints.includes(path) ? path : `/api${path}`;
     const url = `${this.baseUrl}${fullPath}`;
     
+    // Validate that we're using API Gateway, not Lambda function URL
+    if (this.baseUrl.includes('lambda-url')) {
+      throw new Error('Configuration error: Must use API Gateway URL, not Lambda function URL');
+    }
+    
     try {
       const headers = await this.getAuthHeaders();
       
@@ -110,7 +115,7 @@ class ApiClient {
 }
 
 // Create a default instance
-const apiClient = new ApiClient(import.meta.env.VITE_API_BASE_URL || 'https://your-api-url.com');
+const apiClient = new ApiClient(import.meta.env.VITE_API_GATEWAY_URL || 'https://your-api-url.com');
 
 // Export both the class and the instance
 export default apiClient;

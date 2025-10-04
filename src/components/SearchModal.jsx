@@ -82,8 +82,8 @@ function SearchModal({ open, onClose, goTo }) {
             searchNumber -= 1000;
         }
         
-        // Search for the last 2 tickets ending with the query
-        for (let i = 0; i < 2; i++) {
+        // Search for the last 2 tickets and the next 1 (in case) ending with the query
+        for (let i = -1; i < 2; i++) {
             const number = searchNumber - (i * 1000);
             
             if (number < 1) break;
@@ -105,7 +105,11 @@ function SearchModal({ open, onClose, goTo }) {
     // New Customer autofill helpers
     const handleNewCustomer = () => {
         const query = search.trim();
-        if (!query) { goTo("/newcustomer"); return; }
+        if (!query) { 
+            onClose();
+            goTo("/newcustomer"); 
+            return; 
+        }
         const digits = parsePhoneNumber(query);
         let url = "/newcustomer";
         const params = new URLSearchParams();
@@ -294,7 +298,7 @@ function SearchModal({ open, onClose, goTo }) {
                                 Start typing to search {searchType}...
                             </div>
                         )}
-                        {!loading && results.map((item) => (
+                        {!loading && hasSearched && results.map((item) => (
                             <NavigationButton
                                 key={item.id}
                                 onClick={() => { 
@@ -375,30 +379,4 @@ function SearchModal({ open, onClose, goTo }) {
     );
 }
 
-// TicketByNumber component for looking up tickets by number
-function TicketByNumber({ number, goTo }) {
-    const api = useApi();
-    const [id, setId] = useState(null);
-    const [err, setErr] = useState(null);
-    
-    useEffect(() => { 
-        (async () => { 
-            try { 
-                const data = await api.get(`/tickets?number=${encodeURIComponent(number)}`); 
-                const ticket = (data.tickets || [])[0]; 
-                if (ticket) setId(ticket.id); 
-                else setErr("Ticket not found by number"); 
-            } catch (error) { 
-                console.error(error); 
-                setErr("Ticket not found by number"); 
-            } 
-        })(); 
-    }, [number, api]);
-    
-    if (err) return <InlineErrorMessage message={err} className="mx-auto max-w-3xl px-3 py-10 text-center" />;
-    if (!id) return <LoadingSpinnerWithText text="Loading..." className="mx-auto max-w-3xl px-3 py-10 text-center" />;
-    return <TicketView id={id} goTo={goTo} />;
-}
-
 export default SearchModal;
-export { TicketByNumber };

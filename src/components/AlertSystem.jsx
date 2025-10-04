@@ -27,8 +27,8 @@ const Alert = ({ alert, onClose, inline = false }) => {
     switch (type) {
       case ALERT_TYPES.SUCCESS:
         return {
-          backgroundColor: 'var(--md-sys-color-primary-container)',
-          color: 'var(--md-sys-color-on-primary-container)',
+          backgroundColor: '#1e3a8a', // Dark blue background
+          color: '#ffffff', // White text for better contrast
           icon: CheckCircle
         };
       case ALERT_TYPES.ERROR:

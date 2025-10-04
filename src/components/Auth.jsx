@@ -3,7 +3,7 @@ import { Amplify } from 'aws-amplify';
 import { getCurrentUser, signIn, signOut, resetPassword, confirmSignIn } from 'aws-amplify/auth';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { motion } from 'framer-motion';
-import { UserPlus, LogOut, Settings, Mail, Key } from 'lucide-react';
+import { UserPlus, LogOut, Settings, Mail, Key, Eye, EyeOff } from 'lucide-react';
 import { LoadingSpinner, LoadingSpinnerWithText } from './LoadingSpinner';
 import { InlineMessage, InlineSuccessMessage, InlineWarningMessage, InlineInfoMessage, InlineErrorMessage, ALERT_TYPES } from './AlertSystem';
 
@@ -35,6 +35,13 @@ export function LoginForm({ onLoginSuccess }) {
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   const [showNewPasswordForm, setShowNewPasswordForm] = useState(false);
   const [challengeSession, setChallengeSession] = useState(null);
+  
+  // Password visibility states
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showResetNewPassword, setShowResetNewPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
 
   // Clear reset code when form is first shown
   useEffect(() => {
@@ -54,6 +61,13 @@ export function LoginForm({ onLoginSuccess }) {
     setConfirmPassword('');
     setShowNewPasswordForm(false);
     setChallengeSession(null);
+    
+    // Reset password visibility states
+    setShowPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setShowResetNewPassword(false);
+    setShowResetConfirmPassword(false);
   };
 
   const setMessageWithType = (messageText, type = 'error') => {
@@ -221,16 +235,29 @@ export function LoginForm({ onLoginSuccess }) {
                 <label htmlFor="password" className="block text-md font-medium mb-2 text-on-surface">
                   Password
                 </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  className="md-input text-md sm:text-base py-3 sm:py-2"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    className="md-input text-md sm:text-base py-3 sm:py-2 pr-10"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {error && <InlineErrorMessage message={error} />}
@@ -273,31 +300,57 @@ export function LoginForm({ onLoginSuccess }) {
                 <label htmlFor="newPassword" className="block text-md font-medium mb-2 text-on-surface">
                   New Password
                 </label>
-                <input
-                  id="newPassword"
-                  name="newPassword"
-                  type="password"
-                  required
-                  className="md-input text-md sm:text-base py-3 sm:py-2"
-                  placeholder="Enter your new password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    id="newPassword"
+                    name="newPassword"
+                    type={showNewPassword ? "text" : "password"}
+                    required
+                    className="md-input text-md sm:text-base py-3 sm:py-2 pr-10"
+                    placeholder="Enter your new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
+                  >
+                    {showNewPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
               <div>
                 <label htmlFor="confirmPassword" className="block text-md font-medium mb-2 text-on-surface">
                   Confirm New Password
                 </label>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  className="md-input text-md sm:text-base py-3 sm:py-2"
-                  placeholder="Confirm your new password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    required
+                    className="md-input text-md sm:text-base py-3 sm:py-2 pr-10"
+                    placeholder="Confirm your new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {error && <InlineErrorMessage message={error} />}
@@ -411,32 +464,58 @@ export function LoginForm({ onLoginSuccess }) {
                 <label htmlFor="newPassword" className="block text-md font-medium mb-2 text-on-surface">
                   New Password
                 </label>
-                <input
-                  id="newPassword"
-                  name="newPassword"
-                  type="password"
-                  required
-                  className="md-input text-md sm:text-base py-3 sm:py-2"
-                  placeholder="Enter new password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    id="newPassword"
+                    name="newPassword"
+                    type={showResetNewPassword ? "text" : "password"}
+                    required
+                    className="md-input text-md sm:text-base py-3 sm:py-2 pr-10"
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetNewPassword(!showResetNewPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
+                  >
+                    {showResetNewPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-md font-medium mb-2 text-on-surface">
                   Confirm New Password
                 </label>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  className="md-input text-md sm:text-base py-3 sm:py-2"
-                  placeholder="Confirm new password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showResetConfirmPassword ? "text" : "password"}
+                    required
+                    className="md-input text-md sm:text-base py-3 sm:py-2 pr-10"
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirmPassword(!showResetConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
+                  >
+                    {showResetConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {error && <InlineErrorMessage message={error} />}
@@ -482,6 +561,7 @@ export function AuthWrapper({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userGroups, setUserGroups] = useState([]);
+  const [userName, setUserName] = useState(null);
 
   useEffect(() => {
     checkAuthState();
@@ -513,7 +593,7 @@ export function AuthWrapper({ children }) {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
       
-      // Get user groups for permission checking with retry mechanism
+      // Get user groups and name for permission checking with retry mechanism
       let attempts = 0;
       const maxAttempts = 3;
       
@@ -525,9 +605,17 @@ export function AuthWrapper({ children }) {
           const groups = currentUser.signInDetails?.loginId ? 
             idTokenPayload?.['cognito:groups'] || [] : [];
           
+          // Get user name from custom:given_name or fallback to other attributes
+          const name = idTokenPayload?.['custom:given_name'] || 
+                      idTokenPayload?.['given_name'] || 
+                      idTokenPayload?.['name'] || 
+                      currentUser?.username || 
+                      null;
+          
           // If we got groups or this is our last attempt, set them
           if (groups.length > 0 || attempts === maxAttempts - 1) {
             setUserGroups(groups);
+            setUserName(name);
             break;
           }
           
@@ -545,6 +633,7 @@ export function AuthWrapper({ children }) {
     } catch (error) {
       console.log('No authenticated user:', error);
       setUser(null);
+      setUserName(null);
     } finally {
       setLoading(false);
     }
@@ -553,7 +642,7 @@ export function AuthWrapper({ children }) {
   const handleLoginSuccess = async (user) => {
     setUser(user);
     
-    // Force a fresh session fetch to get user groups
+    // Force a fresh session fetch to get user groups and name
     const fetchUserGroups = async () => {
       let attempts = 0;
       const maxAttempts = 3;
@@ -565,8 +654,16 @@ export function AuthWrapper({ children }) {
           const idTokenPayload = session.tokens?.idToken?.payload;
           const groups = idTokenPayload?.['cognito:groups'] || [];
           
+          // Get user name from custom:given_name or fallback to other attributes
+          const name = idTokenPayload?.['custom:given_name'] || 
+                      idTokenPayload?.['given_name'] || 
+                      idTokenPayload?.['name'] || 
+                      user?.username || 
+                      null;
+          
           if (groups.length > 0) {
             setUserGroups(groups);
+            setUserName(name);
             return;
           }
           
@@ -582,6 +679,7 @@ export function AuthWrapper({ children }) {
       
       // Set empty groups as fallback
       setUserGroups([]);
+      setUserName(null);
     };
     
     fetchUserGroups();
@@ -592,6 +690,7 @@ export function AuthWrapper({ children }) {
       await signOut();
       setUser(null);
       setUserGroups([]);
+      setUserName(null);
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -617,7 +716,16 @@ export function AuthWrapper({ children }) {
         const session = await fetchAuthSession();
         const idTokenPayload = session.tokens?.idToken?.payload;
         const groups = idTokenPayload?.['cognito:groups'] || [];
+        
+        // Get user name from custom:given_name or fallback to other attributes
+        const name = idTokenPayload?.['custom:given_name'] || 
+                    idTokenPayload?.['given_name'] || 
+                    idTokenPayload?.['name'] || 
+                    user?.username || 
+                    null;
+        
         setUserGroups(groups);
+        setUserName(name);
         return groups;
       } catch (error) {
         console.error('Error manually refreshing user groups:', error);
@@ -628,7 +736,7 @@ export function AuthWrapper({ children }) {
   };
 
   return (
-    <UserGroupsContext.Provider value={{ userGroups, setUserGroups, refreshUserGroups }}>
+    <UserGroupsContext.Provider value={{ userGroups, setUserGroups, refreshUserGroups, userName }}>
       <div className="min-h-screen material-surface">
         {/* Main content */}
         <div className="flex-1">

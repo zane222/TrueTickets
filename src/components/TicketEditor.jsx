@@ -28,6 +28,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
     // Change detection
     const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, `/tickets/${ticketId}`);
     
+    
     // Load existing ticket data when editing
     useEffect(() => {
         if (!ticketId) {
@@ -54,7 +55,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                 
                 // Set charger status from existing data
                 const hasCharger = properties["AC Charger"] === "1" || properties["AC Charger"] === 1;
-                if (hasCharger) {
+                if (hasCharger && previousTicket) {
                     setItemsLeft(previous => [...previous, "Charger"]);
                 }
                 
@@ -100,6 +101,19 @@ function TicketEditor({ ticketId, customerId, goTo }) {
             dataChanged("Ticket Data Changed", "The ticket has been modified by someone else. Any unsaved changes may be lost if you continue editing.");
         }
     }, [hasChanged]);
+
+    // Auto-select device type when subject changes (only for new tickets)
+    useEffect(() => {
+        if (!ticketId && subject) {
+            // Create a mock ticket object to use with getTicketDeviceInfo
+            const mockTicket = { subject: subject };
+            const deviceInfo = getTicketDeviceInfo(mockTicket);
+            const suggestedDeviceIdx = DEVICES.indexOf(deviceInfo.device);
+            if (suggestedDeviceIdx !== -1 && deviceIdx === null) {
+                setDeviceIdx(suggestedDeviceIdx);
+            }
+        }
+    }, [subject, ticketId, deviceIdx]);
 
     useHotkeys({
         "h": () => goTo("/"),
@@ -220,7 +234,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
             <div className="md-card p-4 sm:p-8 space-y-4 sm:space-y-6">
                 <div className="flex items-center justify-between">
                     <div className="text-2xl font-bold text-primary">
-                        {ticketId ? "Edit Ticket" : "New Ticket"}
+                        {ticketId ? `Edit Ticket - #${previousTicket?.number ?? ticketId}` : "New Ticket"}
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                         <button

@@ -66,8 +66,8 @@ function TicketView({ id, goTo }) {
             
             // Start change detection polling
             startPolling(ticketData);
-        } catch (error) {
-            console.error(error);
+        } catch (err) {
+            console.error(err);
         } finally {
             setLoading(false);
         }
@@ -290,6 +290,7 @@ function CommentsBox({ ticketId, comments, goTo }) {
     const [list, setList] = useState([]);
     const [createLoading, setCreateLoading] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    const [textareaRef, setTextareaRef] = useState(null);
     
     useEffect(() => {
         setList(comments);
@@ -307,6 +308,25 @@ function CommentsBox({ ticketId, comments, goTo }) {
         };
         getCurrentUserInfo();
     }, []);
+
+    // Auto-resize textarea
+    const autoResize = () => {
+        if (textareaRef) {
+            textareaRef.style.height = 'auto';
+            textareaRef.style.height = textareaRef.scrollHeight + 'px';
+        }
+    };
+
+    // Handle text change and auto-resize
+    const handleTextChange = (event) => {
+        setText(event.target.value);
+        autoResize();
+    };
+
+    // Auto-resize on mount and when text changes
+    useEffect(() => {
+        autoResize();
+    }, [text]);
 
     async function create() { 
         if (createLoading) return; // Prevent multiple submissions
@@ -353,10 +373,12 @@ function CommentsBox({ ticketId, comments, goTo }) {
     return (
         <div className="space-y-4">
             <textarea
+                ref={setTextareaRef}
                 value={text}
-                onChange={event => setText(event.target.value)}
-                className="md-textarea h-24"
+                onChange={handleTextChange}
+                className="md-textarea"
                 placeholder="Write a comment…"
+                style={{ minHeight: '96px', resize: 'none', overflow: 'hidden' }}
             />
             <button
                 onClick={create}

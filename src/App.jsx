@@ -42,7 +42,7 @@ import { TicketCard } from './components/TicketCard';
 import { LoadingSpinner, LoadingSpinnerWithText } from './components/LoadingSpinner';
 import { InlineMessage, InlineErrorMessage, InlineWarningMessage, ALERT_TYPES } from './components/AlertSystem';
 import NavigationButton from './components/NavigationButton';
-import SearchModal, { TicketByNumber } from './components/SearchModal';
+import SearchModal from './components/SearchModal';
 import TicketEditor from './components/TicketEditor';
 import TicketView from './components/TicketView';
 import CustomerView from './components/CustomerView';
@@ -63,7 +63,7 @@ import NewCustomer from './components/NewCustomer';
  *
  * COMPONENT STRUCTURE:
  * - App.jsx: Main routing and layout logic
- * - SearchModal.jsx: Search functionality and TicketByNumber component
+ * - SearchModal.jsx: Search functionality
  * - TicketEditor.jsx: Ticket creation and editing
  * - TicketView.jsx: Ticket display and comments
  * - CustomerView.jsx: Customer details and ticket history
@@ -201,7 +201,7 @@ function ApiProvider({ children }) {
 /*************************
  * TopBar
  *************************/
-function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUserMenu, userGroups, canInviteUsers, canManageUsers, onInviteUser, onManageUsers, onLogout }) {
+function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUserMenu, userGroups, canInviteUsers, canManageUsers, onInviteUser, onManageUsers, onLogout, userName }) {
     return (
         <div className="sticky top-0 z-30 w-full material-app-bar backdrop-blur-md">
             <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-4">
@@ -247,6 +247,16 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUse
                                 animate={{ opacity: 1, y: 0 }}
                                 className="absolute right-0 mt-2 w-48 md-card py-1 z-50"
                             >
+                                {/* User info header */}
+                                <div className="px-4 py-2 border-b border-outline/20">
+                                    <div className="text-sm font-medium text-on-surface">
+                                        {userName || 'User'}
+                                    </div>
+                                    <div className="text-xs text-outline">
+                                        Signed in
+                                    </div>
+                                </div>
+                                
                                 {canInviteUsers && (
                                     <motion.button
                                         onClick={onInviteUser}
@@ -524,7 +534,7 @@ function TicketListView({ goTo }) {
  * App
  *************************/
 export default function App() {
-    const { userGroups = [], refreshUserGroups } = useUserGroups();
+    const { userGroups = [], refreshUserGroups, userName } = useUserGroups();
     const { path, navigate } = useRoute();
     const { success, error, warning, dataChanged, info, clearDataChangedWarnings } = useAlertMethods();
     const [showSearch, setShowSearch] = useState(false);
@@ -556,7 +566,37 @@ export default function App() {
     const [usersLoading, setUsersLoading] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
     const [showUserEdit, setShowUserEdit] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
     
+    // Group name mapping for user-friendly display
+    const getGroupDisplayName = (groupName) => {
+        const groupMap = {
+            'TrueTickets-Cacell-Employee': 'Employee',
+            'TrueTickets-Cacell-Manager': 'Manager', 
+            'TrueTickets-Cacell-Owner': 'Owner',
+            'TrueTickets-Cacell-ApplicationAdmin': 'Website Administrator'
+        };
+        return groupMap[groupName] || groupName;
+    };
+    
+    const getGroupDisplayNames = (groups) => {
+        if (!groups || groups.length === 0) return 'Invited, will be employee';
+        return groups.map(getGroupDisplayName).join(', ');
+    };
+    
+    // Get current user information
+    useEffect(() => {
+        const getCurrentUserInfo = async () => {
+            try {
+                const user = await getCurrentUser();
+                setCurrentUser(user);
+            } catch (err) {
+                console.error('Error getting current user:', err);
+            }
+        };
+        getCurrentUserInfo();
+    }, []);
+
     // Listen for search events from child components
     useEffect(() => {
         const handleOpenSearch = () => setShowSearch(true);
@@ -581,17 +621,17 @@ export default function App() {
             setInviteFirstName('');
             setShowInviteUser(false);
             
-        } catch (error) {
-            console.error('Invite user error:', error);
+        } catch (err) {
+            console.error('Invite user error:', err);
             let errorMessage = 'Failed to send invitation. Please try again.';
             
-            if (error.message.includes('already exists')) {
+            if (err.message.includes('already exists')) {
                 errorMessage = 'A user with this email already exists.';
-            } else if (error.message.includes('Insufficient permissions')) {
+            } else if (err.message.includes('Insufficient permissions')) {
                 errorMessage = 'You do not have permission to invite users.';
-            } else if (error.message.includes('Invalid email')) {
+            } else if (err.message.includes('Invalid email')) {
                 errorMessage = 'Invalid email address. Please check the format.';
-            } else if (error.message.includes('Too many requests')) {
+            } else if (err.message.includes('Too many requests')) {
                 errorMessage = 'Too many requests. Please try again later.';
             }
             
@@ -601,19 +641,41 @@ export default function App() {
         }
     };
 
-    const loadUsers = async () => {
+    const loadUsers = async (retryCount = 0) => {
         setUsersLoading(true);
         try {
-            console.log('Loading users with apiClient');
+            console.log('Loading users with apiClient, attempt:', retryCount + 1);
             
             const api = apiClient;
             const result = await api.get('/users');
             
             console.log('Users loaded:', result);
-            setUsers(result.users || []);
-        } catch (error) {
-            console.error('Error loading users:', error);
+            
+            // Ensure we have a valid users array
+            if (result && Array.isArray(result.users)) {
+                setUsers(result.users);
+            } else {
+                console.warn('Invalid users response:', result);
+                setUsers([]);
+            }
+        } catch (err) {
+            console.error('Error loading users:', err);
+            
+            // Retry logic for network errors
+            if (retryCount < 2 && (
+                err.message.includes('Failed to fetch') || 
+                err.message.includes('NetworkError') ||
+                err.message.includes('500') ||
+                err.message.includes('502') ||
+                err.message.includes('503')
+            )) {
+                console.log('Retrying user load in 1 second...');
+                setTimeout(() => loadUsers(retryCount + 1), 1000);
+                return;
+            }
+            
             error("Load Users Failed", "Failed to load users. Please try again.");
+            setUsers([]); // Clear users on error
         } finally {
             setUsersLoading(false);
         }
@@ -627,32 +689,30 @@ export default function App() {
             const result = await api.post('/update-user-group', { username, group: newGroup });
             
             console.log('User group updated:', result);
-            success('User Group Updated', 'User group updated successfully');
             loadUsers(); // Refresh the user list
             setShowUserEdit(false);
             setSelectedUser(null);
-        } catch (error) {
-            console.error('Error updating user group:', error);
+        } catch (err) {
+            console.error('Error updating user group:', err);
             error("Update Failed", "Failed to update user group. Please try again.");
         }
     };
 
-    const removeUser = async (username) => {
-        if (!confirm(`Are you sure you want to remove user ${username}? This action cannot be undone.`)) {
+    const removeUser = async (user) => {
+        const displayName = user.given_name || user.email || user.username;
+        if (!confirm(`Are you sure you want to remove user ${displayName}? This action cannot be undone.`)) {
             return;
         }
 
         try {
-            console.log('Removing user with apiClient:', username);
-            
             const api = apiClient;
-            const result = await api.post('/remove-user', { username });
+            const result = await api.post('/remove-user', { username: user.username });
             
-            console.log('User removed:', result);
-            success('User Removed', 'User removed successfully');
+            const message = result?.message || result?.body || 'User removed successfully';
+            success('User Removed', message);
             loadUsers(); // Refresh the user list
-        } catch (error) {
-            console.error('Error removing user:', error);
+        } catch (err) {
+            console.error('Error removing user:', err);
             error("Remove User Failed", "Failed to remove user. Please try again.");
         }
     };
@@ -676,8 +736,8 @@ export default function App() {
             await signOut();
             // Force a page reload to ensure clean logout state
             window.location.reload();
-        } catch (error) {
-            console.error('Logout error:', error);
+        } catch (err) {
+            console.error('Logout error:', err);
         }
     };
     
@@ -688,7 +748,6 @@ export default function App() {
         if (pathname === "/newcustomer") return { view: "newcustomer" };
         if (pathname.startsWith("/$")) { const id = pathname.slice(2); if (query.has("newticket")) return { view: "ticket-editor", customerId: id }; if (query.has("edit")) return { view: "customer-edit", id }; return { view: "customer", id }; }
         if (pathname.startsWith("/&")) { const id = pathname.slice(2); if (query.has("edit")) return { view: "ticket-editor", ticketId: id }; return { view: "ticket", id }; }
-        if (pathname.startsWith("/#")) { const number = pathname.slice(2); return { view: "ticket-by-number", number }; }
         return { view: "home" };
     }, [path]);
 
@@ -707,6 +766,7 @@ export default function App() {
                     onInviteUser={handleInviteUserClick}
                     onManageUsers={handleManageUsersClick}
                     onLogout={handleLogout}
+                    userName={userName}
                 />
 
                     {route.view === "home" && <TicketListView goTo={navigate} />}
@@ -715,7 +775,6 @@ export default function App() {
                     {route.view === "customer-edit" && <NewCustomer goTo={navigate} customerId={route.id} />}
                     {route.view === "ticket" && <TicketView id={route.id} goTo={navigate} />}
                     {route.view === "ticket-editor" && <TicketEditor ticketId={route.ticketId} customerId={route.customerId} goTo={navigate} />}
-                    {route.view === "ticket-by-number" && <TicketByNumber number={route.number} goTo={navigate} />}
 
                     <SearchModal open={showSearch} onClose={() => setShowSearch(false)} goTo={navigate} />
                     
@@ -784,7 +843,7 @@ export default function App() {
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.95 }}
                                 animate={{ opacity: 1, scale: 1 }}
-                                className="md-card p-6 w-full max-w-4xl max-h-[80vh] overflow-hidden"
+                                className="md-card p-6 w-full max-w-4xl h-[85vh] sm:h-[80vh] overflow-hidden flex flex-col"
                             >
                                 <div className="flex justify-between items-center mb-6">
                                     <h3 className="text-lg font-medium text-primary">User Management</h3>
@@ -798,19 +857,21 @@ export default function App() {
                                 
                                 {usersLoading ? (
                                     <div className="flex justify-center py-8">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{borderColor:'var(--md-sys-color-primary)'}}></div>
+                                        <LoadingSpinnerWithText text="Loading users..." size="md" />
                                     </div>
                                 ) : (
-                                    <div className="space-y-4 max-h-96 overflow-y-auto">
+                                    <div className="space-y-4 flex-1 overflow-y-auto">
                                         {users.map((user) => (
                                             <div key={user.username} className="md-row-box p-4 flex items-center justify-between">
                                                 <div className="flex-1">
-                                                    <div className="font-medium">{user.email || user.username}</div>
+                                                    <div className="font-medium">{user.given_name || user.email || user.username}</div>
+                                                    {user.email && (
+                                                        <div className="text-sm text-gray-400">
+                                                            {user.email}
+                                                        </div>
+                                                    )}
                                                     <div className="text-md text-gray-500">
-                                                        Groups: {user.groups ? user.groups.join(', ') : 'None'}
-                                                    </div>
-                                                    <div className="text-md text-gray-400">
-                                                        Status: {user.enabled ? 'Active' : 'Disabled'}
+                                                        {getGroupDisplayNames(user.groups)}
                                                     </div>
                                                 </div>
                                                 <div className="flex space-x-2">
@@ -823,13 +884,25 @@ export default function App() {
                                                     >
                                                         Edit
                                                     </button>
-                                                    <button
-                                                        onClick={() => removeUser(user.username)}
-                                                        className="md-btn-surface text-md px-3 py-1"
-                                                        style={{backgroundColor:'var(--md-sys-color-error)', color:'var(--md-sys-color-on-error)'}}
+                                                    {/* <button // This doesn't work for some reason
+                                                        onClick={() => removeUser(user)}
+                                                        disabled={currentUser?.username === user.username}
+                                                        className={`md-btn-surface text-md px-3 py-1 ${
+                                                            currentUser?.username === user.username 
+                                                                ? 'opacity-50 cursor-not-allowed' 
+                                                                : ''
+                                                        }`}
+                                                        style={{
+                                                            backgroundColor: currentUser?.username === user.username 
+                                                                ? 'var(--md-sys-color-surface-variant)' 
+                                                                : 'var(--md-sys-color-error)', 
+                                                            color: currentUser?.username === user.username 
+                                                                ? 'var(--md-sys-color-on-surface-variant)' 
+                                                                : 'var(--md-sys-color-on-error)'
+                                                        }}
                                                     >
                                                         Remove
-                                                    </button>
+                                                    </button> */}
                                                 </div>
                                             </div>
                                         ))}
@@ -852,7 +925,7 @@ export default function App() {
                                 className="md-card p-6 w-full max-w-md"
                             >
                                 <h3 className="text-lg font-medium mb-4 text-primary">
-                                    Edit User: {selectedUser.email || selectedUser.username}
+                                    Edit User: {selectedUser.given_name || selectedUser.email || selectedUser.username}
                                 </h3>
                                 <div className="space-y-4">
                                     <div>
@@ -869,10 +942,10 @@ export default function App() {
                                                 });
                                             }}
                                         >
-                                            <option value="TrueTickets-Cacell-Employee">Employee</option>
-                                            <option value="TrueTickets-Cacell-Manager">Manager</option>
-                                            <option value="TrueTickets-Cacell-Owner">Owner</option>
-                                            <option value="TrueTickets-Cacell-ApplicationAdmin">Application Admin</option>
+                                            <option value="TrueTickets-Cacell-Employee">{getGroupDisplayName('TrueTickets-Cacell-Employee')}</option>
+                                            <option value="TrueTickets-Cacell-Manager">{getGroupDisplayName('TrueTickets-Cacell-Manager')}</option>
+                                            <option value="TrueTickets-Cacell-Owner">{getGroupDisplayName('TrueTickets-Cacell-Owner')}</option>
+                                            <option value="TrueTickets-Cacell-ApplicationAdmin">{getGroupDisplayName('TrueTickets-Cacell-ApplicationAdmin')}</option>
                                         </select>
                                     </div>
                                     <div className="flex justify-end space-x-3">

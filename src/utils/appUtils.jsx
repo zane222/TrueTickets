@@ -90,6 +90,62 @@ export function getTicketPassword(ticket) {
 }
 
 /**
+ * Get device type from subject text based on keywords
+ */
+function getDeviceTypeFromSubject(subjectText) {
+  if (!subjectText) return null;
+  
+  const text = subjectText.toLowerCase();
+  
+  // Phone keywords
+  if (text.includes('iphone ') || text.includes('iph ') || text.includes('ip ') || 
+      text.includes('galaxy ') || text.includes('pixel ') || text.includes('oneplus ') ||
+      text.includes('samsung ') || text.includes('huawei ') || text.includes('phone ') ||
+      text.includes('moto ')) {
+      return "Phone";
+  }
+  
+  // Tablet keywords
+  if (text.includes('ipad ') || text.includes('tablet ') || text.includes('kindle ') ||
+      text.includes('tab ')) {
+      return "Tablet";
+  }
+
+  // Laptop keywords
+  if (text.includes('laptop ') || text.includes('macbook ') || text.includes('thinkpad ') ||
+      text.includes('dell ') || text.includes('hp ') || text.includes('asus ') ||
+      text.includes('acer ') || text.includes('lenovo ') || text.includes('ltop ')) {
+      return "Laptop";
+  }
+  
+  // Desktop keywords
+  if (text.includes('desktop ') || text.includes('pc ') ||
+      text.includes('tower ')) {
+      return "Desktop";
+  }
+  
+  // Watch keywords
+  if (text.includes('watch ') || text.includes('smartwatch ')) {
+      return "Watch";
+  }
+  
+  // Console keywords
+  if (text.includes('playstation ') || text.includes('xbox ') || text.includes('nintendo ') ||
+      text.includes('switch ') || text.includes('ps6 ') || text.includes('ps5 ') || text.includes('ps4 ') ||
+      text.includes('console ') || text.includes('controller ')) {
+      return "Console";
+  }
+  
+  // All in one keywords
+  if (text.includes('all in one ') || text.includes('all-in-one ') || text.includes('imac ') ||
+      text.includes('aio ')) {
+      return "All in one";
+  }
+  
+  return null; // No match found
+}
+
+/**
  * Get ticket device information
  */
 export function getTicketDeviceInfo(ticket) {
@@ -97,16 +153,40 @@ export function getTicketDeviceInfo(ticket) {
     const model = ticket?.properties?.["Model"] || "";
     if (model.startsWith("vT")) {
       const data = JSON.parse(model.substring(2));
+      const device = data.device || "Other";
+      
+      // If device is "Other" or not found, try to detect from subject
+      if (device === "Other" || !device) {
+        const detectedDevice = getDeviceTypeFromSubject(ticket?.subject || "");
+        return {
+          device: detectedDevice || "Other",
+          itemsLeft: data.itemsLeft || [],
+          estimatedTime: data.estimatedTime || ""
+        };
+      }
+      
       return {
-        device: data.device || "Other",
+        device: device,
         itemsLeft: data.itemsLeft || [],
         estimatedTime: data.estimatedTime || ""
       };
     } else {
-      return { device: "Other", itemsLeft: [], estimatedTime: "" };
+      // No vT JSON found, try to detect from subject
+      const detectedDevice = getDeviceTypeFromSubject(ticket?.subject || "");
+      return { 
+        device: detectedDevice || "Other", 
+        itemsLeft: [], 
+        estimatedTime: "" 
+      };
     }
   } catch { 
-    return { device: "Other", itemsLeft: [], estimatedTime: "" };
+    // Fallback: try to detect from subject even if JSON parsing fails
+    const detectedDevice = getDeviceTypeFromSubject(ticket?.subject || "");
+    return { 
+      device: detectedDevice || "Other", 
+      itemsLeft: [], 
+      estimatedTime: "" 
+    };
   }
 }
 

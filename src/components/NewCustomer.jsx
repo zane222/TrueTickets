@@ -221,8 +221,8 @@ function NewCustomer({ goTo, customerId }) {
                     await makeCorrectPhoneBeFirst(customerId, primaryDigits);
                     // Navigate to view
                     goTo(`/$${customerId}`);
-                } catch (error) {
-                    error("Customer Edit Failed", "Customer not edited because: " + (error?.message || error));
+                } catch (err) {
+                    error("Customer Edit Failed", "Customer not edited because: " + (err?.message || err));
                 } finally {
                     setApplying(false);
                     setSaving(false);
@@ -272,8 +272,58 @@ function NewCustomer({ goTo, customerId }) {
     return (
         <div className="mx-auto max-w-2xl px-3 sm:px-6 py-3 sm:py-6">
             <div className="md-card p-3 sm:p-8 space-y-4 sm:space-y-6">
-                <div className="text-xl sm:text-2xl font-bold text-primary">
-                    {customerId ? "Edit Customer" : "New Customer"}
+                <div className="flex items-center justify-between">
+                    <div className="text-xl sm:text-2xl font-bold text-primary">
+                        {customerId ? "Edit Customer" : "New Customer"}
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                        <button
+                            onClick={() => goTo(customerId ? `/$${customerId}` : '/')}
+                            className="md-btn-surface elev-1"
+                        >
+                            Cancel
+                        </button>
+                        <motion.button
+                            onClick={saveAndCreateTicket}
+                            disabled={saving}
+                            className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden"
+                            whileTap={{ scale: saving ? 1 : 0.95 }}
+                            animate={saving ? { 
+                                backgroundColor: "var(--md-sys-color-primary-container)",
+                                color: "var(--md-sys-color-on-primary-container)"
+                            } : {
+                                backgroundColor: "var(--md-sys-color-primary)",
+                                color: "var(--md-sys-color-on-primary)"
+                            }}
+                            transition={{ duration: 0.15 }}
+                        >
+                            <div className="flex items-center justify-center gap-2">
+                                <span>{saving ? "Creating..." : "Create Customer and Ticket"}</span>
+                                {saving && (
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0 }}
+                                    >
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    </motion.div>
+                                )}
+                            </div>
+                            {/* Loading overlay animation */}
+                            {saving && (
+                                <motion.div
+                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                                    initial={{ x: '-100%' }}
+                                    animate={{ x: '100%' }}
+                                    transition={{
+                                        duration: 1.5,
+                                        repeat: Infinity,
+                                        ease: "linear"
+                                    }}
+                                />
+                            )}
+                        </motion.button>
+                    </div>
                 </div>
                 {["first_name", "last_name", "business_name"].map(fieldKey => (
                     <div key={fieldKey} className="space-y-2">
@@ -346,85 +396,6 @@ function NewCustomer({ goTo, customerId }) {
                         onChange={event => setForm({ ...form, email: event.target.value })}
                         autoComplete={'email'}
                     />
-                </div>
-                <div className="flex flex-col sm:flex-row justify-between items-end gap-2 sm:gap-3 pt-4">
-                    <button
-                        onClick={() => goTo(customerId ? `/$${customerId}` : '/')}
-                        className="md-btn-surface elev-1 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
-                        disabled={saving || applying}
-                    >
-                        Cancel
-                    </button>
-                    <div className="flex flex-col gap-2 sm:gap-3">
-                        {!customerId && (
-                            <motion.button
-                                onClick={save}
-                                disabled={saving || applying}
-                                className="md-btn-surface elev-1 disabled:opacity-80 relative overflow-hidden py-3 sm:py-2 touch-manipulation"
-                                whileTap={{ scale: (saving || applying) ? 1 : 0.95 }}
-                                transition={{ duration: 0.15 }}
-                            >
-                                <div className="flex items-center justify-center gap-2">
-                                    <span>{saving ? (customerId ? "Updating..." : "Creating...") : (customerId ? "Update" : "Create")}</span>
-                                    {(saving || applying) && (
-                                        <motion.div
-                                            initial={{ opacity: 0, scale: 0 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0 }}
-                                        >
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        </motion.div>
-                                    )}
-                                </div>
-                                {/* Loading overlay animation */}
-                                {(saving || applying) && (
-                                    <motion.div
-                                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                                        initial={{ x: '-100%' }}
-                                        animate={{ x: '100%' }}
-                                        transition={{
-                                            duration: 1.5,
-                                            repeat: Infinity,
-                                            ease: "linear"
-                                        }}
-                                    />
-                                )}
-                            </motion.button>
-                        )}
-                        <motion.button
-                            onClick={saveAndCreateTicket}
-                            disabled={saving || applying}
-                            className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden py-3 sm:py-2 touch-manipulation"
-                            whileTap={{ scale: (saving || applying) ? 1 : 0.95 }}
-                            transition={{ duration: 0.15 }}
-                        >
-                            <div className="flex items-center justify-center gap-2">
-                                <span>{saving ? "Creating..." : "Create Customer and Ticket"}</span>
-                                {(saving || applying) && (
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0 }}
-                                    >
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    </motion.div>
-                                )}
-                            </div>
-                            {/* Loading overlay animation */}
-                            {(saving || applying) && (
-                                <motion.div
-                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                                    initial={{ x: '-100%' }}
-                                    animate={{ x: '100%' }}
-                                    transition={{
-                                        duration: 1.5,
-                                        repeat: Infinity,
-                                        ease: "linear"
-                                    }}
-                                />
-                            )}
-                        </motion.button>
-                    </div>
                 </div>
             </div>
         </div>
