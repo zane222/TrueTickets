@@ -199,6 +199,33 @@ button, [role="button"] {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
+  
+  /* Better mobile button spacing */
+  .md-btn-primary, .md-btn-surface, .md-btn-tonal {
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    line-height: 1.2;
+  }
+  
+  /* Improve mobile card spacing */
+  .md-card {
+    margin-bottom: 0.75rem;
+  }
+  
+  /* Better mobile form layout */
+  .space-y-4 > * + * {
+    margin-top: 1rem;
+  }
+  
+  /* Improve mobile ticket card readability */
+  .md-row-box {
+    margin-bottom: 0.5rem;
+  }
+  
+  /* Better mobile navigation */
+  .flex.flex-col.sm\\:flex-row {
+    gap: 0.5rem;
+  }
 }
 
 

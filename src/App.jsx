@@ -128,27 +128,27 @@ function TicketListItem({ ticket, goTo }) {
             </div>
             
             {/* Mobile layout */}
-            <div className="sm:hidden px-4 py-3 space-y-2">
+            <div className="sm:hidden px-4 py-4 space-y-3">
                 <div className="flex justify-between items-start">
-                    <div className="text-md font-medium truncate flex-1 min-w-0">
+                    <div className="text-lg font-semibold truncate flex-1 min-w-0">
                         #{ticket.number ?? ticket.id}
                     </div>
-                    <div className="text-md truncate ml-2 text-outline">
+                    <div className="text-sm truncate ml-3 text-outline">
                         {fmtDate(ticket.created_at)}
                     </div>
                 </div>
-                <div className="text-md truncate text-on-surface">
+                <div className="text-base font-medium truncate text-on-surface leading-relaxed">
                     {ticket.subject}
                 </div>
                 <div className="flex justify-between items-center">
-                    <div className="text-md truncate text-outline">
+                    <div className="text-sm px-2 py-1 rounded-full" style={{backgroundColor:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)'}}>
                         {convertStatus(ticket.status)}
                     </div>
-                    <div className="text-md truncate ml-2 text-outline">
+                    <div className="text-sm truncate ml-2 text-outline">
                         {getTicketDeviceInfo(ticket).device}
                     </div>
                 </div>
-                <div className="text-md truncate text-on-surface">
+                <div className="text-sm truncate text-on-surface">
                     {ticket.customer_business_then_name ?? ticket.customer?.business_and_full_name}
                 </div>
             </div>

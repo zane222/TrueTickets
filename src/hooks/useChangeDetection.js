@@ -21,8 +21,11 @@ export function useChangeDetection(api, endpoint, intervalMs = 30000) {
       intervalRef.current = null;
     }
     
-    setOriginalData(initialData);
-    originalDataRef.current = initialData; // Store in ref for stable reference
+    // Filter out pdf_url from initial data
+    const { pdf_url, ...filteredData } = initialData;
+    
+    setOriginalData(filteredData);
+    originalDataRef.current = filteredData; // Store in ref for stable reference
     setIsPolling(true);
     setHasChanged(false);
 
@@ -31,9 +34,11 @@ export function useChangeDetection(api, endpoint, intervalMs = 30000) {
         const currentData = await api.get(endpoint);
         const data = currentData.ticket || currentData.customer || currentData;
 
-        // Compare with original data using the ref
+        // Filter out pdf_url from current data and compare
+        const { pdf_url, ...filteredCurrentData } = data;
+        
         const originalStr = JSON.stringify(originalDataRef.current);
-        const currentStr = JSON.stringify(data);
+        const currentStr = JSON.stringify(filteredCurrentData);
 
         if (originalDataRef.current && originalStr !== currentStr) {
           setHasChanged(true);
@@ -60,8 +65,10 @@ export function useChangeDetection(api, endpoint, intervalMs = 30000) {
 
   const resetPolling = useCallback((newData) => {
     stopPolling();
-    setOriginalData(newData);
-    originalDataRef.current = newData; // Update the ref as well
+    // Filter out pdf_url from new data
+    const { pdf_url, ...filteredData } = newData;
+    setOriginalData(filteredData);
+    originalDataRef.current = filteredData; // Update the ref as well
     setHasChanged(false);
   }, [stopPolling]);
 
@@ -74,16 +81,6 @@ export function useChangeDetection(api, endpoint, intervalMs = 30000) {
       }
     };
   }, [endpoint]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, []);
 
   return {
     hasChanged,

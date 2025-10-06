@@ -239,14 +239,14 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                     <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                         <button
                             onClick={() => goTo(ticketId ? `/&${ticketId}` : '/')}
-                            className="md-btn-surface elev-1"
+                            className="md-btn-surface elev-1 w-full sm:w-auto"
                         >
                             Cancel
                         </button>
                         <motion.button
                             onClick={save}
                             disabled={saving}
-                            className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden"
+                            className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden w-full sm:w-auto"
                             whileTap={{ scale: saving ? 1 : 0.95 }}
                             animate={saving ? { 
                                 backgroundColor: "var(--md-sys-color-primary-container)",

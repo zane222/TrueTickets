@@ -151,7 +151,8 @@ function TicketView({ id, goTo }) {
                     const pdfWindow = window.open(pdf); 
                     pdfWindow.onload = function () { pdfWindow.print(); } 
                     const interval = setInterval(function () { 
-                        if (pdfWindow.closed) { clearInterval(interval); 
+                        if (pdfWindow.closed) { 
+                            clearInterval(interval); 
                             URL.revokeObjectURL(pdf);
                         } 
                     }, 1000); 
@@ -169,14 +170,14 @@ function TicketView({ id, goTo }) {
                 <NavigationButton
                     onClick={() => goTo(`/$${ticket.customer?.id || ticket.customer_id}`)}
                     targetUrl={`${window.location.origin}/$${ticket.customer?.id || ticket.customer_id}`}
-                    className="md-btn-surface elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
+                    className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
                 >
                     <User className="w-5 h-5" />
                     View Customer
                 </NavigationButton>
                 <button
                     onClick={generatePDF}
-                    className="md-btn-surface elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
+                    className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
                 >
                     <Printer className="w-5 h-5" />
                     Print PDF
@@ -184,7 +185,7 @@ function TicketView({ id, goTo }) {
                 <NavigationButton
                     onClick={() => goTo(`/&${ticket.id}?edit`)}
                     targetUrl={`${window.location.origin}/&${ticket.id}?edit`}
-                    className="md-btn-primary elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
+                    className="md-btn-primary elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
                 >
                     <Edit className="w-5 h-5" />
                     Edit Ticket
@@ -195,8 +196,8 @@ function TicketView({ id, goTo }) {
                 {/* LEFT SIDE: Ticket + statuses */}
                 <div className="lg:col-span-4 space-y-8 lg:space-y-20">
                     {/* Ticket Card - Scaled up */}
-                    <div className="transform scale-100 sm:scale-148 origin-top-left bg-white rounded-md shadow-lg">
-                        <div ref={ticketCardRef}>
+                    <div className="transform scale-100 sm:scale-148 origin-top-left bg-white rounded-md shadow-lg overflow-hidden">
+                        <div ref={ticketCardRef} className="w-full h-auto">
                             <TicketCard
                                 password={getTicketPassword(ticket)}
                                 ticketNumber={ticket.number ?? ticket.id}
@@ -221,7 +222,7 @@ function TicketView({ id, goTo }) {
                                         key={status}
                                         onClick={() => updateTicketStatus(status)}
                                         disabled={isUpdating || active}
-                                        className={`${active ? 'md-btn-primary' : 'md-btn-surface'} text-left relative overflow-hidden py-3 sm:py-2 text-md sm:text-base touch-manipulation ${
+                                        className={`${active ? 'md-btn-primary' : 'md-btn-surface'} text-left relative overflow-hidden py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full ${
                                             (isUpdating || active) ? 'cursor-not-allowed' : ''
                                         }`}
                                         style={active ? { borderRadius: '12px' } : {}}

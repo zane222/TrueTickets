@@ -219,7 +219,9 @@ function SearchModal({ open, onClose, goTo }) {
     // Debounced search with 300ms delay
     useEffect(() => {
         const timeoutId = setTimeout(() => {
-            performSearch(search);
+            if (search.trim()) { // make sure the search is not empty
+                performSearch(search);
+            }
         }, 300);
         return () => clearTimeout(timeoutId);
     }, [search]);

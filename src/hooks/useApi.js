@@ -7,7 +7,7 @@ import { useAlertMethods } from '../components/AlertSystem';
  * @returns {Object} - API methods with error handling
  */
 export function useApi() {
-    const { showAlert } = useAlertMethods();
+    const { error } = useAlertMethods();
 
     const api = useMemo(() => ({
         get: async (path) => {
@@ -15,7 +15,7 @@ export function useApi() {
                 return await apiClient.get(path);
             } catch (error) {
                 console.error('API GET error:', error);
-                showAlert(error.message || 'Failed to fetch data', 'error');
+                error('Failed to fetch data', error.message || 'An error occurred while fetching data');
                 throw error;
             }
         },
@@ -24,7 +24,7 @@ export function useApi() {
                 return await apiClient.post(path, body);
             } catch (error) {
                 console.error('API POST error:', error);
-                showAlert(error.message || 'Failed to save data', 'error');
+                error('Failed to save data', error.message || 'An error occurred while saving data');
                 throw error;
             }
         },
@@ -33,7 +33,7 @@ export function useApi() {
                 return await apiClient.put(path, body);
             } catch (error) {
                 console.error('API PUT error:', error);
-                showAlert(error.message || 'Failed to update data', 'error');
+                error('Failed to update data', error.message || 'An error occurred while updating data');
                 throw error;
             }
         },
@@ -42,11 +42,11 @@ export function useApi() {
                 return await apiClient.del(path);
             } catch (error) {
                 console.error('API DELETE error:', error);
-                showAlert(error.message || 'Failed to delete data', 'error');
+                error('Failed to delete data', error.message || 'An error occurred while deleting data');
                 throw error;
             }
         }
-    }), [showAlert]);
+    }), [error]);
 
     return api;
 }

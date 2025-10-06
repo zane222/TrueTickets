@@ -190,12 +190,13 @@ function NewCustomer({ goTo, customerId }) {
             if (customerId) {
                 // Edit flow with phone reordering
                 if ((sanitized.firstname || "").replace(/\u200B/g, "").trim() === "") {
-                    error("Validation Error", "You may have not entered the first name");
+                    error("Validation Error", "First name is required");
                     setSaving(false);
                     return;
                 }
-                if ((sanitized.mobile || "").length !== 10) {
-                    error("Validation Error", "You may have typed the phone number wrong");
+                const phoneDigits = sanitized.mobile.replace(/\D/g, '');
+                if (phoneDigits.length !== 10) {
+                    error("Validation Error", "Phone number must be exactly 10 digits");
                     setSaving(false);
                     return;
                 }
@@ -222,7 +223,7 @@ function NewCustomer({ goTo, customerId }) {
                     // Navigate to view
                     goTo(`/$${customerId}`);
                 } catch (err) {
-                    error("Customer Edit Failed", "Customer not edited because: " + (err?.message || err));
+                    error("Customer Edit Failed", "Failed to update customer: " + (err?.message || "Unknown error"));
                 } finally {
                     setApplying(false);
                     setSaving(false);
@@ -249,6 +250,19 @@ function NewCustomer({ goTo, customerId }) {
                 email: form.email
             };
             
+            // Validation for new customers
+            if ((sanitized.firstname || "").replace(/\u200B/g, "").trim() === "") {
+                error("Validation Error", "First name is required");
+                setSaving(false);
+                return;
+            }
+            const phoneDigits = sanitized.mobile.replace(/\D/g, '');
+            if (phoneDigits.length !== 10) {
+                error("Validation Error", "Phone number must be exactly 10 digits");
+                setSaving(false);
+                return;
+            }
+            
             if (customerId) {
                 // For editing existing customer, just navigate to new ticket
                 goTo(`/$${customerId}?newticket`);
@@ -261,7 +275,7 @@ function NewCustomer({ goTo, customerId }) {
             goTo(`/$${customer.id}?newticket`);
         } catch (error) { 
             console.error(error);
-            error("Customer Creation Failed", "Customer not created because: " + (error?.message || error));
+            error("Customer Creation Failed", "Failed to create customer: " + (error?.message || "Unknown error"));
         } finally { 
             setSaving(false); 
         }
@@ -279,14 +293,14 @@ function NewCustomer({ goTo, customerId }) {
                     <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                         <button
                             onClick={() => goTo(customerId ? `/$${customerId}` : '/')}
-                            className="md-btn-surface elev-1"
+                            className="md-btn-surface elev-1 w-full sm:w-auto"
                         >
                             Cancel
                         </button>
                         <motion.button
-                            onClick={saveAndCreateTicket}
+                            onClick={customerId ? save : saveAndCreateTicket}
                             disabled={saving}
-                            className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden"
+                            className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden w-full sm:w-auto"
                             whileTap={{ scale: saving ? 1 : 0.95 }}
                             animate={saving ? { 
                                 backgroundColor: "var(--md-sys-color-primary-container)",
@@ -298,7 +312,7 @@ function NewCustomer({ goTo, customerId }) {
                             transition={{ duration: 0.15 }}
                         >
                             <div className="flex items-center justify-center gap-2">
-                                <span>{saving ? "Creating..." : "Create Customer and Ticket"}</span>
+                                <span>{saving ? (customerId ? "Updating..." : "Creating...") : (customerId ? "Update" : "Create Customer and Ticket")}</span>
                                 {saving && (
                                     <motion.div
                                         initial={{ opacity: 0, scale: 0 }}
