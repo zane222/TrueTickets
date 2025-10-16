@@ -38,8 +38,7 @@ function TicketView({ id, goTo }) {
     
     useHotkeys({
         "h": () => goTo("/"),
-        "s": () => {
-            // Trigger search modal from parent
+        "s": () => { // Trigger search modal from parent
             const searchEvent = new CustomEvent('openSearch');
             window.dispatchEvent(searchEvent);
         },
@@ -171,6 +170,7 @@ function TicketView({ id, goTo }) {
                     onClick={() => goTo(`/$${ticket.customer?.id || ticket.customer_id}`)}
                     targetUrl={`${window.location.origin}/$${ticket.customer?.id || ticket.customer_id}`}
                     className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
+                    tabIndex="-1"
                 >
                     <User className="w-5 h-5" />
                     View Customer
@@ -178,6 +178,7 @@ function TicketView({ id, goTo }) {
                 <button
                     onClick={generatePDF}
                     className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
+                    tabIndex="-1"
                 >
                     <Printer className="w-5 h-5" />
                     Print PDF
@@ -186,6 +187,7 @@ function TicketView({ id, goTo }) {
                     onClick={() => goTo(`/&${ticket.id}?edit`)}
                     targetUrl={`${window.location.origin}/&${ticket.id}?edit`}
                     className="md-btn-primary elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
+                    tabIndex="-1"
                 >
                     <Edit className="w-5 h-5" />
                     Edit Ticket
@@ -239,6 +241,7 @@ function TicketView({ id, goTo }) {
                                             color: active ? "var(--md-sys-color-on-primary)" : "var(--md-sys-color-on-surface)"
                                         }}
                                         transition={{ duration: 0.15 }}
+                                        tabIndex="-1"
                                     >
                                         <div className="flex items-center justify-between">
                                             <span>{status}</span>

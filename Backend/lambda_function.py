@@ -183,6 +183,63 @@ def handle_user_invitation(event, context):
     try:
         cognito = boto3.client('cognito-idp') # Create Cognito client
         
+        # Check if user already exists
+        user_exists = False
+        existing_user_status = None
+        try:
+            existing_user = cognito.admin_get_user(
+                UserPoolId=USER_POOL_ID,
+                Username=email
+            )
+            user_exists = True
+            existing_user_status = existing_user.get('UserStatus', '')
+            print(f"User {email} already exists with status: {existing_user_status}")
+        except cognito.exceptions.UserNotFoundException:
+            print(f"User {email} does not exist, will create new user")
+        except Exception as e:
+            print(f"Error checking if user exists: {e}")
+            # Continue with user creation attempt
+        
+        # If user exists and is in FORCE_CHANGE_PASSWORD status, delete them first
+        if user_exists and existing_user_status == 'FORCE_CHANGE_PASSWORD':
+            print(f"Deleting existing user {email} with FORCE_CHANGE_PASSWORD status")
+            try:
+                # Remove user from all groups first
+                try:
+                    groups_response = cognito.admin_list_groups_for_user(
+                        UserPoolId=USER_POOL_ID,
+                        Username=email
+                    )
+                    for group in groups_response.get('Groups', []):
+                        cognito.admin_remove_user_from_group(
+                            UserPoolId=USER_POOL_ID,
+                            Username=email,
+                            GroupName=group['GroupName']
+                        )
+                except Exception as e:
+                    print(f"Warning: Could not remove user from groups: {e}")
+                
+                # Delete the user
+                cognito.admin_delete_user(
+                    UserPoolId=USER_POOL_ID,
+                    Username=email
+                )
+                print(f"Successfully deleted user {email}")
+            except Exception as e:
+                print(f"Error deleting existing user: {e}")
+                return {
+                    "statusCode": 500,
+                    "headers": {"Content-Type": "application/json"},
+                    "body": json.dumps({"error": f"Could not delete existing user: {str(e)}"})
+                }
+        elif user_exists and existing_user_status != 'FORCE_CHANGE_PASSWORD':
+            # User exists but is not in FORCE_CHANGE_PASSWORD status
+            return {
+                "statusCode": 409,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"error": f"User {email} already exists and is not in a state that allows re-invitation"})
+            }
+        
         temp_password = generate_temp_password() # Generate secure temporary password
         
         # Prepare user attributes

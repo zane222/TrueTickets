@@ -128,27 +128,27 @@ function TicketListItem({ ticket, goTo }) {
             </div>
             
             {/* Mobile layout */}
-            <div className="sm:hidden px-4 py-4 space-y-3">
+            <div className="sm:hidden px-4 py-3 space-y-2">
                 <div className="flex justify-between items-start">
-                    <div className="text-lg font-semibold truncate flex-1 min-w-0">
+                    <div className="text-md font-medium truncate flex-1 min-w-0">
                         #{ticket.number ?? ticket.id}
                     </div>
-                    <div className="text-sm truncate ml-3 text-outline">
+                    <div className="text-md truncate ml-2 text-outline">
                         {fmtDate(ticket.created_at)}
                     </div>
                 </div>
-                <div className="text-base font-medium truncate text-on-surface leading-relaxed">
+                <div className="text-md truncate text-on-surface">
                     {ticket.subject}
                 </div>
                 <div className="flex justify-between items-center">
-                    <div className="text-sm px-2 py-1 rounded-full" style={{backgroundColor:'var(--md-sys-color-primary-container)', color:'var(--md-sys-color-on-primary-container)'}}>
+                    <div className="text-md truncate text-outline">
                         {convertStatus(ticket.status)}
                     </div>
-                    <div className="text-sm truncate ml-2 text-outline">
+                    <div className="text-md truncate ml-2 text-outline">
                         {getTicketDeviceInfo(ticket).device}
                     </div>
                 </div>
-                <div className="text-sm truncate text-on-surface">
+                <div className="text-md truncate text-on-surface">
                     {ticket.customer_business_then_name ?? ticket.customer?.business_and_full_name}
                 </div>
             </div>
@@ -209,6 +209,7 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUse
                     onClick={onHome}
                     targetUrl={`${window.location.origin}/`}
                     className="text-base sm:text-xl font-bold tracking-wide flex-1 text-left cursor-pointer truncate min-w-0"
+                    tabIndex="-1"
                 >
                     <span className="hidden sm:inline">True Tickets - Computer and Cellphone Inc</span>
                     <span className="sm:hidden">True Tickets</span>
@@ -219,6 +220,7 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUse
                         targetUrl={`${window.location.origin}/`}
                         title="Search"
                         className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
+                        tabIndex="-1"
                     >
                         <Search className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
                     </NavigationButton>
@@ -227,6 +229,7 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUse
                         targetUrl={`${window.location.origin}/newcustomer`}
                         title="New Customer"
                         className="md-btn-primary elev-2 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
+                        tabIndex="-1"
                     >
                         <UserPlus className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
                     </NavigationButton>
@@ -237,6 +240,7 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUse
                             onClick={() => setShowUserMenu(!showUserMenu)}
                             className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
                             whileTap={{ scale: 0.95 }}
+                            tabIndex="-1"
                         >
                             <User className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
                         </motion.button>
@@ -397,6 +401,7 @@ function TicketListView({ goTo }) {
                     <button
                         onClick={() => setStatusFilterCollapsed(!statusFilterCollapsed)}
                         className="flex items-center gap-2 text-md font-medium hover:opacity-80 transition-opacity text-on-surface"
+                        tabIndex="-1"
                     >
                         <span>Status filter:</span>
                         {statusFilterCollapsed ? (
@@ -434,6 +439,7 @@ function TicketListView({ goTo }) {
                     <button
                         onClick={() => setDeviceFilterCollapsed(!deviceFilterCollapsed)}
                         className="flex items-center gap-2 text-md font-medium hover:opacity-80 transition-opacity text-on-surface"
+                        tabIndex="-1"
                     >
                         <span>Device filter:</span>
                         {deviceFilterCollapsed ? (

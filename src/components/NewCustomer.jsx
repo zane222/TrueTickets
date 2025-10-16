@@ -21,7 +21,7 @@ function NewCustomer({ goTo, customerId }) {
     // Change detection (only when editing existing customer)
     const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, customerId ? `/customers/${customerId}` : null);
     
-    // Keybinds from Unity NewCustomerManager
+    // Keybinds
     useHotkeys({
         "h": () => goTo("/"),
         "s": () => {
@@ -30,7 +30,12 @@ function NewCustomer({ goTo, customerId }) {
             window.dispatchEvent(searchEvent);
         },
         "c": () => {
-            if (customerId) goTo(`/$${customerId}`);
+            // Cancel functionality - go back to customer if editing, otherwise go to home
+            if (customerId) {
+                goTo(`/$${customerId}`);
+            } else {
+                goTo("/");
+            }
         }
     });
     
@@ -56,6 +61,10 @@ function NewCustomer({ goTo, customerId }) {
     // Load existing customer data if editing
     useEffect(() => {
         if (!customerId) return;
+        
+        // Immediately show loading state when customerId changes
+        setLoading(true);
+        
         (async () => {
             try {
                 const data = await api.get(`/customers/${customerId}`);
@@ -144,10 +153,23 @@ function NewCustomer({ goTo, customerId }) {
     }
     async function postPhones(id, numbers) {
         if (!numbers || numbers.length === 0) return;
-        for (const number of numbers) {
-            try {
-                await api.post(`/customers/${id}/phones`, { number: number, primary: true });
-            } catch (error) { /* best-effort; continue */ }
+        
+        // Create all phone creation promises in parallel
+        const phonePromises = numbers.map(number => 
+            api.post(`/customers/${id}/phones`, { number: number, primary: true })
+                .catch(error => {
+                    console.error(`Failed to create phone ${number}:`, error);
+                    return null; // Return null for failed requests
+                })
+        );
+        
+        // Execute all phone creation requests in parallel
+        const results = await Promise.all(phonePromises);
+        
+        // Log any failures for debugging
+        const failures = results.filter(result => result === null);
+        if (failures.length > 0) {
+            console.warn(`${failures.length} phone creation(s) failed out of ${numbers.length} attempts`);
         }
     }
 
@@ -294,6 +316,7 @@ function NewCustomer({ goTo, customerId }) {
                         <button
                             onClick={() => goTo(customerId ? `/$${customerId}` : '/')}
                             className="md-btn-surface elev-1 w-full sm:w-auto"
+                            tabIndex="-1"
                         >
                             Cancel
                         </button>
@@ -310,6 +333,7 @@ function NewCustomer({ goTo, customerId }) {
                                 color: "var(--md-sys-color-on-primary)"
                             }}
                             transition={{ duration: 0.15 }}
+                            tabIndex="0"
                         >
                             <div className="flex items-center justify-center gap-2">
                                 <span>{saving ? (customerId ? "Updating..." : "Creating...") : (customerId ? "Update" : "Create Customer and Ticket")}</span>
@@ -346,6 +370,7 @@ function NewCustomer({ goTo, customerId }) {
                             className="md-input text-md sm:text-base py-3 sm:py-2"
                             value={form[fieldKey]}
                             onChange={event => setForm({ ...form, [fieldKey]: event.target.value })}
+                            tabIndex="1"
                         />
                     </div>
                 ))}
@@ -366,6 +391,7 @@ function NewCustomer({ goTo, customerId }) {
                                                 : 'border-gray-300 hover:border-gray-400'
                                         }`}
                                         title={isPrimary ? "Primary phone" : "Click to make primary"}
+                                        tabIndex="-1"
                                     >
                                         {isPrimary && (
                                             <div className="w-2 h-2 bg-white rounded-full"></div>
@@ -384,6 +410,7 @@ function NewCustomer({ goTo, customerId }) {
                                         inputMode={'numeric'}
                                         autoComplete={'tel'}
                                         placeholder="Phone number"
+                                        tabIndex="1"
                                     />
                                     {isPrimary && (
                                         <span className="text-md font-medium text-blue-600">Primary</span>
@@ -396,6 +423,7 @@ function NewCustomer({ goTo, customerId }) {
                                 type="button"
                                 className="md-btn-surface elev-1 text-md sm:text-md py-2 px-3 touch-manipulation"
                                 onClick={() => setAllPhones([...allPhones, ""]) }
+                                tabIndex="-1"
                             >
                                 + Add another phone
                             </button>
@@ -409,6 +437,7 @@ function NewCustomer({ goTo, customerId }) {
                         value={form.email}
                         onChange={event => setForm({ ...form, email: event.target.value })}
                         autoComplete={'email'}
+                        tabIndex="1"
                     />
                 </div>
             </div>

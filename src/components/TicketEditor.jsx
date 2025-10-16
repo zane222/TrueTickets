@@ -36,6 +36,9 @@ function TicketEditor({ ticketId, customerId, goTo }) {
             return;
         }
         
+        // Immediately show loading state when ticketId changes
+        setLoading(true);
+        
         (async () => {
             try {
                 const data = await api.get(`/tickets/${ticketId}`);
@@ -117,13 +120,19 @@ function TicketEditor({ ticketId, customerId, goTo }) {
 
     useHotkeys({
         "h": () => goTo("/"),
-        "s": () => {
-            // Trigger search modal from parent
+        "s": () => { // Trigger search modal from parent
             const searchEvent = new CustomEvent('openSearch');
             window.dispatchEvent(searchEvent);
         },
         "c": () => {
-            if (customerId) goTo(`/$${customerId}`);
+            // Cancel functionality - go back to customer if available, otherwise go to home
+            if (ticketId) {
+                goTo(`/&${ticketId}`);
+            } else if (customerId) {
+                goTo(`/$${customerId}`);
+            } else {
+                goTo("/");
+            }
         },
         "t": () => {
             if (ticketId) goTo(`/&${ticketId}`);
@@ -238,8 +247,17 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                         <button
-                            onClick={() => goTo(ticketId ? `/&${ticketId}` : '/')}
+                            onClick={() => {
+                                if (ticketId) {
+                                    goTo(`/&${ticketId}`);
+                                } else if (customerId) {
+                                    goTo(`/$${customerId}`);
+                                } else {
+                                    goTo("/");
+                                }
+                            }}
                             className="md-btn-surface elev-1 w-full sm:w-auto"
+                            tabIndex="-1"
                         >
                             Cancel
                         </button>
@@ -256,6 +274,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                 color: "var(--md-sys-color-on-primary)"
                             }}
                             transition={{ duration: 0.15 }}
+                            tabIndex="0"
                         >
                             <div className="flex items-center justify-center gap-2">
                                 <span>{saving ? (ticketId ? "Updating..." : "Creating...") : (ticketId ? "Update" : "Create")}</span>
@@ -294,11 +313,12 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                         value={subject}
                         onChange={event => setSubject(event.target.value)}
                         placeholder="Enter ticket subject..."
+                        tabIndex="1"
                     />
                 </div>
-
+                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                    {/* Basic Information */}
+                    {/* Column on the left */}
                     <div className="space-y-4 md:space-y-6">
 
                         {/* Password */}
@@ -309,6 +329,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                 value={password}
                                 onChange={event => setPassword(event.target.value)}
                                 placeholder="Device password"
+                                tabIndex="1"
                             />
                         </div>
 
@@ -321,6 +342,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                         key={index}
                                         onClick={() => toggleItem(item)}
                                         className={`md-chip ${itemsLeft.includes(item) ? 'md-chip--on' : ''}`}
+                                        tabIndex="-1"
                                     >
                                         {item}
                                     </button>
@@ -329,9 +351,21 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                         </div>
 
                     </div>
-
-                    {/* Device Information */}
+                    
+                    {/* Column on the right */}
                     <div className="space-y-4 md:space-y-6">
+                        {/* Estimated Time - text input */}
+                        <div className="space-y-2">
+                            <label className="text-md font-medium">Estimated Time</label>
+                            <input
+                                className="md-input"
+                                value={timeEstimate}
+                                onChange={event => setTimeEstimate(event.target.value)}
+                                placeholder="e.g. 30 min, 2 hours, Call by: 11th"
+                                tabIndex="1"
+                            />
+                        </div>
+
                         {/* Device Type - single select radio-style pills */}
                         <div className="space-y-2">
                             <label className="text-md font-medium">Device Type</label>
@@ -349,6 +383,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                             aria-checked={active}
                                             onClick={() => { setDeviceIdx(index); }}
                                             className={`inline-flex items-center gap-2 md-chip ${active ? 'md-chip--on' : ''}`}
+                                            tabIndex="-1"
                                         >
                                             <span
                                                 aria-hidden
@@ -359,17 +394,6 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                                     );
                                 })}
                             </div>
-                        </div>
-
-                        {/* Estimated Time - text input */}
-                        <div className="space-y-2">
-                            <label className="text-md font-medium">Estimated Time</label>
-                            <input
-                                className="md-input"
-                                value={timeEstimate}
-                                onChange={event => setTimeEstimate(event.target.value)}
-                                placeholder="e.g. 30 min, 2 hours, Call by: 11th"
-                            />
                         </div>
 
                     </div>

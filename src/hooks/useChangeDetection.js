@@ -1,6 +1,26 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 /**
+ * Removes pdf_url from data (both top-level and nested in customer)
+ * @param {Object} data - The data object to filter
+ * @returns {Object} - Filtered data without pdf_url fields
+ */
+function removePdfUrls(data) {
+  if (!data || typeof data !== 'object') return data;
+  
+  // Filter out top-level pdf_url
+  const { pdf_url, ...filteredData } = data;
+  
+  // Filter out customer.pdf_url if it exists
+  if (filteredData.customer && filteredData.customer.pdf_url) {
+    const { pdf_url: customerPdfUrl, ...filteredCustomer } = filteredData.customer;
+    filteredData.customer = filteredCustomer;
+  }
+  
+  return filteredData;
+}
+
+/**
  * Custom hook for change detection polling
  * @param {Object} api - API client instance
  * @param {string} endpoint - API endpoint to monitor
@@ -21,8 +41,8 @@ export function useChangeDetection(api, endpoint, intervalMs = 30000) {
       intervalRef.current = null;
     }
     
-    // Filter out pdf_url from initial data
-    const { pdf_url, ...filteredData } = initialData;
+    // Remove pdf_url from initial data
+    const filteredData = removePdfUrls(initialData);
     
     setOriginalData(filteredData);
     originalDataRef.current = filteredData; // Store in ref for stable reference
@@ -34,8 +54,8 @@ export function useChangeDetection(api, endpoint, intervalMs = 30000) {
         const currentData = await api.get(endpoint);
         const data = currentData.ticket || currentData.customer || currentData;
 
-        // Filter out pdf_url from current data and compare
-        const { pdf_url, ...filteredCurrentData } = data;
+        // Remove pdf_url from current data and compare
+        const filteredCurrentData = removePdfUrls(data);
         
         const originalStr = JSON.stringify(originalDataRef.current);
         const currentStr = JSON.stringify(filteredCurrentData);
@@ -65,8 +85,8 @@ export function useChangeDetection(api, endpoint, intervalMs = 30000) {
 
   const resetPolling = useCallback((newData) => {
     stopPolling();
-    // Filter out pdf_url from new data
-    const { pdf_url, ...filteredData } = newData;
+    // Remove pdf_url from new data
+    const filteredData = removePdfUrls(newData);
     setOriginalData(filteredData);
     originalDataRef.current = filteredData; // Update the ref as well
     setHasChanged(false);

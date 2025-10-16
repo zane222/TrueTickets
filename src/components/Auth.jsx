@@ -96,7 +96,24 @@ export function LoginForm({ onLoginSuccess }) {
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.message || 'Login failed');
+      
+      // Handle specific Cognito errors with user-friendly messages
+      if (err.code === 'NotAuthorizedException') {
+        if (err.message.includes('temporary password') || err.message.includes('Temporary password')) {
+          setError('Your temporary password has expired. Please contact a manager to send you a new invitation.');
+        } else {
+          setError('Invalid email or password. Please check your credentials and try again.');
+        }
+      } else if (err.code === 'UserNotFoundException') {
+        setError('No account found with this email address. Please contact an administrator to be invited.');
+      } else if (err.code === 'UserNotConfirmedException') {
+        setError('Your account is not confirmed. Please contact an administrator to resend your invitation.');
+      } else if (err.code === 'TooManyRequestsException') {
+        setError('Too many login attempts. Please wait a few minutes before trying again.');
+      } else {
+        setError(err.message || 'Login failed. Please try again.');
+      }
+      
       setMessage('');
     } finally {
       setLoading(false);
@@ -229,6 +246,7 @@ export function LoginForm({ onLoginSuccess }) {
                   placeholder="Enter your email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  tabIndex="1"
                 />
               </div>
               <div>
@@ -245,11 +263,13 @@ export function LoginForm({ onLoginSuccess }) {
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    tabIndex="1"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
+                    tabIndex="-1"
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4" />
@@ -268,6 +288,7 @@ export function LoginForm({ onLoginSuccess }) {
                   type="button"
                   onClick={() => setShowForgotPassword(true)}
                   className="text-md flex items-center gap-1 text-primary"
+                  tabIndex="-1"
                 >
                   <Mail className="w-4 h-4" />
                   Forgot password?
@@ -280,6 +301,7 @@ export function LoginForm({ onLoginSuccess }) {
                   disabled={loading}
                   className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-md sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
+                  tabIndex="0"
                 >
                   {loading ? (
                     <div className="flex items-center">

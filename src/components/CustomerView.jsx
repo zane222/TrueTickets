@@ -12,6 +12,7 @@ import {
 import { useApi } from '../hooks/useApi';
 import { useAlertMethods } from './AlertSystem';
 import { useChangeDetection } from '../hooks/useChangeDetection';
+import { useHotkeys } from '../hooks/useHotkeys';
 import NavigationButton from './NavigationButton';
 import { LoadingSpinnerWithText } from './LoadingSpinner';
 
@@ -28,6 +29,17 @@ function CustomerView({ id, goTo }) {
     
     // Change detection
     const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, `/customers/${id}`);
+    
+    // Keyboard shortcuts
+    useHotkeys({
+        "e": () => goTo(`/$${id}?edit`),
+        "s": () => { // Trigger search modal from parent
+            const searchEvent = new CustomEvent('openSearch');
+            window.dispatchEvent(searchEvent);
+        },
+        "n": () => goTo(`/$${id}?newticket`)
+    });
+    
     const passwords = useMemo(() => {
         try {
             const set = new Set();
@@ -83,6 +95,8 @@ function CustomerView({ id, goTo }) {
     useEffect(() => { 
         // Stop any existing polling when customer ID changes
         stopPolling();
+        // Immediately show loading state when ID changes
+        setLoading(true);
         setTickets([]); 
         setTPage(1); 
         setTHasMore(true); 
@@ -162,6 +176,7 @@ function CustomerView({ id, goTo }) {
                     onClick={() => goTo(`/$${id}?edit`)}
                     targetUrl={`${window.location.origin}/$${id}?edit`}
                     className="md-btn-surface elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
+                    tabIndex="-1"
                 >
                     <Edit className="w-5 h-5" />
                     Edit Customer
@@ -170,6 +185,7 @@ function CustomerView({ id, goTo }) {
                     onClick={() => goTo(`/$${id}?newticket`)}
                     targetUrl={`${window.location.origin}/$${id}?newticket`}
                     className="md-btn-primary elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
+                    tabIndex="-1"
                 >
                     <Plus className="w-5 h-5" />
                     New Ticket
@@ -214,6 +230,7 @@ function CustomerView({ id, goTo }) {
                                     onClick={() => goTo(`/&${ticket.id}`)}
                                     targetUrl={`${window.location.origin}/&${ticket.id}`}
                                     className="md-row-box w-full text-left px-4 py-3 transition-all duration-150 group"
+                                    tabIndex="0"
                                 >
                                     {/* Desktop grid layout */}
                                     <div className="hidden sm:grid grid-cols-12">

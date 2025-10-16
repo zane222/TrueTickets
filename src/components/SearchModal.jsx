@@ -11,6 +11,7 @@ import NavigationButton from './NavigationButton';
 import { LoadingSpinnerWithText } from './LoadingSpinner';
 import { InlineErrorMessage } from './AlertSystem';
 import TicketView from './TicketView';
+import { useHotkeys } from '../hooks/useHotkeys';
 
 function SearchModal({ open, onClose, goTo }) {
     const api = useApi();
@@ -31,6 +32,11 @@ function SearchModal({ open, onClose, goTo }) {
             setSearchType("tickets");
         }
     }, [open]);
+
+    useHotkeys({
+        //"n": () => onClose(),
+        "c": () => onClose(),
+    });
 
     // Get latest ticket number when modal opens
     useEffect(() => {
@@ -66,7 +72,6 @@ function SearchModal({ open, onClose, goTo }) {
         }
 
         const latestTicketStr = latestTicketNumber.toString();
-        const responses = [];
         
         // Find tickets ending with the 3-digit query
         // For "035" with latest 36039, we want 35035 and 34035
@@ -82,24 +87,35 @@ function SearchModal({ open, onClose, goTo }) {
             searchNumber -= 1000;
         }
         
-        // Search for the last 2 tickets and the next 1 (in case) ending with the query
+        // Prepare all API calls to run in parallel, searching the last 2 tickets and the next 1 (in case) who's number ends with the search query
+        const apiCalls = [];
         for (let i = -1; i < 2; i++) {
             const number = searchNumber - (i * 1000);
             
-            if (number < 1) break;
+            if (number < 1) continue;
             
-            try {
-                const data = await api.get(`/tickets?number=${number}`);
-                const tickets = data.tickets || data || [];
-                if (tickets.length > 0) {
-                    responses.push(...tickets);
-                }
-            } catch (error) {
-                console.error(`Error fetching ticket ${number}:`, error);
-            }
+            // Create promise for each API call
+            apiCalls.push(
+                api.get(`/tickets?number=${number}`)
+                    .then(data => {
+                        const tickets = data.tickets || [];
+                        // Each GET returns at most one ticket, so return the first one if it exists
+                        return tickets.length > 0 ? tickets[0] : null;
+                    })
+                    .catch(error => {
+                        console.error(`Error fetching ticket ${number}:`, error);
+                        return null;
+                    })
+            );
         }
         
-        setResults(responses);
+        // Execute all API calls in parallel and wait for all to complete
+        const results = await Promise.all(apiCalls);
+        
+        // Filter out null results (failed or empty responses)
+        const validTickets = results.filter(ticket => ticket !== null);
+        
+        setResults(validTickets);
     };
     
     // New Customer autofill helpers
@@ -240,12 +256,14 @@ function SearchModal({ open, onClose, goTo }) {
                             onClick={handleNewCustomer}
                             title="New Customer"
                             className="md-btn-primary elev-1 text-md sm:text-base px-3 py-2 sm:px-4 sm:py-2"
+                            tabIndex="-1"
                         >
                             New Customer
                         </button>
                         <button
                             onClick={onClose}
                             className="md-btn-surface elev-1 inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 p-0 touch-manipulation"
+                            tabIndex="-1"
                         >
                             ×
                         </button>
@@ -260,6 +278,7 @@ function SearchModal({ open, onClose, goTo }) {
                         placeholder="Search..."
                         className="md-input w-full text-md sm:text-base py-3 sm:py-2 pl-10 sm:pl-12"
                         autoFocus
+                        tabIndex="1"
                     />
                     <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
@@ -316,6 +335,7 @@ function SearchModal({ open, onClose, goTo }) {
                                     `${window.location.origin}/&${item.id}`
                                 }
                                 className="md-row-box w-full text-left transition-all duration-150 group"
+                                tabIndex="1"
                             >
                                 {searchType === "customers" ? (
                                     <>
@@ -351,7 +371,7 @@ function SearchModal({ open, onClose, goTo }) {
                                     <>
                                         {/* Ticket Desktop layout */}
                                         <div className="hidden sm:grid grid-cols-12 px-4 py-3">
-                                            <div className="col-span-1 font-mono">#{item.number ?? item.id}</div>
+                                            <div className="col-span-1 truncate">#{item.number ?? item.id}</div>
                                             <div className="col-span-7 truncate">{item.subject}</div>
                                             <div className="col-span-2 truncate">{convertStatus(item.status)}</div>
                                             <div className="col-span-2 truncate">{item.customer_business_then_name ?? item.customer?.business_and_full_name}</div>
