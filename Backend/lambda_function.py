@@ -8,8 +8,10 @@ import urllib.request
 import urllib.parse
 import json
 import boto3
+from botocore.exceptions import ClientError
 import secrets
 import string
+from datetime import datetime, timedelta
 
 API_KEY = os.environ["API_KEY"]
 TARGET_URL = "https://Cacell.repairshopr.com/api/v1"
@@ -50,8 +52,6 @@ def lambda_handler(event, context): # main()
             response = handle_list_users(event, context)
         elif path == "/update-user-group" and method == "POST":
             response = handle_update_user_group(event, context)
-        elif path == "/remove-user" and method == "POST":
-            response = handle_remove_user(event, context)
         elif path.startswith("/api"):
             event["path"] = path[4:] # Remove '/api' prefix and pass the rest to RepairShopr
             response = handle_repairshopr_proxy(event, context)
@@ -196,52 +196,30 @@ def handle_user_invitation(event, context):
             print(f"User {email} already exists with status: {existing_user_status}")
         except cognito.exceptions.UserNotFoundException:
             print(f"User {email} does not exist, will create new user")
-        except Exception as e:
-            print(f"Error checking if user exists: {e}")
-            # Continue with user creation attempt
-        
-        # If user exists and is in FORCE_CHANGE_PASSWORD status, delete them first
-        if user_exists and existing_user_status == 'FORCE_CHANGE_PASSWORD':
-            print(f"Deleting existing user {email} with FORCE_CHANGE_PASSWORD status")
-            try:
-                # Remove user from all groups first
-                try:
-                    groups_response = cognito.admin_list_groups_for_user(
-                        UserPoolId=USER_POOL_ID,
-                        Username=email
-                    )
-                    for group in groups_response.get('Groups', []):
-                        cognito.admin_remove_user_from_group(
-                            UserPoolId=USER_POOL_ID,
-                            Username=email,
-                            GroupName=group['GroupName']
-                        )
-                except Exception as e:
-                    print(f"Warning: Could not remove user from groups: {e}")
-                
-                # Delete the user
-                cognito.admin_delete_user(
-                    UserPoolId=USER_POOL_ID,
-                    Username=email
-                )
-                print(f"Successfully deleted user {email}")
-            except Exception as e:
-                print(f"Error deleting existing user: {e}")
+        except ClientError as e:
+            # If we don't have permission to call admin_get_user, return a clear error
+            error_code = e.response.get('Error', {}).get('Code')
+            error_msg = e.response.get('Error', {}).get('Message', str(e))
+            print(f"ClientError when checking if user exists: {error_code} - {error_msg}")
+            if error_code == 'AccessDeniedException':
                 return {
                     "statusCode": 500,
                     "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps({"error": f"Could not delete existing user: {str(e)}"})
+                    "body": json.dumps({
+                        "error": f"AccessDenied when checking user existence: {error_msg}",
+                        "details": "The Lambda's execution role is missing permissions to call Cognito admin APIs.",
+                        "suggestion": "Attach an IAM policy granting the above cognito-idp:Admin* actions to the Lambda role."
+                    })
                 }
-        elif user_exists and existing_user_status != 'FORCE_CHANGE_PASSWORD':
-            # User exists but is not in FORCE_CHANGE_PASSWORD status
+            # For other client errors, return the error so callers can see it
             return {
-                "statusCode": 409,
+                "statusCode": 500,
                 "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": f"User {email} already exists and is not in a state that allows re-invitation"})
+                "body": json.dumps({"error": f"Error checking user existence: {error_msg}"})
             }
-        
-        temp_password = generate_temp_password() # Generate secure temporary password
-        
+        except Exception as e:
+            print(f"Error checking if user exists: {e}")
+                
         # Prepare user attributes
         user_attributes = [
             {'Name': 'email', 'Value': email},
@@ -252,19 +230,48 @@ def handle_user_invitation(event, context):
         if first_name:
             user_attributes.append({'Name': 'custom:given_name', 'Value': first_name})
         
-        response = cognito.admin_create_user( # Create user
-            UserPoolId=USER_POOL_ID,
-            Username=email,
-            UserAttributes=user_attributes,
-            TemporaryPassword=temp_password,
-            DesiredDeliveryMediums=['EMAIL']
-        )
-        
-        cognito.admin_add_user_to_group( # send request to cognito to add the newly created user "TrueTickets-Cacell-Employee"
-            UserPoolId=USER_POOL_ID,
-            Username=email,
-            GroupName="TrueTickets-Cacell-Employee"
-        )
+        try:
+            response = cognito.admin_create_user( # Create user silently
+                UserPoolId=USER_POOL_ID,
+                Username=email,
+                UserAttributes=user_attributes,
+                MessageAction='SUPPRESS'
+            )
+
+            # Set a permanent random password so they're CONFIRMED
+            cognito.admin_set_user_password(
+                UserPoolId=USER_POOL_ID,
+                Username=email,
+                Password=generate_temp_password(),
+                Permanent=True
+            )
+
+            # Add newly created user to default employee group
+            cognito.admin_add_user_to_group(
+                UserPoolId=USER_POOL_ID,
+                Username=email,
+                GroupName="TrueTickets-Cacell-Employee"
+            )
+        except ClientError as e:
+            err_code = e.response.get('Error', {}).get('Code')
+            err_msg = e.response.get('Error', {}).get('Message', str(e))
+            print(f"ClientError during user creation flow: {err_code} - {err_msg}")
+            if err_code == 'AccessDeniedException':
+                return {
+                    "statusCode": 500,
+                    "headers": {"Content-Type": "application/json"},
+                    "body": json.dumps({
+                        "error": f"Could not invite user: {err_msg}",
+                        "details": "The Lambda's execution role is not authorized to perform one or more Cognito admin actions.",
+                        "suggestion": "Attach an IAM policy allowing the above actions to the Lambda role (or use a role with the required Cognito permissions)."
+                    })
+                }
+            # Pass through other client errors as 400/409 depending on code
+            return {
+                "statusCode": 400,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"error": f"Could not invite user: {err_msg}", "code": err_code})
+            }
 
         # Safely extract user info from response
         user_info = {}
@@ -355,16 +362,14 @@ def handle_list_users(event, context):
             user_status = user.get('UserStatus', '')
             user_groups_list = []
             
-            # Only get groups if user is not in "FORCE_CHANGE_PASSWORD" status
-            if user_status != 'FORCE_CHANGE_PASSWORD':
-                try:
-                    groups_response = cognito.admin_list_groups_for_user(
-                        UserPoolId=USER_POOL_ID,
-                        Username=user['Username']
-                    )
-                    user_groups_list = [group['GroupName'] for group in groups_response.get('Groups', [])]
-                except:
-                    user_groups_list = []
+            try:
+                groups_response = cognito.admin_list_groups_for_user(
+                    UserPoolId=USER_POOL_ID,
+                    Username=user['Username']
+                )
+                user_groups_list = [group['GroupName'] for group in groups_response.get('Groups', [])]
+            except:
+                user_groups_list = []
             
             # Extract email and given name from attributes
             email = None
@@ -424,6 +429,35 @@ def handle_update_user_group(event, context):
         # Create Cognito client
         cognito = boto3.client('cognito-idp')
         
+        # Check if the new group is "delete" - if so, delete the user
+        if new_group.lower() == "delete":
+            # Remove user from all groups first
+            try:
+                groups_response = cognito.admin_list_groups_for_user(
+                    UserPoolId=USER_POOL_ID,
+                    Username=username
+                )
+                for group in groups_response.get('Groups', []):
+                    cognito.admin_remove_user_from_group(
+                        UserPoolId=USER_POOL_ID,
+                        Username=username,
+                        GroupName=group['GroupName']
+                    )
+            except Exception as e:
+                print(f"Warning: Could not remove user from groups: {e}")
+            
+            # Delete the user
+            cognito.admin_delete_user(
+                UserPoolId=USER_POOL_ID,
+                Username=username
+            )
+            
+            return {
+                "statusCode": 200,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({"message": f"User {username} deleted successfully"})
+            }
+        
         # Get current user groups
         current_groups_response = cognito.admin_list_groups_for_user(
             UserPoolId=USER_POOL_ID,
@@ -460,66 +494,6 @@ def handle_update_user_group(event, context):
             "statusCode": 500,
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps({"error": f"Failed to update user group: {str(e)}"})
-        }
-
-def handle_remove_user(event, context):
-    try:
-        # Check user permissions
-        user_groups = get_user_groups_from_event(event)
-        if not can_manage_users(user_groups):
-            return {
-                "statusCode": 403,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": "Insufficient permissions to remove users"})
-            }
-        
-        # Parse request body
-        body = json.loads(event.get("body", "{}"))
-        username = body.get("username")
-        
-        if not username:
-            return {
-                "statusCode": 400,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": "Username is required"})
-            }
-        
-        # Create Cognito client
-        cognito = boto3.client('cognito-idp')
-        
-        # Remove user from all groups first
-        try:
-            groups_response = cognito.admin_list_groups_for_user(
-                UserPoolId=USER_POOL_ID,
-                Username=username
-            )
-            for group in groups_response.get('Groups', []):
-                cognito.admin_remove_user_from_group(
-                    UserPoolId=USER_POOL_ID,
-                    Username=username,
-                    GroupName=group['GroupName']
-                )
-        except Exception as e:
-            print(f"Warning: Could not remove user from groups: {e}")
-        
-        # Delete the user
-        cognito.admin_delete_user(
-            UserPoolId=USER_POOL_ID,
-            Username=username
-        )
-        
-        response_body = {"message": f"User {username} removed successfully"}
-        return {
-            "statusCode": 200,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(response_body)
-        }
-        
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": f"Failed to remove user: {str(e)}"})
         }
 
 def can_manage_users(user_groups):

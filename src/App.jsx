@@ -1,46 +1,25 @@
-import React, { useEffect, useMemo, useRef, useState, createContext, useContext, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, createContext, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Plus, Loader2, Printer, UserPlus, ExternalLink, Edit, User, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
-import html2pdf from 'html2pdf.js';
+import { Search, Loader2, UserPlus, User, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
 import { Amplify } from 'aws-amplify';
-import { AuthWrapper, useUserGroups } from './components/Auth';
+import { useUserGroups } from './components/Auth';
 import { useAlertMethods } from './components/AlertSystem';
 import apiClient from './api/apiClient';
 import awsconfig from './aws-exports';
-import { getCurrentUser, signIn, signOut, confirmSignIn, resetPassword, fetchAuthSession, fetchUserAttributes } from 'aws-amplify/auth';
+import { getCurrentUser, signOut } from 'aws-amplify/auth';
 import { 
   STATUSES, 
   DEVICES, 
-  ITEMS_LEFT, 
-  STATUS_MAP, 
   convertStatus, 
-  convertStatusToOriginal,
-  USER_ROLES,
-  PERMISSIONS,
-  API_ENDPOINTS,
-  UI_CONSTANTS
 } from './constants/appConstants.js';
 import { 
   cx, 
   fmtDate, 
-  fmtTime, 
-  fmtDateAndTime, 
-  formatPhone, 
-  getTicketPassword, 
   getTicketDeviceInfo, 
-  formatItemsLeft, 
-  formatCommentWithLinks,
-  debounce,
-  hasPermission,
-  isValidEmail,
-  isValidPhone
 } from './utils/appUtils.jsx';
-import { useChangeDetection } from './hooks/useChangeDetection';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useRoute } from './hooks/useRoute';
-import { TicketCard } from './components/TicketCard';
-import { LoadingSpinner, LoadingSpinnerWithText } from './components/LoadingSpinner';
-import { InlineMessage, InlineErrorMessage, InlineWarningMessage, ALERT_TYPES } from './components/AlertSystem';
+import { LoadingSpinnerWithText } from './components/LoadingSpinner';
 import NavigationButton from './components/NavigationButton';
 import SearchModal from './components/SearchModal';
 import TicketEditor from './components/TicketEditor';
@@ -93,8 +72,7 @@ import NewCustomer from './components/NewCustomer';
  * - /api/* → RepairShopr API proxy (authenticated)
  * - /invite-user → User invitation (Manager+)
  * - /users → List all users (Admin/Owner only)
- * - /update-user-group → Change user groups (Admin/Owner only)
- * - /remove-user → Delete users (Admin/Owner only)
+ * - /update-user-group → Update user groups or delete users (Admin/Owner only)
  */
 
 /*************************
@@ -271,7 +249,7 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUse
                                         whileTap={{ scale: 0.98 }}
                                     >
                                         <UserPlus className="w-4 h-4 mr-3" />
-                                        Invite User
+                                        Add User
                                     </motion.button>
                                 )}
                                 {canManageUsers && (
@@ -622,26 +600,41 @@ export default function App() {
             const result = await api.post('/invite-user', { email: inviteEmail, firstName: inviteFirstName });
             
             console.log('Invite user result:', result);
-            success('Invitation Sent', `Invitation sent successfully to ${inviteEmail}. The user will receive an email with login instructions.`);
+            success('User Added', `User ${inviteEmail} has been added successfully. They can now log in with their email address by clicking forgot password.`);
             setInviteEmail('');
             setInviteFirstName('');
             setShowInviteUser(false);
             
         } catch (err) {
             console.error('Invite user error:', err);
-            let errorMessage = 'Failed to send invitation. Please try again.';
-            
-            if (err.message.includes('already exists')) {
-                errorMessage = 'A user with this email already exists.';
-            } else if (err.message.includes('Insufficient permissions')) {
-                errorMessage = 'You do not have permission to invite users.';
-            } else if (err.message.includes('Invalid email')) {
-                errorMessage = 'Invalid email address. Please check the format.';
-            } else if (err.message.includes('Too many requests')) {
-                errorMessage = 'Too many requests. Please try again later.';
+            // Default message
+            let errorMessage = 'Failed to add user. Please try again.';
+
+            // If the API client attached a parsed body, prefer that message
+            if (err && err.body) {
+                // Common shaped responses: { error: '...', message: '...' }
+                errorMessage = err.body.error || err.body.message || JSON.stringify(err.body);
+                // If backend provided more details or required actions, append them for clarity
+                if (err.body.details) {
+                    errorMessage += `\n\nDetails: ${err.body.details}`;
+                }
+            } else if (err && err.message) {
+                // Fallback to error.message checks
+                if (err.message.includes('already exists')) {
+                    errorMessage = 'A user with this email already exists.';
+                } else if (err.message.includes('Insufficient permissions')) {
+                    errorMessage = 'You do not have permission to invite users.';
+                } else if (err.message.includes('Invalid email')) {
+                    errorMessage = 'Invalid email address. Please check the format.';
+                } else if (err.message.includes('Too many requests')) {
+                    errorMessage = 'Too many requests. Please try again later.';
+                } else {
+                    errorMessage = err.message;
+                }
             }
-            
-            alert(errorMessage);
+
+            // Use app alert system to show errors (persistent)
+            error('Add User Failed', errorMessage, { persistent: true });
         } finally {
             setInviteLoading(false);
         }
@@ -691,37 +684,40 @@ export default function App() {
         try {
             console.log('Updating user group with apiClient:', username, newGroup);
             
+            // If deleting user, show confirmation dialog
+            if (newGroup === 'delete') {
+                const user = users.find(u => u.username === username);
+                const displayName = user?.given_name || user?.email || user?.username || username;
+                if (!confirm(`Are you sure you want to delete user ${displayName}? This action cannot be undone.`)) {
+                    return;
+                }
+            }
+            
             const api = apiClient;
             const result = await api.post('/update-user-group', { username, group: newGroup });
             
             console.log('User group updated:', result);
+            
+            if (newGroup === 'delete') {
+                const message = result?.message || result?.body || 'User deleted successfully';
+                success('User Deleted', message);
+            } else {
+                success('User Updated', `User group updated successfully`);
+            }
+            
             loadUsers(); // Refresh the user list
             setShowUserEdit(false);
             setSelectedUser(null);
         } catch (err) {
             console.error('Error updating user group:', err);
-            error("Update Failed", "Failed to update user group. Please try again.");
+            if (newGroup === 'delete') {
+                error("Delete Failed", "Failed to delete user. Please try again.");
+            } else {
+                error("Update Failed", "Failed to update user group. Please try again.");
+            }
         }
     };
 
-    const removeUser = async (user) => {
-        const displayName = user.given_name || user.email || user.username;
-        if (!confirm(`Are you sure you want to remove user ${displayName}? This action cannot be undone.`)) {
-            return;
-        }
-
-        try {
-            const api = apiClient;
-            const result = await api.post('/remove-user', { username: user.username });
-            
-            const message = result?.message || result?.body || 'User removed successfully';
-            success('User Removed', message);
-            loadUsers(); // Refresh the user list
-        } catch (err) {
-            console.error('Error removing user:', err);
-            error("Remove User Failed", "Failed to remove user. Please try again.");
-        }
-    };
     // User permission checks
     const canInviteUsers = userGroups.includes('TrueTickets-Cacell-ApplicationAdmin') || 
                           userGroups.includes('TrueTickets-Cacell-Owner') || 
@@ -792,7 +788,7 @@ export default function App() {
                                 animate={{ opacity: 1, scale: 1 }}
                                 className="md-card p-6 w-full max-w-md"
                             >
-                                <h3 className="text-lg font-medium mb-4 text-primary">Invite User</h3>
+                                <h3 className="text-lg font-medium mb-4 text-primary">Add User</h3>
                                 <form onSubmit={handleInviteUser}>
                                     <div className="mb-4">
                                         <label htmlFor="inviteFirstName" className="block text-md font-medium mb-2 text-on-surface">
@@ -836,7 +832,7 @@ export default function App() {
                                             className="md-btn-primary elev-1"
                                             whileTap={{ scale: 0.95 }}
                                         >
-                                            {inviteLoading ? 'Sending...' : 'Send Invitation'}
+                                            {inviteLoading ? 'Adding...' : 'Add User'}
                                         </motion.button>
                                     </div>
                                 </form>
@@ -886,12 +882,20 @@ export default function App() {
                                                             setSelectedUser(user);
                                                             setShowUserEdit(true);
                                                         }}
-                                                        className="md-btn-surface text-md px-3 py-1"
+                                                        disabled={currentUser?.username === user.username}
+                                                        className={`md-btn-surface text-md px-3 py-1 ${
+                                                            currentUser?.username === user.username 
+                                                                ? 'opacity-50 cursor-not-allowed' 
+                                                                : ''
+                                                        }`}
                                                     >
                                                         Edit
                                                     </button>
-                                                    {/* <button // This doesn't work for some reason
-                                                        onClick={() => removeUser(user)}
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedUser({...user, groups: ['delete']});
+                                                            setShowUserEdit(true);
+                                                        }}
                                                         disabled={currentUser?.username === user.username}
                                                         className={`md-btn-surface text-md px-3 py-1 ${
                                                             currentUser?.username === user.username 
@@ -908,7 +912,7 @@ export default function App() {
                                                         }}
                                                     >
                                                         Remove
-                                                    </button> */}
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}
@@ -952,6 +956,7 @@ export default function App() {
                                             <option value="TrueTickets-Cacell-Manager">{getGroupDisplayName('TrueTickets-Cacell-Manager')}</option>
                                             <option value="TrueTickets-Cacell-Owner">{getGroupDisplayName('TrueTickets-Cacell-Owner')}</option>
                                             <option value="TrueTickets-Cacell-ApplicationAdmin">{getGroupDisplayName('TrueTickets-Cacell-ApplicationAdmin')}</option>
+                                            <option value="delete">Delete User</option>
                                         </select>
                                     </div>
                                     <div className="flex justify-end space-x-3">
@@ -966,9 +971,13 @@ export default function App() {
                                         </button>
                                         <button
                                             onClick={() => updateUserGroup(selectedUser.username, selectedUser.groups[0])}
-                                            className="md-btn-primary elev-1"
+                                            className={`elev-1 ${
+                                                selectedUser.groups[0] === 'delete' 
+                                                    ? 'md-btn-error' 
+                                                    : 'md-btn-primary'
+                                            }`}
                                         >
-                                            Update Group
+                                            {selectedUser.groups[0] === 'delete' ? 'Delete User' : 'Update Group'}
                                         </button>
                                     </div>
                                 </div>

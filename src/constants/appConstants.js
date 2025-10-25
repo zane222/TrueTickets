@@ -65,8 +65,7 @@ export const API_ENDPOINTS = {
   CUSTOMERS: '/api/customers',
   USERS: '/users',
   INVITE_USER: '/invite-user',
-  UPDATE_USER_GROUP: '/update-user-group',
-  REMOVE_USER: '/remove-user'
+  UPDATE_USER_GROUP: '/update-user-group'
 };
 
 // UI constants

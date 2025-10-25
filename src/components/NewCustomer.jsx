@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import { formatPhone } from '../utils/appUtils.jsx';
 import { useApi } from '../hooks/useApi';
 import { useAlertMethods } from './AlertSystem';
 import { useChangeDetection } from '../hooks/useChangeDetection';
@@ -24,8 +23,7 @@ function NewCustomer({ goTo, customerId }) {
     // Keybinds
     useHotkeys({
         "h": () => goTo("/"),
-        "s": () => {
-            // Trigger search modal from parent
+        "s": () => { // Trigger search modal from parent
             const searchEvent = new CustomEvent('openSearch');
             window.dispatchEvent(searchEvent);
         },

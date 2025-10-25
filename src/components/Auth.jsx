@@ -1,11 +1,10 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { Amplify } from 'aws-amplify';
-import { getCurrentUser, signIn, signOut, resetPassword, confirmSignIn } from 'aws-amplify/auth';
+import { getCurrentUser, signIn, signOut, resetPassword } from 'aws-amplify/auth';
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { motion } from 'framer-motion';
-import { UserPlus, LogOut, Settings, Mail, Key, Eye, EyeOff } from 'lucide-react';
-import { LoadingSpinner, LoadingSpinnerWithText } from './LoadingSpinner';
-import { InlineMessage, InlineSuccessMessage, InlineWarningMessage, InlineInfoMessage, InlineErrorMessage, ALERT_TYPES } from './AlertSystem';
+import { Mail, Eye, EyeOff } from 'lucide-react';
+import { LoadingSpinner } from './LoadingSpinner';
+import { InlineMessage, InlineErrorMessage } from './AlertSystem';
 
 // Create context for user groups
 const UserGroupsContext = createContext();
@@ -33,8 +32,6 @@ export function LoginForm({ onLoginSuccess }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
-  const [showNewPasswordForm, setShowNewPasswordForm] = useState(false);
-  const [challengeSession, setChallengeSession] = useState(null);
   
   // Password visibility states
   const [showPassword, setShowPassword] = useState(false);
@@ -84,26 +81,13 @@ export function LoginForm({ onLoginSuccess }) {
 
     try {
       const user = await signIn({ username: email, password: password });
-      
-      // Check if user needs to change password
-      if (user.nextStep?.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
-        setChallengeSession(user);
-        setShowNewPasswordForm(true);
-        setMessage('Please set a new password to continue');
-        setMessageType('info');
-      } else {
-        onLoginSuccess(user);
-      }
+      onLoginSuccess(user);
     } catch (err) {
       console.error('Login error:', err);
       
       // Handle specific Cognito errors with user-friendly messages
       if (err.code === 'NotAuthorizedException') {
-        if (err.message.includes('temporary password') || err.message.includes('Temporary password')) {
-          setError('Your temporary password has expired. Please contact a manager to send you a new invitation.');
-        } else {
-          setError('Invalid email or password. Please check your credentials and try again.');
-        }
+        setError('Invalid email or password. Please check your credentials and try again.');
       } else if (err.code === 'UserNotFoundException') {
         setError('No account found with this email address. Please contact an administrator to be invited.');
       } else if (err.code === 'UserNotConfirmedException') {
@@ -120,35 +104,8 @@ export function LoginForm({ onLoginSuccess }) {
     }
   };
 
-  const handleNewPasswordSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters long');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const user = await confirmSignIn({
-        challengeResponse: newPassword
-      });
-      onLoginSuccess(user);
-    } catch (err) {
-      console.error('Password change error:', err);
-      setError(err.message || 'Failed to set new password');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Note: backend now sets a permanent password during invite creation.
+  // No 'set new password' / temporary password flow is required on the frontend.
 
   const handleForgotPassword = async (e) => {
     e.preventDefault();
@@ -230,7 +187,7 @@ export function LoginForm({ onLoginSuccess }) {
           </p>
         </div>
 
-        {!showForgotPassword && !showNewPasswordForm ? (
+  {!showForgotPassword ? (
           <div className="md-card p-4 sm:p-8">
             <form className="space-y-4 sm:space-y-6" onSubmit={handlePasswordLogin}>
               <div>
@@ -291,7 +248,7 @@ export function LoginForm({ onLoginSuccess }) {
                   tabIndex="-1"
                 >
                   <Mail className="w-4 h-4" />
-                  Forgot password?
+                  Forgot password or just got invited?
                 </button>
               </div>
 
@@ -310,88 +267,6 @@ export function LoginForm({ onLoginSuccess }) {
                     </div>
                   ) : (
                     'Sign in'
-                  )}
-                </motion.button>
-              </div>
-            </form>
-          </div>
-        ) : showNewPasswordForm ? (
-          <div className="md-card p-4 sm:p-8">
-            <form className="space-y-4 sm:space-y-6" onSubmit={handleNewPasswordSubmit}>
-              <div>
-                <label htmlFor="newPassword" className="block text-md font-medium mb-2 text-on-surface">
-                  New Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="newPassword"
-                    name="newPassword"
-                    type={showNewPassword ? "text" : "password"}
-                    required
-                    className="md-input text-md sm:text-base py-3 sm:py-2 pr-10"
-                    placeholder="Enter your new password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
-                  >
-                    {showNewPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label htmlFor="confirmPassword" className="block text-md font-medium mb-2 text-on-surface">
-                  Confirm New Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    required
-                    className="md-input text-md sm:text-base py-3 sm:py-2 pr-10"
-                    placeholder="Confirm your new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {error && <InlineErrorMessage message={error} />}
-              {message && <InlineMessage message={message} type={messageType} />}
-
-              <div>
-                <motion.button
-                  type="submit"
-                  disabled={loading}
-                  className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-md sm:text-base touch-manipulation"
-                  whileTap={{ scale: 0.98 }}
-                >
-                  {loading ? (
-                    <div className="flex items-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Setting password...
-                    </div>
-                  ) : (
-                    'Set New Password'
                   )}
                 </motion.button>
               </div>

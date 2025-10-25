@@ -113,14 +113,13 @@ function getDeviceTypeFromSubject(subjectText) {
 
   // Laptop keywords
   if (text.includes('laptop ') || text.includes('macbook ') || text.includes('thinkpad ') ||
-      text.includes('dell ') || text.includes('hp ') || text.includes('asus ') ||
-      text.includes('acer ') || text.includes('lenovo ') || text.includes('ltop ')) {
+      text.includes('elitebook ') || text.includes('chromebook ') || text.includes('inspiron ') ||
+      text.includes('predator ') || text.includes('latitude ') || text.includes('ltop ')) {
       return "Laptop";
   }
   
   // Desktop keywords
-  if (text.includes('desktop ') || text.includes('pc ') ||
-      text.includes('tower ')) {
+  if (text.includes('desktop ') || text.includes('pc ') || text.includes('tower ') || text.includes('omen ')) {
       return "Desktop";
   }
   

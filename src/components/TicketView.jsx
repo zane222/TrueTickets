@@ -80,8 +80,7 @@ function TicketView({ id, goTo }) {
     }, [hasChanged]);
 
     const updateTicketStatus = async (status) => {
-        if (!ticket || updatingStatus) return; // Prevent multiple updates
-        
+        if (!ticket || updatingStatus || convertStatus(ticket.status) === status) return; // Prevent multiple updates or updating to the same status
         setUpdatingStatus(status);
         try {
             // Convert the display status back to the original status before uploading

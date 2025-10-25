@@ -8,9 +8,6 @@ import {
 } from '../constants/appConstants.js';
 import { useApi } from '../hooks/useApi';
 import NavigationButton from './NavigationButton';
-import { LoadingSpinnerWithText } from './LoadingSpinner';
-import { InlineErrorMessage } from './AlertSystem';
-import TicketView from './TicketView';
 import { useHotkeys } from '../hooks/useHotkeys';
 
 function SearchModal({ open, onClose, goTo }) {

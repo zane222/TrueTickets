@@ -44,7 +44,6 @@ class ApiClient {
       '/invite-user',
       '/users', 
       '/update-user-group',
-      '/remove-user',
     ];
     
     // Add /api prefix only for RepairShopr API calls, not for user management
@@ -66,6 +65,16 @@ class ApiClient {
       });
 
       if (!response.ok) {
+        // Try to parse any JSON error body so callers can display server messages
+        let parsedErrorBody = null;
+        try {
+          const text = await response.text();
+          parsedErrorBody = text ? JSON.parse(text) : null;
+        } catch (parseErr) {
+          // ignore parse errors, keep raw text
+          try { parsedErrorBody = await response.text(); } catch(e) { parsedErrorBody = null; }
+        }
+
         if (response.status === 401) {
           // Token might be expired, clear cache and try to refresh
           try {
@@ -77,16 +86,30 @@ class ApiClient {
               headers: newHeaders,
               body: body ? JSON.stringify(body) : undefined,
             });
-            
             if (!retryResponse.ok) {
-              throw new Error(`${retryResponse.status} ${retryResponse.statusText}`);
+              // try to parse retry response body
+              let retryParsed = null;
+              try {
+                const t = await retryResponse.text();
+                retryParsed = t ? JSON.parse(t) : null;
+              } catch (e) {
+                try { retryParsed = await retryResponse.text(); } catch(e) { retryParsed = null; }
+              }
+              const err = new Error(retryParsed?.error || `${retryResponse.status} ${retryResponse.statusText}`);
+              err.status = retryResponse.status;
+              err.body = retryParsed;
+              throw err;
             }
             return await retryResponse.json();
           } catch (refreshError) {
             throw new Error('Authentication failed. Please log in again.');
           }
         }
-        throw new Error(`${response.status} ${response.statusText}`);
+        // Throw an error with status and parsed body where possible
+        const errorToThrow = new Error(parsedErrorBody?.error || parsedErrorBody?.message || `${response.status} ${response.statusText}`);
+        errorToThrow.status = response.status;
+        errorToThrow.body = parsedErrorBody;
+        throw errorToThrow;
       }
 
       return await response.json();
