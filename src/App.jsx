@@ -289,7 +289,7 @@ function TopBar({ onHome, onSearchClick, onNewCustomer, showUserMenu, setShowUse
 /*************************
  * Ticket List / Customers
  *************************/
-function TicketListView({ goTo }) {
+function TicketListView({ goTo, showSearch }) {
     const api = useApi();
     
     // Load filter states from localStorage with defaults
@@ -370,7 +370,7 @@ function TicketListView({ goTo }) {
             window.dispatchEvent(searchEvent);
         },
         "n": () => goTo("/newcustomer"),
-    });
+    }, showSearch);
 
     return (
         <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-6">
@@ -502,9 +502,6 @@ function TicketListView({ goTo }) {
                 >
                     Load more
                 </button>
-                <div className="text-md font-medium text-outline">
-                    Hotkeys: H (home), S (search), N (new customer)
-                </div>
             </div>
         </div>
     );
@@ -771,12 +768,12 @@ export default function App() {
                     userName={userName}
                 />
 
-                    {route.view === "home" && <TicketListView goTo={navigate} />}
-                    {route.view === "customer" && <CustomerView id={route.id} goTo={navigate} />}
-                    {route.view === "newcustomer" && <NewCustomer goTo={navigate} />}
-                    {route.view === "customer-edit" && <NewCustomer goTo={navigate} customerId={route.id} />}
-                    {route.view === "ticket" && <TicketView id={route.id} goTo={navigate} />}
-                    {route.view === "ticket-editor" && <TicketEditor ticketId={route.ticketId} customerId={route.customerId} goTo={navigate} />}
+                    {route.view === "home" && <TicketListView goTo={navigate} showSearch={showSearch} />}
+                    {route.view === "customer" && <CustomerView id={route.id} goTo={navigate} showSearch={showSearch} />}
+                    {route.view === "newcustomer" && <NewCustomer goTo={navigate} showSearch={showSearch} />}
+                    {route.view === "customer-edit" && <NewCustomer goTo={navigate} customerId={route.id} showSearch={showSearch} />}
+                    {route.view === "ticket" && <TicketView id={route.id} goTo={navigate} showSearch={showSearch} />}
+                    {route.view === "ticket-editor" && <TicketEditor ticketId={route.ticketId} customerId={route.customerId} goTo={navigate} showSearch={showSearch} />}
 
                     <SearchModal open={showSearch} onClose={() => setShowSearch(false)} goTo={navigate} />
                     

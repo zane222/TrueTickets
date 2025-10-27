@@ -104,12 +104,10 @@ class ApiClient {
           } catch (refreshError) {
             throw new Error('Authentication failed. Please log in again.');
           }
+        } else {
+            let errorMessage = parsedErrorBody?.details || parsedErrorBody?.message;
+            alert(`API Error: ${errorMessage}`);
         }
-        // Throw an error with status and parsed body where possible
-        const errorToThrow = new Error(parsedErrorBody?.error || parsedErrorBody?.message || `${response.status} ${response.statusText}`);
-        errorToThrow.status = response.status;
-        errorToThrow.body = parsedErrorBody;
-        throw errorToThrow;
       }
 
       return await response.json();

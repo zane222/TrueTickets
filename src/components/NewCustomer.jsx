@@ -7,7 +7,7 @@ import { useChangeDetection } from '../hooks/useChangeDetection';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { LoadingSpinnerWithText } from './LoadingSpinner';
 
-function NewCustomer({ goTo, customerId }) {
+function NewCustomer({ goTo, customerId, showSearch }) {
     const api = useApi();
     const { error, dataChanged } = useAlertMethods();
     const [form, setForm] = useState({ first_name: "", last_name: "", business_name: "", phone: "", email: "" });
@@ -19,7 +19,32 @@ function NewCustomer({ goTo, customerId }) {
     
     // Change detection (only when editing existing customer)
     const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } = useChangeDetection(api, customerId ? `/customers/${customerId}` : null);
+
+    useEffect(() => {
+        try {
+            if (customerId) return;
+            
+            // Only prefill if not editing an existing customer
+            const params = new URLSearchParams(window.location.search);
+            const phone = params.get("phone") || "";
+            const first_name = params.get("first_name") || "";
+            const last_name = params.get("last_name") || "";
     
+            setForm(prev => ({
+                ...prev,
+                first_name,
+                last_name,
+                phone: phone ? formatPhoneLive(phone) : prev.phone,
+            }));
+
+            if (phone) {
+                setAllPhones([formatPhoneLive(phone)]);
+            }
+        } catch (e) {
+            console.error("Failed to parse URL params:", e);
+        }
+    }, [customerId]);
+
     // Keybinds
     useHotkeys({
         "h": () => goTo("/"),
@@ -35,7 +60,7 @@ function NewCustomer({ goTo, customerId }) {
                 goTo("/");
             }
         }
-    });
+    }, showSearch);
     
     const formatPhoneLive = (value) => {
         const digits = (value || "").replace(/\D/g, "");

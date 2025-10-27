@@ -12,7 +12,7 @@ import { useHotkeys } from '../hooks/useHotkeys';
 import { getTicketDeviceInfo } from '../utils/appUtils.jsx';
 import { LoadingSpinnerWithText } from './LoadingSpinner';
 
-function TicketEditor({ ticketId, customerId, goTo }) {
+function TicketEditor({ ticketId, customerId, goTo, showSearch }) {
     const api = useApi();
     const { warning, dataChanged } = useAlertMethods();
     const [previousTicket, setPreviousTicket] = useState(null);
@@ -137,7 +137,7 @@ function TicketEditor({ ticketId, customerId, goTo }) {
         "t": () => {
             if (ticketId) goTo(`/&${ticketId}`);
         }
-    });
+    }, showSearch);
 
     function toggleItem(name) { 
         setItemsLeft(items => items.includes(name) ? items.filter(item => item !== name) : [...items, name]); 
@@ -207,14 +207,6 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                 result = await api.put(`/tickets/${ticketId}`, updatedTicket);
             } else {
                 // For new tickets, create the full payload
-                // Create techNotes JSON with device, items left, and estimated time
-                model = {
-                    device: DEVICES[deviceIdx] || "Other",
-                    itemsLeft: itemsLeft,
-                    estimatedTime: timeEstimate
-                };
-                properties.Model = "vT" + JSON.stringify(model, null, 2);
-                
                 const payload = {
                     customer_id: customerId || previousTicket?.customer_id || previousTicket?.id,
                     user_id: 0,
@@ -223,7 +215,15 @@ function TicketEditor({ ticketId, customerId, goTo }) {
                     problem_type: "Other",
                     status: "New",
                     due_date: new Date().toISOString(),
-                    properties: properties
+                    properties: {
+                        Password: password || "n",
+                        "AC Charger": itemsLeft.includes("Charger") ? "1" : "0",
+                        Model: "vT" + JSON.stringify({
+                            device: DEVICES[deviceIdx] || "Other",
+                            itemsLeft: itemsLeft,
+                            estimatedTime: timeEstimate
+                        }, null, 2)
+                    }
                 };
                 result = await api.post(`/tickets`, payload); // create the ticket
             }

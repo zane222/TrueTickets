@@ -24,7 +24,7 @@ import NavigationButton from './NavigationButton';
 import { TicketCard } from './TicketCard';
 import { LoadingSpinnerWithText } from './LoadingSpinner';
 
-function TicketView({ id, goTo }) {
+function TicketView({ id, goTo, showSearch }) {
     const api = useApi();
     const { warning, dataChanged, error } = useAlertMethods();
     const [ticket, setTicket] = useState(null);
@@ -54,7 +54,7 @@ function TicketView({ id, goTo }) {
         "i": () => updateTicketStatus(STATUSES[5]), // In Progress
         "r": () => updateTicketStatus(STATUSES[6]), // Ready
         "x": () => updateTicketStatus(STATUSES[7])  // Resolved
-    });
+    }, showSearch);
 
     const fetchTicket = async () => {
         setLoading(true);

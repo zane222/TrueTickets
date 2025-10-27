@@ -18,7 +18,38 @@ function SearchModal({ open, onClose, goTo }) {
     const [hasSearched, setHasSearched] = useState(false);
     const [searchType, setSearchType] = useState("tickets"); // "tickets" or "customers"
     const [latestTicketNumber, setLatestTicketNumber] = useState(null);
+    const [enterPressedWhileLoading, setEnterPressedWhileLoading] = useState(false);
+    const searchInputRef = React.useRef(null);
     
+    useHotkeys({
+        "n": () => handleNewCustomer(),
+        "c": () => onClose(),
+        "enter": (e) => {
+            e.preventDefault();
+
+            // If there are results right now, click the first
+            if (!loading && results.length > 0) {
+                const first = results[0];
+                if (first) {
+                    onClose();
+                    if (searchType === "customers") {
+                        goTo(`/$${first.id}`);
+                    } else {
+                        goTo(`/&${first.id}`);
+                    }
+                }
+            } else if (loading) {
+                setEnterPressedWhileLoading(true);
+            }
+        },
+        "escape": (e) => {
+            e.preventDefault();
+            if (document.activeElement === searchInputRef.current) {
+                searchInputRef.current.blur();
+            }
+        },
+    });
+
     // Reset search state when modal closes
     useEffect(() => {
         if (!open) {
@@ -30,10 +61,39 @@ function SearchModal({ open, onClose, goTo }) {
         }
     }, [open]);
 
-    useHotkeys({
-        //"n": () => onClose(),
-        "c": () => onClose(),
-    });
+    // Clear results immediately when search changes
+    useEffect(() => {
+        if (search.trim() === "") {
+            setResults([]);
+            setHasSearched(false);
+            setSearchType("tickets");
+            return;
+        }
+        // Clear results immediately when user starts typing
+        setResults([]);
+        setHasSearched(false);
+        
+        setLoading(true);
+
+        const timeoutId = setTimeout(() => {
+            performSearch(search);
+        }, 300);
+        return () => clearTimeout(timeoutId);
+    }, [search]);
+
+    useEffect(() => {
+        if (!loading && enterPressedWhileLoading && results.length > 0) {
+            const first = results[0];
+            if (first) {
+                const timeoutId = setTimeout(() => {
+                    onClose();
+                    if (searchType === "customers") goTo(`/$${first.id}`);
+                    else goTo(`/&${first.id}`);
+                }, 150);
+            }
+            setEnterPressedWhileLoading(false);
+        }
+    }, [loading]);
 
     // Get latest ticket number when modal opens
     useEffect(() => {
@@ -120,7 +180,7 @@ function SearchModal({ open, onClose, goTo }) {
         const query = search.trim();
         if (!query) { 
             onClose();
-            goTo("/newcustomer"); 
+            goTo("/newcustomer");
             return; 
         }
         const digits = parsePhoneNumber(query);
@@ -143,7 +203,7 @@ function SearchModal({ open, onClose, goTo }) {
         goTo(url);
     };
 
-    // Smart search logic based on Unity code
+    // Smart search logic
     const performSearch = async (query) => {
         if (!query.trim()) {
             setResults([]);
@@ -152,7 +212,6 @@ function SearchModal({ open, onClose, goTo }) {
             return;
         }
 
-        setLoading(true);
         setHasSearched(true);
 
         try {
@@ -216,29 +275,6 @@ function SearchModal({ open, onClose, goTo }) {
         }
     };
 
-    // Clear results immediately when search changes
-    useEffect(() => {
-        if (search.trim() === "") {
-            setResults([]);
-            setHasSearched(false);
-            setSearchType("tickets");
-        } else {
-            // Clear results immediately when user starts typing
-            setResults([]);
-            setHasSearched(false);
-        }
-    }, [search]);
-
-    // Debounced search with 300ms delay
-    useEffect(() => {
-        const timeoutId = setTimeout(() => {
-            if (search.trim()) { // make sure the search is not empty
-                performSearch(search);
-            }
-        }, 300);
-        return () => clearTimeout(timeoutId);
-    }, [search]);
-
     if (!open) return null;
 
     return (
@@ -270,6 +306,7 @@ function SearchModal({ open, onClose, goTo }) {
                 {/* Search Input */}
                 <div className="relative pl-10 sm:pl-12">
                     <input
+                        ref={searchInputRef}
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Search..."
