@@ -8,22 +8,31 @@ import {
   getTicketDeviceInfo,
 } from "../utils/appUtils.jsx";
 import { useApi } from "../hooks/useApi";
-import { useAlertMethods } from "./AlertSystem";
+import { useAlertMethods } from "./ui/AlertSystem";
 import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
-import NavigationButton from "./NavigationButton";
-import { LoadingSpinnerWithText } from "./LoadingSpinner";
+import NavigationButton from "./ui/NavigationButton";
+import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
+import type { Customer, SmallTicket, Phone } from "../types/api";
 
-function CustomerView({ id, goTo, showSearch }) {
+function CustomerView({
+  id,
+  goTo,
+  showSearch,
+}: {
+  id: number;
+  goTo: (to: string) => void;
+  showSearch: boolean;
+}) {
   const api = useApi();
   const { warning, dataChanged } = useAlertMethods();
-  const [customer, setCustomer] = useState(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tickets, setTickets] = useState([]);
+  const [tickets, setTickets] = useState<SmallTicket[]>([]);
   const [tPage, setTPage] = useState(1);
   const [tLoading, setTLoading] = useState(false);
   const [tHasMore, setTHasMore] = useState(true);
-  const [allPhones, setAllPhones] = useState([]);
+  const [allPhones, setAllPhones] = useState<string[]>([]);
 
   // Change detection
   const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } =
@@ -43,9 +52,9 @@ function CustomerView({ id, goTo, showSearch }) {
     showSearch,
   );
 
-  const passwords = useMemo(() => {
+  const passwords = useMemo<string[]>(() => {
     try {
-      const set = new Set();
+      const set = new Set<string>();
       (tickets || []).forEach((ticket) => {
         const password = (getTicketPassword(ticket) || "").trim();
         if (password) set.add(password);
@@ -57,10 +66,14 @@ function CustomerView({ id, goTo, showSearch }) {
   }, [tickets]);
 
   useEffect(() => {
+    let isMounted = true;
     (async () => {
       try {
-        const data = await api.get(`/customers/${id}`);
-        const customerData = data.customer || data;
+        const data = (await api.get(`/customers/${id}`)) as {
+          customer: Customer;
+        };
+        if (!isMounted) return;
+        const customerData = data.customer;
         setCustomer(customerData);
 
         // Start change detection polling
@@ -68,16 +81,19 @@ function CustomerView({ id, goTo, showSearch }) {
 
         // Load all phone numbers
         try {
-          const phoneData = await api.get(`/customers/${id}/phones`);
-          const phoneArray =
-            (phoneData && (phoneData.phones || phoneData)) || [];
-          const numbers = Array.isArray(phoneArray)
-            ? phoneArray.map((phone) => phone?.number || phone).filter(Boolean)
-            : [];
+          const phoneData = (await api.get(`/customers/${id}/phones`)) as {
+            phones: Phone[];
+          };
+          if (!isMounted) return;
+          const phoneArray = phoneData.phones || [];
+          const numbers = phoneArray
+            .map((phone) => phone?.number || "")
+            .filter(Boolean);
           setAllPhones(numbers);
         } catch (phoneError) {
+          if (!isMounted) return;
           // Fallback to mobile/phone if phones endpoint fails
-          const customer = data.customer || data;
+          const customer = data.customer;
           const basePhone =
             customer.mobile && String(customer.mobile).trim()
               ? customer.mobile
@@ -91,9 +107,14 @@ function CustomerView({ id, goTo, showSearch }) {
       } catch (error) {
         console.error(error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     })();
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
 
   // Show warning when changes are detected
@@ -127,10 +148,10 @@ function CustomerView({ id, goTo, showSearch }) {
     if (!id || tLoading || !tHasMore) return;
     setTLoading(true);
     try {
-      const data = await api.get(
+      const data = (await api.get(
         `/tickets?customer_id=${encodeURIComponent(id)}&page=${tPage}`,
-      );
-      const tickets = data.tickets || data || [];
+      )) as { tickets: SmallTicket[] };
+      const tickets = data.tickets || [];
       // Filter out duplicates by ticket ID
       setTickets((previous) => {
         const existingIds = new Set(previous.map((ticket) => ticket.id));
@@ -149,45 +170,51 @@ function CustomerView({ id, goTo, showSearch }) {
     }
   }
 
-  async function loadAllTickets() {
-    if (!id || tLoading) return;
+  async function loadAllTickets(isMounted: { current: boolean }) {
     setTLoading(true);
-    setTickets([]);
-    setTPage(1);
     setTHasMore(true);
 
     try {
-      let allTickets = [];
-      let currentPage = 1;
+      let page = 1;
+      let allTickets: SmallTicket[] = [];
       let hasMore = true;
 
       while (hasMore) {
-        const data = await api.get(
-          `/tickets?customer_id=${encodeURIComponent(id)}&page=${currentPage}`,
-        );
-        const tickets = data.tickets || data || [];
-
-        if (tickets.length === 0) {
+        const data = (await api.get(
+          `/tickets?customer_id=${encodeURIComponent(id)}&page=${page}`,
+        )) as { tickets: SmallTicket[] };
+        if (!isMounted.current) return;
+        const tickets = data.tickets || [];
+        if (!tickets || tickets.length === 0) {
           hasMore = false;
         } else {
           allTickets = [...allTickets, ...tickets];
-          currentPage++;
+          page += 1;
         }
       }
 
+      if (!isMounted.current) return;
       setTickets(allTickets);
+      setTPage(page);
       setTHasMore(false);
     } catch (error) {
       console.error(error);
-      setTHasMore(false);
+      if (isMounted.current) {
+        setTHasMore(false);
+      }
     } finally {
-      setTLoading(false);
+      if (isMounted.current) {
+        setTLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    loadAllTickets();
-    // eslint-disable-next-line
+    const isMounted = { current: true };
+    loadAllTickets(isMounted);
+    return () => {
+      isMounted.current = false;
+    };
   }, [id]);
 
   if (loading)
@@ -213,7 +240,7 @@ function CustomerView({ id, goTo, showSearch }) {
           onClick={() => goTo(`/$${id}?edit`)}
           targetUrl={`${window.location.origin}/$${id}?edit`}
           className="md-btn-surface elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
-          tabIndex="-1"
+          tabIndex={-1}
         >
           <Edit className="w-5 h-5" />
           Edit Customer
@@ -222,7 +249,7 @@ function CustomerView({ id, goTo, showSearch }) {
           onClick={() => goTo(`/$${id}?newticket`)}
           targetUrl={`${window.location.origin}/$${id}?newticket`}
           className="md-btn-primary elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
-          tabIndex="-1"
+          tabIndex={-1}
         >
           <Plus className="w-5 h-5" />
           New Ticket
@@ -276,7 +303,7 @@ function CustomerView({ id, goTo, showSearch }) {
                   onClick={() => goTo(`/&${ticket.id}`)}
                   targetUrl={`${window.location.origin}/&${ticket.id}`}
                   className="md-row-box w-full text-left px-4 py-3 transition-all duration-150 group"
-                  tabIndex="0"
+                  tabIndex={0}
                 >
                   {/* Desktop grid layout */}
                   <div className="hidden sm:grid grid-cols-12">

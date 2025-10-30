@@ -1,64 +1,76 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
-import { getCurrentUser, signIn, signOut, resetPassword } from 'aws-amplify/auth';
-import { fetchAuthSession } from 'aws-amplify/auth';
-import { motion } from 'framer-motion';
-import { Mail, Eye, EyeOff } from 'lucide-react';
-import { LoadingSpinner } from './LoadingSpinner';
-import { InlineMessage, InlineErrorMessage } from './AlertSystem';
+import React, { useState, useEffect, createContext, useContext } from "react";
+import {
+  getCurrentUser,
+  signIn,
+  signOut,
+  resetPassword,
+} from "aws-amplify/auth";
+import { fetchAuthSession } from "aws-amplify/auth";
+import { motion } from "framer-motion";
+import { Mail, Eye, EyeOff } from "lucide-react";
+import { LoadingSpinner } from "./ui/LoadingSpinner";
+import { InlineMessage, InlineErrorMessage } from "./ui/AlertSystem";
 
 // Create context for user groups
-const UserGroupsContext = createContext();
+interface UserGroupsContextType {
+  userGroups: string[];
+  setUserGroups: (groups: string[]) => void;
+  refreshUserGroups: () => Promise<string[]>;
+  userName: string | null;
+}
+
+const UserGroupsContext = createContext<UserGroupsContextType | null>(null);
 
 export const useUserGroups = () => {
   const context = useContext(UserGroupsContext);
   if (!context) {
-    throw new Error('useUserGroups must be used within a UserGroupsProvider');
+    throw new Error("useUserGroups must be used within a UserGroupsProvider");
   }
   return context;
 };
 
 export function LoginForm({ onLoginSuccess }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('error'); // 'error', 'success', 'info'
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("error"); // 'error', 'success', 'info'
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
   const [showResetCodeForm, setShowResetCodeForm] = useState(false);
-  const [resetCode, setResetCode] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetCode, setResetCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
-  
+
   // Password visibility states
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showResetNewPassword, setShowResetNewPassword] = useState(false);
-  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] =
+    useState(false);
 
   // Clear reset code when form is first shown
   useEffect(() => {
     if (showResetCodeForm) {
-      setResetCode('');
+      setResetCode("");
     }
   }, [showResetCodeForm]);
 
   const resetForm = () => {
-    setError('');
-    setMessage('');
-    setMessageType('error');
-    setPassword('');
+    setError("");
+    setMessage("");
+    setMessageType("error");
+    setPassword("");
     setShowResetCodeForm(false);
-    setResetCode('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setShowNewPasswordForm(false);
-    setChallengeSession(null);
-    
+    setResetCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+    // Reset form state
+
     // Reset password visibility states
     setShowPassword(false);
     setShowNewPassword(false);
@@ -67,38 +79,45 @@ export function LoginForm({ onLoginSuccess }) {
     setShowResetConfirmPassword(false);
   };
 
-  const setMessageWithType = (messageText, type = 'error') => {
+  const setMessageWithType = (messageText, type = "error") => {
     setMessage(messageText);
     setMessageType(type);
-    setError(''); // Clear any existing error
+    setError(""); // Clear any existing error
   };
-
 
   const handlePasswordLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
       const user = await signIn({ username: email, password: password });
       onLoginSuccess(user);
     } catch (err) {
-      console.error('Login error:', err);
-      
+      console.error("Login error:", err);
+
       // Handle specific Cognito errors with user-friendly messages
-      if (err.code === 'NotAuthorizedException') {
-        setError('Invalid email or password. Please check your credentials and try again.');
-      } else if (err.code === 'UserNotFoundException') {
-        setError('No account found with this email address. Please contact an administrator to be invited.');
-      } else if (err.code === 'UserNotConfirmedException') {
-        setError('Your account is not confirmed. Please contact an administrator to resend your invitation.');
-      } else if (err.code === 'TooManyRequestsException') {
-        setError('Too many login attempts. Please wait a few minutes before trying again.');
+      if (err.code === "NotAuthorizedException") {
+        setError(
+          "Invalid email or password. Please check your credentials and try again.",
+        );
+      } else if (err.code === "UserNotFoundException") {
+        setError(
+          "No account found with this email address. Please contact an administrator to be invited.",
+        );
+      } else if (err.code === "UserNotConfirmedException") {
+        setError(
+          "Your account is not confirmed. Please contact an administrator to resend your invitation.",
+        );
+      } else if (err.code === "TooManyRequestsException") {
+        setError(
+          "Too many login attempts. Please wait a few minutes before trying again.",
+        );
       } else {
-        setError(err.message || 'Login failed. Please try again.');
+        setError(err.message || "Login failed. Please try again.");
       }
-      
-      setMessage('');
+
+      setMessage("");
     } finally {
       setLoading(false);
     }
@@ -110,16 +129,19 @@ export function LoginForm({ onLoginSuccess }) {
   const handleForgotPassword = async (e) => {
     e.preventDefault();
     setForgotPasswordLoading(true);
-    setError('');
+    setError("");
 
     try {
       const result = await resetPassword({ username: forgotPasswordEmail });
-      setMessageWithType('Password reset code sent to your email. Please check your inbox.', 'success');
+      setMessageWithType(
+        "Password reset code sent to your email. Please check your inbox.",
+        "success",
+      );
       setShowResetCodeForm(true);
     } catch (err) {
-      console.error('Forgot password error:', err);
-      setError(err.message || 'Failed to send reset code');
-      setMessage('');
+      console.error("Forgot password error:", err);
+      setError(err.message || "Failed to send reset code");
+      setMessage("");
     } finally {
       setForgotPasswordLoading(false);
     }
@@ -128,47 +150,52 @@ export function LoginForm({ onLoginSuccess }) {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setResetPasswordLoading(true);
-    setError('');
+    setError("");
 
     try {
       // Check if passwords match
       if (newPassword !== confirmPassword) {
-        throw new Error('Passwords do not match');
+        throw new Error("Passwords do not match");
       }
-      
+
       // Check password strength
       if (newPassword.length < 8) {
-        throw new Error('Password must be at least 8 characters long');
+        throw new Error("Password must be at least 8 characters long");
       }
-      
+
       // Import the confirmResetPassword function
-      const { confirmResetPassword } = await import('aws-amplify/auth');
-      
+      const { confirmResetPassword } = await import("aws-amplify/auth");
+
       // Confirm the password reset
       const result = await confirmResetPassword({
         username: forgotPasswordEmail,
         confirmationCode: resetCode,
-        newPassword: newPassword
+        newPassword: newPassword,
       });
-      
-      setMessageWithType('Password reset successful! You can now sign in with your new password.', 'success');
+
+      setMessageWithType(
+        "Password reset successful! You can now sign in with your new password.",
+        "success",
+      );
       setShowResetCodeForm(false);
       setShowForgotPassword(false);
     } catch (err) {
-      console.error('Reset password error:', err);
-      
-      if (err.code === 'CodeMismatchException') {
-        setError('Invalid reset code. Please check your email and try again.');
-        setMessage('');
-      } else if (err.code === 'ExpiredCodeException') {
-        setError('Reset code has expired. Please request a new one.');
-        setMessage('');
-      } else if (err.code === 'InvalidPasswordException') {
-        setError('Password does not meet requirements. Please use a stronger password.');
-        setMessage('');
+      console.error("Reset password error:", err);
+
+      if (err.code === "CodeMismatchException") {
+        setError("Invalid reset code. Please check your email and try again.");
+        setMessage("");
+      } else if (err.code === "ExpiredCodeException") {
+        setError("Reset code has expired. Please request a new one.");
+        setMessage("");
+      } else if (err.code === "InvalidPasswordException") {
+        setError(
+          "Password does not meet requirements. Please use a stronger password.",
+        );
+        setMessage("");
       } else {
-        setError(err.message || 'Failed to reset password. Please try again.');
-        setMessage('');
+        setError(err.message || "Failed to reset password. Please try again.");
+        setMessage("");
       }
     } finally {
       setResetPasswordLoading(false);
@@ -187,11 +214,17 @@ export function LoginForm({ onLoginSuccess }) {
           </p>
         </div>
 
-  {!showForgotPassword ? (
+        {!showForgotPassword ? (
           <div className="md-card p-4 sm:p-8">
-            <form className="space-y-4 sm:space-y-6" onSubmit={handlePasswordLogin}>
+            <form
+              className="space-y-4 sm:space-y-6"
+              onSubmit={handlePasswordLogin}
+            >
               <div>
-                <label htmlFor="email" className="block text-md font-medium mb-2 text-on-surface">
+                <label
+                  htmlFor="email"
+                  className="block text-md font-medium mb-2 text-on-surface"
+                >
                   Email Address
                 </label>
                 <input
@@ -203,11 +236,14 @@ export function LoginForm({ onLoginSuccess }) {
                   placeholder="Enter your email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  tabIndex="1"
+                  tabIndex={1}
                 />
               </div>
               <div>
-                <label htmlFor="password" className="block text-md font-medium mb-2 text-on-surface">
+                <label
+                  htmlFor="password"
+                  className="block text-md font-medium mb-2 text-on-surface"
+                >
                   Password
                 </label>
                 <div className="relative">
@@ -220,13 +256,13 @@ export function LoginForm({ onLoginSuccess }) {
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    tabIndex="1"
+                    tabIndex={1}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
-                    tabIndex="-1"
+                    tabIndex={-1}
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4" />
@@ -238,14 +274,16 @@ export function LoginForm({ onLoginSuccess }) {
               </div>
 
               {error && <InlineErrorMessage message={error} />}
-              {message && <InlineMessage message={message} type={messageType} />}
+              {message && (
+                <InlineMessage message={message} type={messageType} />
+              )}
 
               <div className="flex items-center justify-between">
                 <button
                   type="button"
                   onClick={() => setShowForgotPassword(true)}
                   className="text-md flex items-center gap-1 text-primary"
-                  tabIndex="-1"
+                  tabIndex={-1}
                 >
                   <Mail className="w-4 h-4" />
                   Forgot password or just got invited?
@@ -258,7 +296,7 @@ export function LoginForm({ onLoginSuccess }) {
                   disabled={loading}
                   className="md-btn-primary w-full flex justify-center py-3 sm:py-2 text-md sm:text-base touch-manipulation"
                   whileTap={{ scale: 0.98 }}
-                  tabIndex="0"
+                  tabIndex={0}
                 >
                   {loading ? (
                     <div className="flex items-center">
@@ -266,7 +304,7 @@ export function LoginForm({ onLoginSuccess }) {
                       Signing in...
                     </div>
                   ) : (
-                    'Sign in'
+                    "Sign in"
                   )}
                 </motion.button>
               </div>
@@ -274,9 +312,15 @@ export function LoginForm({ onLoginSuccess }) {
           </div>
         ) : !showResetCodeForm ? (
           <div className="md-card p-4 sm:p-8">
-            <form className="space-y-4 sm:space-y-6" onSubmit={handleForgotPassword}>
+            <form
+              className="space-y-4 sm:space-y-6"
+              onSubmit={handleForgotPassword}
+            >
               <div>
-                <label htmlFor="forgotPasswordEmail" className="block text-md font-medium mb-2 text-on-surface">
+                <label
+                  htmlFor="forgotPasswordEmail"
+                  className="block text-md font-medium mb-2 text-on-surface"
+                >
                   Email Address
                 </label>
                 <input
@@ -292,7 +336,9 @@ export function LoginForm({ onLoginSuccess }) {
               </div>
 
               {error && <InlineErrorMessage message={error} />}
-              {message && <InlineMessage message={message} type={messageType} />}
+              {message && (
+                <InlineMessage message={message} type={messageType} />
+              )}
 
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:space-x-3">
                 <motion.button
@@ -315,7 +361,7 @@ export function LoginForm({ onLoginSuccess }) {
                       Sending...
                     </div>
                   ) : (
-                    'Send Reset Code'
+                    "Send Reset Code"
                   )}
                 </motion.button>
               </div>
@@ -335,9 +381,15 @@ export function LoginForm({ onLoginSuccess }) {
               </p>
             </div>
 
-            <form className="space-y-4 sm:space-y-6" onSubmit={handleResetPassword}>
+            <form
+              className="space-y-4 sm:space-y-6"
+              onSubmit={handleResetPassword}
+            >
               <div>
-                <label htmlFor="resetCode" className="block text-md font-medium mb-2 text-on-surface">
+                <label
+                  htmlFor="resetCode"
+                  className="block text-md font-medium mb-2 text-on-surface"
+                >
                   Reset Code
                 </label>
                 <input
@@ -358,7 +410,10 @@ export function LoginForm({ onLoginSuccess }) {
               </div>
 
               <div>
-                <label htmlFor="newPassword" className="block text-md font-medium mb-2 text-on-surface">
+                <label
+                  htmlFor="newPassword"
+                  className="block text-md font-medium mb-2 text-on-surface"
+                >
                   New Password
                 </label>
                 <div className="relative">
@@ -374,7 +429,9 @@ export function LoginForm({ onLoginSuccess }) {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowResetNewPassword(!showResetNewPassword)}
+                    onClick={() =>
+                      setShowResetNewPassword(!showResetNewPassword)
+                    }
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
                   >
                     {showResetNewPassword ? (
@@ -387,7 +444,10 @@ export function LoginForm({ onLoginSuccess }) {
               </div>
 
               <div>
-                <label htmlFor="confirmPassword" className="block text-md font-medium mb-2 text-on-surface">
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-md font-medium mb-2 text-on-surface"
+                >
                   Confirm New Password
                 </label>
                 <div className="relative">
@@ -403,7 +463,9 @@ export function LoginForm({ onLoginSuccess }) {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowResetConfirmPassword(!showResetConfirmPassword)}
+                    onClick={() =>
+                      setShowResetConfirmPassword(!showResetConfirmPassword)
+                    }
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-outline hover:text-primary transition-colors"
                   >
                     {showResetConfirmPassword ? (
@@ -416,7 +478,9 @@ export function LoginForm({ onLoginSuccess }) {
               </div>
 
               {error && <InlineErrorMessage message={error} />}
-              {message && <InlineMessage message={message} type={messageType} />}
+              {message && (
+                <InlineMessage message={message} type={messageType} />
+              )}
 
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:space-x-3">
                 <motion.button
@@ -442,7 +506,7 @@ export function LoginForm({ onLoginSuccess }) {
                       Resetting...
                     </div>
                   ) : (
-                    'Reset Password'
+                    "Reset Password"
                   )}
                 </motion.button>
               </div>
@@ -472,13 +536,13 @@ export function AuthWrapper({ children }) {
           // Use cached session instead of forceRefresh to avoid extra Cognito calls
           const session = await fetchAuthSession();
           const idTokenPayload = session.tokens?.idToken?.payload;
-          const groups = idTokenPayload?.['cognito:groups'] || [];
-          setUserGroups(groups);
+          const groups = idTokenPayload?.["cognito:groups"] || [];
+          setUserGroups(Array.isArray(groups) ? groups : []);
         } catch (error) {
-          console.error('Error refreshing user groups:', error);
+          console.error("Error refreshing user groups:", error);
         }
       };
-      
+
       // Small delay to ensure session is ready
       const timeoutId = setTimeout(refreshUserGroups, 100);
       return () => clearTimeout(timeoutId);
@@ -489,46 +553,51 @@ export function AuthWrapper({ children }) {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
-      
+
       // Get user groups and name for permission checking with retry mechanism
       let attempts = 0;
       const maxAttempts = 3;
-      
+
       while (attempts < maxAttempts) {
         try {
           // Use cached session to avoid unnecessary Cognito calls
           const session = await fetchAuthSession();
           const idTokenPayload = session.tokens?.idToken?.payload;
-          const groups = currentUser.signInDetails?.loginId ? 
-            idTokenPayload?.['cognito:groups'] || [] : [];
-          
+          const groups = currentUser.signInDetails?.loginId
+            ? idTokenPayload?.["cognito:groups"] || []
+            : [];
+
           // Get user name from custom:given_name or fallback to other attributes
-          const name = idTokenPayload?.['custom:given_name'] || 
-                      idTokenPayload?.['given_name'] || 
-                      idTokenPayload?.['name'] || 
-                      currentUser?.username || 
-                      null;
-          
+          const name =
+            idTokenPayload?.["custom:given_name"] ||
+            idTokenPayload?.["given_name"] ||
+            idTokenPayload?.["name"] ||
+            currentUser?.username ||
+            null;
+
           // If we got groups or this is our last attempt, set them
-          if (groups.length > 0 || attempts === maxAttempts - 1) {
-            setUserGroups(groups);
+          if (
+            (Array.isArray(groups) && groups.length > 0) ||
+            attempts === maxAttempts - 1
+          ) {
+            setUserGroups(Array.isArray(groups) ? groups : []);
             setUserName(name);
             break;
           }
-          
+
           // Wait a bit before retrying
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
           attempts++;
         } catch (error) {
-          console.error('Error fetching session in checkAuthState:', error);
+          console.error("Error fetching session in checkAuthState:", error);
           attempts++;
           if (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
           }
         }
       }
     } catch (error) {
-      console.log('No authenticated user:', error);
+      console.log("No authenticated user:", error);
       setUser(null);
       setUserName(null);
     } finally {
@@ -538,47 +607,48 @@ export function AuthWrapper({ children }) {
 
   const handleLoginSuccess = async (user) => {
     setUser(user);
-    
+
     // Force a fresh session fetch to get user groups and name
     const fetchUserGroups = async () => {
       let attempts = 0;
       const maxAttempts = 3;
-      
+
       while (attempts < maxAttempts) {
         try {
           // Use cached session instead of forceRefresh to avoid extra Cognito calls
           const session = await fetchAuthSession();
           const idTokenPayload = session.tokens?.idToken?.payload;
-          const groups = idTokenPayload?.['cognito:groups'] || [];
-          
+          const groups = idTokenPayload?.["cognito:groups"] || [];
+
           // Get user name from custom:given_name or fallback to other attributes
-          const name = idTokenPayload?.['custom:given_name'] || 
-                      idTokenPayload?.['given_name'] || 
-                      idTokenPayload?.['name'] || 
-                      user?.username || 
-                      null;
-          
-          if (groups.length > 0) {
-            setUserGroups(groups);
+          const name =
+            idTokenPayload?.["custom:given_name"] ||
+            idTokenPayload?.["given_name"] ||
+            idTokenPayload?.["name"] ||
+            user?.username ||
+            null;
+
+          if (Array.isArray(groups) && groups.length > 0) {
+            setUserGroups(Array.isArray(groups) ? groups : []);
             setUserName(name);
             return;
           }
-          
+
           // Wait and retry if no groups found
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 500));
           attempts++;
         } catch (error) {
-          console.error('Error fetching session:', error);
-          await new Promise(resolve => setTimeout(resolve, 500));
+          console.error("Error fetching session:", error);
+          await new Promise((resolve) => setTimeout(resolve, 500));
           attempts++;
         }
       }
-      
+
       // Set empty groups as fallback
       setUserGroups([]);
       setUserName(null);
     };
-    
+
     fetchUserGroups();
   };
 
@@ -589,10 +659,9 @@ export function AuthWrapper({ children }) {
       setUserGroups([]);
       setUserName(null);
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
     }
   };
-
 
   if (loading) {
     return (
@@ -612,20 +681,22 @@ export function AuthWrapper({ children }) {
         // Use cached session instead of forceRefresh to avoid extra Cognito calls
         const session = await fetchAuthSession();
         const idTokenPayload = session.tokens?.idToken?.payload;
-        const groups = idTokenPayload?.['cognito:groups'] || [];
-        
+        const groups =
+          (idTokenPayload?.["cognito:groups"] as string[] | undefined) ?? [];
+
         // Get user name from custom:given_name or fallback to other attributes
-        const name = idTokenPayload?.['custom:given_name'] || 
-                    idTokenPayload?.['given_name'] || 
-                    idTokenPayload?.['name'] || 
-                    user?.username || 
-                    null;
-        
-        setUserGroups(groups);
+        const name =
+          idTokenPayload?.["custom:given_name"] ||
+          idTokenPayload?.["given_name"] ||
+          idTokenPayload?.["name"] ||
+          user?.username ||
+          null;
+
+        setUserGroups(Array.isArray(groups) ? groups : []);
         setUserName(name);
         return groups;
       } catch (error) {
-        console.error('Error manually refreshing user groups:', error);
+        console.error("Error manually refreshing user groups:", error);
         return [];
       }
     }
@@ -633,12 +704,12 @@ export function AuthWrapper({ children }) {
   };
 
   return (
-    <UserGroupsContext.Provider value={{ userGroups, setUserGroups, refreshUserGroups, userName }}>
+    <UserGroupsContext.Provider
+      value={{ userGroups, setUserGroups, refreshUserGroups, userName }}
+    >
       <div className="min-h-screen material-surface">
         {/* Main content */}
-        <div className="flex-1">
-          {children}
-        </div>
+        <div className="flex-1">{children}</div>
       </div>
     </UserGroupsContext.Provider>
   );

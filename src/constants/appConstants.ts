@@ -1,5 +1,5 @@
 // Status constants
-export const STATUSES = [
+export const STATUSES: string[] = [
   "Diagnosing",
   "Finding Price",
   "Approval Needed",
@@ -10,30 +10,45 @@ export const STATUSES = [
   "Resolved",
 ];
 
-export const DEVICES = ["Phone", "Tablet", "Watch", "Console", "Laptop", "Desktop", "All in one", "Other"];
+export const DEVICES: string[] = [
+  "Phone",
+  "Tablet",
+  "Watch",
+  "Console",
+  "Laptop",
+  "Desktop",
+  "All in one",
+  "Other",
+];
 
-export const ITEMS_LEFT = ["Charger", "Case", "Controller", "Bag", "Other"];
+export const ITEMS_LEFT: string[] = [
+  "Charger",
+  "Case",
+  "Controller",
+  "Bag",
+  "Other",
+];
 
 // Status mapping
-export const STATUS_MAP = {
-  "New": "Diagnosing",
-  "Scheduled": "Finding Price",
+export const STATUS_MAP: Record<string, string> = {
+  New: "Diagnosing",
+  Scheduled: "Finding Price",
   "Call Customer": "Approval Needed",
   "Waiting for Parts": "Waiting for Parts",
   "Waiting on Customer": "Waiting (Other)",
   "In Progress": "In Progress",
   "Customer Reply": "Ready",
   "Ready!": "Ready",
-  "Resolved": "Resolved",
+  Resolved: "Resolved",
 };
 
 // Status conversion functions
-export const convertStatus = (status) => {
+export const convertStatus = (status: string): string => {
   if (!status) return "";
   return STATUS_MAP[status] || status;
 };
 
-export const convertStatusToOriginal = (displayStatus) => {
+export const convertStatusToOriginal = (displayStatus: string): string => {
   if (!displayStatus) return "";
   // Find the original status that maps to this display status
   for (const [original, display] of Object.entries(STATUS_MAP)) {
@@ -46,32 +61,36 @@ export const convertStatusToOriginal = (displayStatus) => {
 
 // User roles and permissions
 export const USER_ROLES = {
-  APPLICATION_ADMIN: 'ApplicationAdmin',
-  OWNER: 'Owner',
-  MANAGER: 'Manager',
-  EMPLOYEE: 'Employee'
+  APPLICATION_ADMIN: "ApplicationAdmin",
+  OWNER: "Owner",
+  MANAGER: "Manager",
+  EMPLOYEE: "Employee",
 };
 
 export const PERMISSIONS = {
   MANAGE_USERS: [USER_ROLES.APPLICATION_ADMIN, USER_ROLES.OWNER],
-  INVITE_USERS: [USER_ROLES.APPLICATION_ADMIN, USER_ROLES.OWNER, USER_ROLES.MANAGER],
+  INVITE_USERS: [
+    USER_ROLES.APPLICATION_ADMIN,
+    USER_ROLES.OWNER,
+    USER_ROLES.MANAGER,
+  ],
   EDIT_USERS: [USER_ROLES.APPLICATION_ADMIN, USER_ROLES.OWNER],
-  REMOVE_USERS: [USER_ROLES.APPLICATION_ADMIN, USER_ROLES.OWNER]
+  REMOVE_USERS: [USER_ROLES.APPLICATION_ADMIN, USER_ROLES.OWNER],
 };
 
 // API endpoints
-export const API_ENDPOINTS = {
-  TICKETS: '/api/tickets',
-  CUSTOMERS: '/api/customers',
-  USERS: '/users',
-  INVITE_USER: '/invite-user',
-  UPDATE_USER_GROUP: '/update-user-group'
+export const API_ENDPOINTS: Record<string, string> = {
+  TICKETS: "/api/tickets",
+  CUSTOMERS: "/api/customers",
+  USERS: "/users",
+  INVITE_USER: "/invite-user",
+  UPDATE_USER_GROUP: "/update-user-group",
 };
 
 // UI constants
-export const UI_CONSTANTS = {
+export const UI_CONSTANTS: Record<string, number> = {
   DEBOUNCE_DELAY: 300,
   POLLING_INTERVAL: 30000,
   MAX_SEARCH_RESULTS: 50,
-  MOBILE_BREAKPOINT: 640
+  MOBILE_BREAKPOINT: 640,
 };

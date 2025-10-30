@@ -1,0 +1,524 @@
+import React, { useEffect, useState } from "react";
+import { Search, Loader2 } from "lucide-react";
+import { formatPhone } from "../utils/appUtils.jsx";
+import { convertStatus } from "../constants/appConstants.js";
+import { useApi } from "../hooks/useApi";
+import NavigationButton from "./ui/NavigationButton";
+import { useHotkeys } from "../hooks/useHotkeys";
+import type { SmallTicket, Customer } from "../types/api";
+
+function SearchModal({
+  open,
+  onClose,
+  goTo,
+}: {
+  open: boolean;
+  onClose: () => void;
+  goTo: (to: string) => void;
+}) {
+  const api = useApi();
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<(SmallTicket | Customer)[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [searchType, setSearchType] = useState<"tickets" | "customers">(
+    "tickets",
+  );
+  const [latestTicketNumber, setLatestTicketNumber] = useState<number | null>(
+    null,
+  );
+  const [enterPressedWhileLoading, setEnterPressedWhileLoading] =
+    useState(false);
+  const searchInputRef = React.useRef(null);
+
+  useHotkeys({
+    n: () => handleNewCustomer(),
+    c: () => onClose(),
+    enter: (e) => {
+      e.preventDefault();
+
+      // If there are results right now, click the first
+      if (!loading && results.length > 0) {
+        const first = results[0];
+        if (first) {
+          onClose();
+          if (searchType === "customers") {
+            goTo(`/$${first.id}`);
+          } else {
+            goTo(`/&${first.id}`);
+          }
+        }
+      } else if (loading) {
+        setEnterPressedWhileLoading(true);
+      }
+    },
+    escape: (e) => {
+      e.preventDefault();
+      if (document.activeElement === searchInputRef.current) {
+        searchInputRef.current.blur();
+      }
+    },
+  });
+
+  // Reset search state when modal closes
+  useEffect(() => {
+    if (!open) {
+      setSearch("");
+      setResults([]);
+      setLoading(false);
+      setHasSearched(false);
+      setSearchType("tickets");
+    }
+  }, [open]);
+
+  // Clear results immediately when search changes
+  useEffect(() => {
+    if (search.trim() === "") {
+      setResults([]);
+      setHasSearched(false);
+      setSearchType("tickets");
+      return;
+    }
+    // Clear results immediately when user starts typing
+    setResults([]);
+    setHasSearched(false);
+
+    setLoading(true);
+
+    const timeoutId = setTimeout(() => {
+      performSearch(search);
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout | undefined;
+    if (!loading && enterPressedWhileLoading && results.length > 0) {
+      const first = results[0];
+      if (first) {
+        timeoutId = setTimeout(() => {
+          onClose();
+          if (searchType === "customers") goTo(`/$${first.id}`);
+          else goTo(`/&${first.id}`);
+        }, 150);
+      }
+      setEnterPressedWhileLoading(false);
+    }
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [loading]);
+
+  // Get latest ticket number when modal opens
+  useEffect(() => {
+    let isMounted = true;
+    if (open && !latestTicketNumber) {
+      const fetchLatestTicketNumber = async () => {
+        try {
+          const data = (await api.get("/tickets?page=1")) as {
+            tickets: SmallTicket[];
+          };
+          if (!isMounted) return;
+          const tickets = data.tickets || [];
+          if (tickets.length > 0) {
+            const highestNumber = Math.max(
+              ...tickets.map((ticket) => ticket.number || ticket.id || 0),
+            );
+            setLatestTicketNumber(highestNumber);
+          }
+        } catch (error) {
+          console.error("Failed to fetch latest ticket number:", error);
+        }
+      };
+      fetchLatestTicketNumber();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [open, latestTicketNumber, api]);
+
+  // Enhanced phone number parsing
+  const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
+  const isLikelyPhone = (digits: string) =>
+    digits.length >= 7 && digits.length <= 11;
+  const canParse = (str: string) => !isNaN(parseInt(str)) && str.trim() !== "";
+
+  // Smart ticket number search for exactly 3 digits
+  const searchTicketNumber = async (query: string) => {
+    if (!latestTicketNumber || query.length !== 3) {
+      // Fallback to simple search if no latest ticket number or not 3 digits
+      const data = (await api.get(
+        `/tickets?number=${encodeURIComponent(query)}`,
+      )) as { tickets: SmallTicket[] };
+      setResults(data.tickets || []);
+      return;
+    }
+
+    const latestTicketStr = latestTicketNumber.toString();
+
+    // Find tickets ending with the 3-digit query
+    // For "035" with latest 36039, we want 35035 and 34035
+    const queryNum = parseInt(query);
+    const latestNum = parseInt(latestTicketStr);
+
+    // Calculate the base number by replacing the last 3 digits
+    const baseNumber = parseInt(latestTicketStr.slice(0, -3) + query);
+
+    // If the calculated number is higher than latest, subtract 1000
+    let searchNumber = baseNumber;
+    if (searchNumber > latestNum) {
+      searchNumber -= 1000;
+    }
+
+    // Prepare all API calls to run in parallel, searching the last 2 tickets and the next 1 (in case) who's number ends with the search query
+    const apiCalls = [];
+    for (let i = -1; i < 2; i++) {
+      const number = searchNumber - i * 1000;
+
+      if (number < 1) continue;
+
+      // Create promise for each API call
+      apiCalls.push(
+        (
+          api.get(`/tickets?number=${number}`) as Promise<{
+            tickets: SmallTicket[];
+          }>
+        )
+          .then((data) => {
+            const tickets = data.tickets || [];
+            // Each GET returns at most one ticket, so return the first one if it exists
+            return tickets.length > 0 ? tickets[0] : null;
+          })
+          .catch((error) => {
+            console.error(`Error fetching ticket ${number}:`, error);
+            return null;
+          }),
+      );
+    }
+
+    // Execute all API calls in parallel and wait for all to complete
+    const results = await Promise.all(apiCalls);
+
+    // Filter out null results (failed or empty responses)
+    const validTickets = results.filter(
+      (ticket): ticket is SmallTicket => ticket !== null,
+    );
+
+    setResults(validTickets);
+  };
+
+  // New Customer autofill helpers
+  const handleNewCustomer = () => {
+    const query = search.trim();
+    if (!query) {
+      onClose();
+      goTo("/newcustomer");
+      return;
+    }
+    const digits = parsePhoneNumber(query);
+    let url = "/newcustomer";
+    const params = new URLSearchParams();
+    if (isLikelyPhone(digits)) {
+      params.set("phone", digits);
+    } else if (query.includes(" ")) {
+      const spaceIndex = query.lastIndexOf(" ");
+      const firstName = query.slice(0, spaceIndex).trim();
+      const lastName = query.slice(spaceIndex + 1).trim();
+      if (firstName) params.set("first_name", firstName);
+      if (lastName) params.set("last_name", lastName);
+    } else {
+      params.set("first_name", query); // fallback single-field
+    }
+    const queryString = params.toString();
+    if (queryString) url += `?${queryString}`;
+    onClose();
+    goTo(url);
+  };
+
+  // Smart search logic
+  const performSearch = async (query: string) => {
+    if (!query.trim()) {
+      setResults([]);
+      setHasSearched(false);
+      setSearchType("tickets");
+      return;
+    }
+
+    setHasSearched(true);
+
+    try {
+      const trimmedQuery = query.trim();
+      const phoneDigits = parsePhoneNumber(trimmedQuery);
+
+      // Check if it's a phone number search
+      if (isLikelyPhone(phoneDigits)) {
+        setSearchType("customers");
+        const data = (await api.get(
+          `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
+        )) as { customers: Customer[] };
+        setResults(data.customers || []);
+      }
+      // Check if it's a 3-digit ticket number search
+      else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
+        setSearchType("tickets");
+        await searchTicketNumber(trimmedQuery);
+      }
+      // Check if it's a regular ticket number search (not 3 digits)
+      else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
+        setSearchType("tickets");
+        const data = (await api.get(
+          `/tickets?number=${encodeURIComponent(trimmedQuery)}`,
+        )) as { tickets: SmallTicket[] };
+        setResults(data.tickets || []);
+      }
+      // Check if it's a partial phone number (has dashes, dots, etc.)
+      else if (
+        phoneDigits.length >= 3 &&
+        phoneDigits.length < 7 &&
+        /[\d\-\.\(\)\s]/.test(trimmedQuery)
+      ) {
+        setSearchType("customers");
+        const data = (await api.get(
+          `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
+        )) as { customers: Customer[] };
+        setResults(data.customers || []);
+      }
+      // For text queries, search both customers and tickets, show the best results
+      else {
+        try {
+          const [customersData, ticketsData] = await Promise.all([
+            api.get(
+              `/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`,
+            ) as Promise<{ customers: Customer[] }>,
+            api.get(
+              `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
+            ) as Promise<{ tickets: SmallTicket[] }>,
+          ]);
+
+          const customers = customersData.customers || [];
+          const tickets = ticketsData.tickets || [];
+
+          // If we have customers with good matches, show customers
+          if (customers.length > 0) {
+            setSearchType("customers");
+            setResults(customers);
+          } else {
+            setSearchType("tickets");
+            setResults(tickets);
+          }
+        } catch (error) {
+          // Fallback to ticket search if both fail
+          setSearchType("tickets");
+          const data = (await api.get(
+            `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
+          )) as { tickets: SmallTicket[] };
+          setResults(data.tickets || []);
+        }
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Type guard functions
+  const isCustomer = (item: SmallTicket | Customer): item is Customer => {
+    return searchType === "customers";
+  };
+
+  const isTicket = (item: SmallTicket | Customer): item is SmallTicket => {
+    return searchType === "tickets";
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+      <div className="w-full max-w-6xl h-[85vh] sm:h-[80vh] md-card p-4 sm:p-8 space-y-4 sm:space-y-6 flex flex-col">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-2">
+          <div className="text-xl sm:text-2xl font-bold text-primary">
+            Search {searchType === "customers" ? "Customers" : "Tickets"}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleNewCustomer}
+              title="New Customer"
+              className="md-btn-primary elev-1 text-md sm:text-base px-3 py-2 sm:px-4 sm:py-2"
+              tabIndex={-1}
+            >
+              New Customer
+            </button>
+            <button
+              onClick={onClose}
+              className="md-btn-surface elev-1 inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 p-0 touch-manipulation"
+              tabIndex={-1}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* Search Input */}
+        <div className="relative pl-10 sm:pl-12">
+          <input
+            ref={searchInputRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="md-input w-full text-md sm:text-base py-3 sm:py-2 pl-10 sm:pl-12"
+            autoFocus
+            tabIndex={1}
+          />
+          <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        </div>
+
+        {/* Results */}
+        <div className="md-card overflow-hidden flex-1 overflow-y-auto">
+          {/* Dynamic table header based on search type */}
+          <div className="hidden sm:grid grid-cols-12 text-sm tracking-wider px-5 py-3 text-on-surface">
+            {searchType === "customers" ? (
+              <>
+                <div className="col-span-5 font-semibold">Name</div>
+                <div className="col-span-3 font-semibold">Phone</div>
+                <div className="col-span-4 font-semibold">Created</div>
+              </>
+            ) : (
+              <>
+                <div className="col-span-1 font-semibold">Number</div>
+                <div className="col-span-7 font-semibold">Subject</div>
+                <div className="col-span-2 font-semibold">Status</div>
+                <div className="col-span-2 font-semibold">Customer</div>
+              </>
+            )}
+          </div>
+          <div
+            className="divide-y"
+            style={{ borderColor: "var(--md-sys-color-outline)" }}
+          >
+            {loading && (
+              <div className="flex items-center justify-center p-6 text-md gap-3">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+                <span className="font-medium">Searching...</span>
+              </div>
+            )}
+            {!loading && hasSearched && results.length === 0 && (
+              <div className="flex items-center justify-center p-6 text-md text-outline">
+                No {searchType} found for "{search}"
+              </div>
+            )}
+            {!loading && !hasSearched && (
+              <div className="flex items-center justify-center p-6 text-md text-outline">
+                Start typing to search {searchType}...
+              </div>
+            )}
+            {!loading &&
+              hasSearched &&
+              results.map((item) => (
+                <NavigationButton
+                  key={item.id}
+                  onClick={() => {
+                    onClose();
+                    if (searchType === "customers") {
+                      goTo(`/$${item.id}`);
+                    } else {
+                      goTo(`/&${item.id}`);
+                    }
+                  }}
+                  targetUrl={
+                    searchType === "customers"
+                      ? `${window.location.origin}/$${item.id}`
+                      : `${window.location.origin}/&${item.id}`
+                  }
+                  className="md-row-box w-full text-left transition-all duration-150 group"
+                  tabIndex={1}
+                >
+                  {isCustomer(item) ? (
+                    <>
+                      {/* Customer Desktop layout */}
+                      <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                        <div className="col-span-5 truncate">
+                          {item.business_then_name ||
+                            `${item.firstname || ""} ${item.lastname || ""}`}
+                        </div>
+                        <div className="col-span-3 truncate">
+                          {item.phone ? formatPhone(item.phone) : "—"}
+                        </div>
+                        <div className="col-span-4 truncate text-md">
+                          {item.created_at
+                            ? new Date(item.created_at).toLocaleDateString()
+                            : "—"}
+                        </div>
+                      </div>
+
+                      {/* Customer Mobile layout */}
+                      <div className="sm:hidden px-4 py-3 space-y-2">
+                        <div className="text-md">
+                          {item.business_then_name ||
+                            `${item.firstname || ""} ${item.lastname || ""}`}
+                        </div>
+                        <div className="flex items-center justify-between text-md">
+                          {item.phone && <span>{formatPhone(item.phone)}</span>}
+                          <span className="text-md text-on-surface">
+                            {item.created_at
+                              ? new Date(item.created_at).toLocaleDateString()
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  ) : isTicket(item) ? (
+                    <>
+                      {/* Ticket Desktop layout */}
+                      <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                        <div className="col-span-1 truncate">
+                          #{item.number ?? item.id}
+                        </div>
+                        <div className="col-span-7 truncate">
+                          {item.subject}
+                        </div>
+                        <div className="col-span-2 truncate">
+                          {convertStatus(item.status)}
+                        </div>
+                        <div className="col-span-2 truncate">
+                          {item.customer_business_then_name ??
+                            item.customer?.business_and_full_name}
+                        </div>
+                      </div>
+
+                      {/* Ticket Mobile layout */}
+                      <div className="sm:hidden px-4 py-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="font-semibold text-md font-mono">
+                            #{item.number ?? item.id}
+                          </div>
+                          <div
+                            className="text-md px-2 py-1 rounded-full"
+                            style={{
+                              backgroundColor:
+                                "var(--md-sys-color-surface-variant)",
+                              color: "var(--md-sys-color-on-surface-variant)",
+                            }}
+                          >
+                            {convertStatus(item.status)}
+                          </div>
+                        </div>
+                        <div className="text-md truncate">{item.subject}</div>
+                        <div className="text-md truncate text-on-surface">
+                          {item.customer_business_then_name ??
+                            item.customer?.business_and_full_name}
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                </NavigationButton>
+              ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default SearchModal;
