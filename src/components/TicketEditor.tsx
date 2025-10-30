@@ -65,17 +65,31 @@ function TicketEditor({
         setSubject(ticket.subject || "");
 
         // Load existing properties to preserve them
-        const properties = ticket.properties || {};
+        const properties = (ticket.properties || {}) as TicketProperties;
         setExistingProperties(properties);
 
-        // Set password from existing data
-        setPassword(properties.Password || properties.password || "");
+        // Set password from existing data (guard unknown types)
+        const pw =
+          typeof properties.Password === "string"
+            ? properties.Password
+            : typeof properties.password === "string"
+              ? properties.password
+              : "";
+        setPassword(pw);
 
-        // Set charger status from existing data
-        const hasCharger =
-          properties["AC Charger"] === "1" || properties["AC Charger"] === "1";
-        if (hasCharger && previousTicket) {
-          setItemsLeft((previous) => [...previous, "Charger"]);
+        // Set charger status from existing data (do not rely on previousTicket state inside this effect)
+        {
+          const acChargerVal = properties["AC Charger"];
+          const hasCharger =
+            (typeof acChargerVal === "string" && acChargerVal === "1") ||
+            (typeof acChargerVal === "number" && acChargerVal === 1);
+          if (hasCharger) {
+            setItemsLeft((prev) => {
+              // Avoid adding duplicate 'Charger' entries
+              if (prev.includes("Charger")) return prev;
+              return [...prev, "Charger"];
+            });
+          }
         }
 
         // Parse device info from model (vT)
@@ -109,7 +123,7 @@ function TicketEditor({
     return () => {
       isMounted = false;
     };
-  }, [ticketId, api]);
+  }, [ticketId, api, startPolling]);
 
   // Cleanup polling when component unmounts or ticketId changes
   useEffect(() => {
@@ -126,7 +140,7 @@ function TicketEditor({
         "The ticket has been modified by someone else. Any unsaved changes may be lost if you continue editing.",
       );
     }
-  }, [hasChanged]);
+  }, [hasChanged, dataChanged]);
 
   // Auto-select device type when subject changes (only for new tickets)
   useEffect(() => {
@@ -201,7 +215,14 @@ function TicketEditor({
             model["Model: "] = properties.Model;
           if (properties?.imeiOrSn && properties.imeiOrSn !== "")
             model["IMEI or S/N: "] = properties.imeiOrSn;
-          model["Ever been Wet: "] = properties?.EverBeenWet || "Unknown";
+          {
+            const everWet =
+              typeof properties?.EverBeenWet === "string" ||
+              Array.isArray(properties?.EverBeenWet)
+                ? properties.EverBeenWet
+                : "Unknown";
+            model["Ever been Wet: "] = everWet;
+          }
           if (
             properties?.previousDamageOrIssues &&
             properties.previousDamageOrIssues !== ""
@@ -227,7 +248,14 @@ function TicketEditor({
             properties.imeiOrSnForPhone !== ""
           )
             model["IMEI or S/N: "] = properties?.imeiOrSnForPhone;
-          model["Ever been Wet: "] = properties?.EverBeenWet || "Unknown";
+          {
+            const everWet =
+              typeof properties?.EverBeenWet === "string" ||
+              Array.isArray(properties?.EverBeenWet)
+                ? properties.EverBeenWet
+                : "Unknown";
+            model["Ever been Wet: "] = everWet;
+          }
           if (
             properties?.previousDamageOrIssues &&
             properties.previousDamageOrIssues !== ""

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Plus, Edit, Loader2 } from "lucide-react";
 import { convertStatus } from "../constants/appConstants.js";
 import {
@@ -25,7 +25,7 @@ function CustomerView({
   showSearch: boolean;
 }) {
   const api = useApi();
-  const { warning, dataChanged } = useAlertMethods();
+  const { warning: _warning, dataChanged: _dataChanged } = useAlertMethods();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<SmallTicket[]>([]);
@@ -35,8 +35,13 @@ function CustomerView({
   const [allPhones, setAllPhones] = useState<string[]>([]);
 
   // Change detection
-  const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } =
-    useChangeDetection(api, `/customers/${id}`);
+  const {
+    hasChanged,
+    isPolling: _isPolling,
+    startPolling,
+    stopPolling,
+    resetPolling: _resetPolling,
+  } = useChangeDetection(api, `/customers/${id}`);
 
   // Keyboard shortcuts
   useHotkeys(
@@ -90,7 +95,7 @@ function CustomerView({
             .map((phone) => phone?.number || "")
             .filter(Boolean);
           setAllPhones(numbers);
-        } catch (phoneError) {
+        } catch {
           if (!isMounted) return;
           // Fallback to mobile/phone if phones endpoint fails
           const customer = data.customer;
@@ -118,9 +123,10 @@ function CustomerView({
   }, [id]);
 
   // Show warning when changes are detected
+
   useEffect(() => {
     if (hasChanged) {
-      dataChanged(
+      _dataChanged(
         "Customer Data Changed",
         "The customer has been modified by someone else. Please refresh the page to see the latest changes.",
       );
@@ -144,70 +150,50 @@ function CustomerView({
     };
   }, [stopPolling]);
 
-  async function loadMoreTickets() {
-    if (!id || tLoading || !tHasMore) return;
-    setTLoading(true);
-    try {
-      const data = (await api.get(
-        `/tickets?customer_id=${encodeURIComponent(id)}&page=${tPage}`,
-      )) as { tickets: SmallTicket[] };
-      const tickets = data.tickets || [];
-      // Filter out duplicates by ticket ID
-      setTickets((previous) => {
-        const existingIds = new Set(previous.map((ticket) => ticket.id));
-        const newTickets = tickets.filter(
-          (ticket) => !existingIds.has(ticket.id),
-        );
-        return [...previous, ...newTickets];
-      });
-      setTPage((currentPage) => currentPage + 1);
-      if (!tickets || tickets.length === 0) setTHasMore(false);
-    } catch (error) {
-      console.error(error);
-      setTHasMore(false);
-    } finally {
-      setTLoading(false);
-    }
-  }
+  // loadMoreTickets removed — replaced by loadAllTickets (which loads all pages).
+  // If you need incremental 'Load more' behavior, we can add it back in a safe form.
 
-  async function loadAllTickets(isMounted: { current: boolean }) {
-    setTLoading(true);
-    setTHasMore(true);
+  const loadAllTickets = useCallback(
+    async (isMounted: { current: boolean }) => {
+      setTLoading(true);
+      setTHasMore(true);
 
-    try {
-      let page = 1;
-      let allTickets: SmallTicket[] = [];
-      let hasMore = true;
+      try {
+        let page = 1;
+        let allTickets: SmallTicket[] = [];
+        let hasMore = true;
 
-      while (hasMore) {
-        const data = (await api.get(
-          `/tickets?customer_id=${encodeURIComponent(id)}&page=${page}`,
-        )) as { tickets: SmallTicket[] };
+        while (hasMore) {
+          const data = (await api.get(
+            `/tickets?customer_id=${encodeURIComponent(id)}&page=${page}`,
+          )) as { tickets: SmallTicket[] };
+          if (!isMounted.current) return;
+          const tickets = data.tickets || [];
+          if (!tickets || tickets.length === 0) {
+            hasMore = false;
+          } else {
+            allTickets = [...allTickets, ...tickets];
+            page += 1;
+          }
+        }
+
         if (!isMounted.current) return;
-        const tickets = data.tickets || [];
-        if (!tickets || tickets.length === 0) {
-          hasMore = false;
-        } else {
-          allTickets = [...allTickets, ...tickets];
-          page += 1;
+        setTickets(allTickets);
+        setTPage(page);
+        setTHasMore(false);
+      } catch (error) {
+        console.error(error);
+        if (isMounted.current) {
+          setTHasMore(false);
+        }
+      } finally {
+        if (isMounted.current) {
+          setTLoading(false);
         }
       }
-
-      if (!isMounted.current) return;
-      setTickets(allTickets);
-      setTPage(page);
-      setTHasMore(false);
-    } catch (error) {
-      console.error(error);
-      if (isMounted.current) {
-        setTHasMore(false);
-      }
-    } finally {
-      if (isMounted.current) {
-        setTLoading(false);
-      }
-    }
-  }
+    },
+    [api, id],
+  );
 
   useEffect(() => {
     const isMounted = { current: true };
@@ -215,7 +201,7 @@ function CustomerView({
     return () => {
       isMounted.current = false;
     };
-  }, [id]);
+  }, [id, loadAllTickets]);
 
   if (loading)
     return (

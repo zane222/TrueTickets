@@ -33,8 +33,13 @@ function NewCustomer({
   const [loading, setLoading] = useState(!!customerId); // Show loading when editing existing customer
 
   // Change detection (only when editing existing customer)
-  const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } =
-    useChangeDetection(api, customerId ? `/customers/${customerId}` : null);
+  const {
+    hasChanged,
+    isPolling: _isPolling,
+    startPolling,
+    stopPolling,
+    resetPolling: _resetPolling,
+  } = useChangeDetection(api, customerId ? `/customers/${customerId}` : null);
 
   useEffect(() => {
     try {
@@ -186,7 +191,7 @@ function NewCustomer({
     return () => {
       isMounted = false;
     };
-  }, [customerId]);
+  }, [customerId, api, startPolling]);
 
   // Cleanup polling when component unmounts or customerId changes
   useEffect(() => {

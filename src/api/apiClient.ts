@@ -96,11 +96,11 @@ class ApiClient {
         try {
           const text = await response.text();
           parsedErrorBody = text ? JSON.parse(text) : null;
-        } catch (parseErr) {
+        } catch {
           // ignore parse errors, keep raw text
           try {
             parsedErrorBody = await response.text();
-          } catch (e) {
+          } catch {
             parsedErrorBody = null;
           }
         }
@@ -122,10 +122,10 @@ class ApiClient {
               try {
                 const t = await retryResponse.text();
                 retryParsed = t ? JSON.parse(t) : null;
-              } catch (e) {
+              } catch {
                 try {
                   retryParsed = await retryResponse.text();
-                } catch (e) {
+                } catch {
                   retryParsed = null;
                 }
               }
@@ -142,7 +142,7 @@ class ApiClient {
               throw err;
             }
             return await retryResponse.json();
-          } catch (refreshError) {
+          } catch {
             throw new Error("Authentication failed. Please log in again.");
           }
         } else {

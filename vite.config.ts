@@ -8,9 +8,6 @@ export default defineConfig({
     react({
       // ✅ Enables React Fast Refresh and proper JSX transform
       jsxImportSource: "react",
-      babel: {
-        plugins: ["babel-plugin-macros", "@babel/plugin-transform-react-jsx"],
-      },
     }),
 
     // ✅ Adds TypeScript and ESLint checks in dev + build

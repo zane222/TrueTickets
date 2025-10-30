@@ -236,92 +236,96 @@ function SearchModal({
   };
 
   // Smart search logic
-  const performSearch = async (query: string) => {
-    if (!query.trim()) {
-      setResults([]);
-      setHasSearched(false);
-      setSearchType("tickets");
-      return;
-    }
-
-    setHasSearched(true);
-
-    try {
-      const trimmedQuery = query.trim();
-      const phoneDigits = parsePhoneNumber(trimmedQuery);
-
-      // Check if it's a phone number search
-      if (isLikelyPhone(phoneDigits)) {
-        setSearchType("customers");
-        const data = (await api.get(
-          `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
-        )) as { customers: Customer[] };
-        setResults(data.customers || []);
-      }
-      // Check if it's a 3-digit ticket number search
-      else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
+  const performSearch = React.useCallback(
+    async (query: string) => {
+      if (!query.trim()) {
+        setResults([]);
+        setHasSearched(false);
         setSearchType("tickets");
-        await searchTicketNumber(trimmedQuery);
+        return;
       }
-      // Check if it's a regular ticket number search (not 3 digits)
-      else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
-        setSearchType("tickets");
-        const data = (await api.get(
-          `/tickets?number=${encodeURIComponent(trimmedQuery)}`,
-        )) as { tickets: SmallTicket[] };
-        setResults(data.tickets || []);
-      }
-      // Check if it's a partial phone number (has dashes, dots, etc.)
-      else if (
-        phoneDigits.length >= 3 &&
-        phoneDigits.length < 7 &&
-        /[\d\-\.\(\)\s]/.test(trimmedQuery)
-      ) {
-        setSearchType("customers");
-        const data = (await api.get(
-          `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
-        )) as { customers: Customer[] };
-        setResults(data.customers || []);
-      }
-      // For text queries, search both customers and tickets, show the best results
-      else {
-        try {
-          const [customersData, ticketsData] = await Promise.all([
-            api.get(
-              `/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`,
-            ) as Promise<{ customers: Customer[] }>,
-            api.get(
-              `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
-            ) as Promise<{ tickets: SmallTicket[] }>,
-          ]);
 
-          const customers = customersData.customers || [];
-          const tickets = ticketsData.tickets || [];
+      setHasSearched(true);
+      setLoading(true);
 
-          // If we have customers with good matches, show customers
-          if (customers.length > 0) {
-            setSearchType("customers");
-            setResults(customers);
-          } else {
-            setSearchType("tickets");
-            setResults(tickets);
-          }
-        } catch (error) {
-          // Fallback to ticket search if both fail
+      try {
+        const trimmedQuery = query.trim();
+        const phoneDigits = parsePhoneNumber(trimmedQuery);
+
+        // Check if it's a phone number search
+        if (isLikelyPhone(phoneDigits)) {
+          setSearchType("customers");
+          const data = (await api.get(
+            `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
+          )) as { customers: Customer[] };
+          setResults(data.customers || []);
+        }
+        // Check if it's a 3-digit ticket number search
+        else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
+          setSearchType("tickets");
+          await searchTicketNumber(trimmedQuery);
+        }
+        // Check if it's a regular ticket number search (not 3 digits)
+        else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
           setSearchType("tickets");
           const data = (await api.get(
-            `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
+            `/tickets?number=${encodeURIComponent(trimmedQuery)}`,
           )) as { tickets: SmallTicket[] };
           setResults(data.tickets || []);
         }
+        // Check if it's a partial phone number (has dashes, dots, etc.)
+        else if (
+          phoneDigits.length >= 3 &&
+          phoneDigits.length < 7 &&
+          /[\d\-\.\(\)\s]/.test(trimmedQuery)
+        ) {
+          setSearchType("customers");
+          const data = (await api.get(
+            `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
+          )) as { customers: Customer[] };
+          setResults(data.customers || []);
+        }
+        // For text queries, search both customers and tickets, show the best results
+        else {
+          try {
+            const [customersData, ticketsData] = await Promise.all([
+              api.get(
+                `/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`,
+              ) as Promise<{ customers: Customer[] }>,
+              api.get(
+                `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
+              ) as Promise<{ tickets: SmallTicket[] }>,
+            ]);
+
+            const customers = customersData.customers || [];
+            const tickets = ticketsData.tickets || [];
+
+            // If we have customers with good matches, show customers
+            if (customers.length > 0) {
+              setSearchType("customers");
+              setResults(customers);
+            } else {
+              setSearchType("tickets");
+              setResults(tickets);
+            }
+          } catch (error) {
+            // Fallback to ticket search if both fail
+            setSearchType("tickets");
+            const data = (await api.get(
+              `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
+            )) as { tickets: SmallTicket[] };
+            setResults(data.tickets || []);
+          }
+        }
+      } catch (error) {
+        console.error("Search error:", error);
+        setResults([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Search error:", error);
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [api, searchTicketNumber, latestTicketNumber],
+  );
 
   // Type guard functions
   const isCustomer = (item: SmallTicket | Customer): item is Customer => {

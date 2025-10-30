@@ -53,7 +53,7 @@ export interface RouteState {
   view: string;
   ticketId?: number;
   customerId?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface NavigationProps {
@@ -70,7 +70,7 @@ export interface SearchResultItem {
   id: number;
   title: string;
   subtitle?: string;
-  data?: any;
+  data?: unknown;
 }
 
 // ============================================================================
@@ -89,21 +89,41 @@ export interface Alert {
   position?: string;
 }
 
+export type AlertDisplayOptions = Partial<
+  Pick<Alert, "duration" | "persistent" | "position">
+>;
+
 export interface AlertContextType {
   alerts: Alert[];
   addAlert: (alert: Partial<Alert>) => number;
   removeAlert: (id: number) => void;
   clearAllAlerts: () => void;
   clearDataChangedWarnings: () => void;
-  showSuccess: (title: string, message?: string, options?: any) => number;
-  showError: (title: string, message?: string, options?: any) => number;
-  showWarning: (title: string, message?: string, options?: any) => number;
+  showSuccess: (
+    title: string,
+    message?: string,
+    options?: AlertDisplayOptions,
+  ) => number;
+  showError: (
+    title: string,
+    message?: string,
+    options?: AlertDisplayOptions,
+  ) => number;
+  showWarning: (
+    title: string,
+    message?: string,
+    options?: AlertDisplayOptions,
+  ) => number;
   showDataChangedWarning: (
     title: string,
     message?: string,
-    options?: any,
+    options?: AlertDisplayOptions,
   ) => number;
-  showInfo: (title: string, message?: string, options?: any) => number;
+  showInfo: (
+    title: string,
+    message?: string,
+    options?: AlertDisplayOptions,
+  ) => number;
 }
 
 // ============================================================================
@@ -119,12 +139,12 @@ export type StringOrNumber = string | number;
 export type Awaitable<T> = T | Promise<T>;
 
 // Helper type for React component props with children
-export interface PropsWithChildren<P = {}> {
+export interface PropsWithChildren<P = Record<string, unknown>> {
   children?: React.ReactNode;
 }
 
 // Helper type for async functions
-export type AsyncFunction<T = any> = (...args: any[]) => Promise<T>;
+export type AsyncFunction<T = unknown> = (...args: unknown[]) => Promise<T>;
 
 // ============================================================================
 // Auth Types
@@ -139,8 +159,8 @@ export interface AuthUser {
   username: string;
   email?: string;
   groups?: string[];
-  attributes?: Record<string, any>;
-  [key: string]: any;
+  attributes?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface AuthSession {
@@ -148,10 +168,10 @@ export interface AuthSession {
     idToken?: {
       toString: () => string;
     };
-    accessToken?: any;
+    accessToken?: unknown;
   };
-  credentials?: any;
-  [key: string]: any;
+  credentials?: unknown;
+  [key: string]: unknown;
 }
 
 // ============================================================================
@@ -166,7 +186,7 @@ export interface ApiClientConfig {
 
 export interface ApiError extends Error {
   status?: number;
-  body?: any;
+  body?: unknown;
   code?: string;
 }
 
@@ -178,8 +198,8 @@ export interface FormField {
   name: string;
   label: string;
   type: string;
-  value?: any;
+  value?: unknown;
   required?: boolean;
   options?: Array<{ value: string; label: string }>;
-  [key: string]: any;
+  [key: string]: unknown;
 }

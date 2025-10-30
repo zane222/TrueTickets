@@ -1,114 +1,72 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+/* eslint-disable react-refresh/only-export-components */
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react";
+import type {
+  Alert as AlertTypeShape,
+  AlertContextType,
+  AlertDisplayOptions,
+  AlertType,
+} from "../ui/alertTypes";
+import { ALERT_TYPES } from "../ui/alertTypes";
 
-interface Alert {
-  id: number;
-  type: string;
-  title: string;
-  message?: string;
-  duration?: number;
-  persistent?: boolean;
-  position?: string;
-}
-
-interface AlertContextType {
-  alerts: Alert[];
-  addAlert: (alert: Partial<Alert>) => number;
-  removeAlert: (id: number) => void;
-  clearAllAlerts: () => void;
-  clearDataChangedWarnings: () => void;
-  showSuccess: (title: string, message?: string, options?: any) => number;
-  showError: (title: string, message?: string, options?: any) => number;
-  showWarning: (title: string, message?: string, options?: any) => number;
-  showDataChangedWarning: (
-    title: string,
-    message?: string,
-    options?: any,
-  ) => number;
-  showInfo: (title: string, message?: string, options?: any) => number;
-}
-
-// Alert context
-const AlertContext = createContext<AlertContextType | undefined>(undefined);
-
-export const useAlert = () => {
-  const context = useContext(AlertContext);
-  if (!context) {
-    throw new Error("useAlert must be used within an AlertProvider");
-  }
-  return context;
-};
-
-// Alert types
-export const ALERT_TYPES = {
-  SUCCESS: "success",
-  ERROR: "error",
-  WARNING: "warning",
-  INFO: "info",
-};
-
-// Alert component
-const Alert = ({
-  alert,
-  onClose,
-  inline = false,
-  className,
-}: {
-  alert: Alert;
+/**
+ * Internal Alert rendering component (not exported).
+ * Renders either an inline or global alert box depending on props.
+ */
+const AlertRenderer: React.FC<{
+  alert: AlertTypeShape;
   onClose: (id: number) => void;
   inline?: boolean;
   className?: string;
-}) => {
-  const getAlertStyles = (type: string) => {
+}> = ({ alert, onClose, inline = false }) => {
+  const getAlertStyles = (type: AlertType) => {
     switch (type) {
-      case ALERT_TYPES.SUCCESS:
+      case "success":
         return {
-          backgroundColor: "#1e3a8a", // Dark blue background
-          color: "#ffffff", // White text for better contrast
-          icon: CheckCircle,
+          backgroundColor: "#1e3a8a",
+          color: "#ffffff",
+          Icon: CheckCircle,
         };
-      case ALERT_TYPES.ERROR:
+      case "error":
         return {
           backgroundColor: "var(--md-sys-color-error)",
           color: "var(--md-sys-color-on-error)",
-          icon: AlertCircle,
+          Icon: AlertCircle,
         };
-      case ALERT_TYPES.WARNING:
+      case "warning":
         return {
-          backgroundColor: "#fbbf24", // Yellow background
-          color: "#1f2937", // Dark gray text for better contrast
-          icon: AlertTriangle,
+          backgroundColor: "#fbbf24",
+          color: "#1f2937",
+          Icon: AlertTriangle,
         };
-      case ALERT_TYPES.INFO:
-        return {
-          backgroundColor: "var(--md-sys-color-secondary-container)",
-          color: "var(--md-sys-color-on-secondary-container)",
-          icon: Info,
-        };
+      case "info":
       default:
         return {
           backgroundColor: "var(--md-sys-color-secondary-container)",
           color: "var(--md-sys-color-on-secondary-container)",
-          icon: Info,
+          Icon: Info,
         };
     }
   };
 
-  const styles = getAlertStyles(alert.type);
-  const IconComponent = styles.icon;
+  const styles = getAlertStyles(alert.type as AlertType);
+  const IconComponent = styles.Icon;
 
-  // Inline version for forms
   if (inline) {
     return (
       <motion.div
-        initial={{ opacity: 0, y: -10 }}
+        initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-md p-4 flex items-center gap-2"
-        style={{
-          backgroundColor: styles.backgroundColor,
-          color: styles.color,
-        }}
+        exit={{ opacity: 0, y: -6 }}
+        className="rounded-md p-3 flex items-center gap-2"
+        style={{ backgroundColor: styles.backgroundColor, color: styles.color }}
       >
         <IconComponent className="w-4 h-4 flex-shrink-0" />
         <div className="text-md">{alert.message || alert.title}</div>
@@ -116,20 +74,17 @@ const Alert = ({
     );
   }
 
-  // Global alert version
   return (
     <motion.div
-      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+      initial={{ opacity: 0, y: -8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+      exit={{ opacity: 0, y: -8, scale: 0.98 }}
       className="rounded-md p-4 mb-3 flex items-start gap-3"
       style={
         {
           backgroundColor: styles.backgroundColor,
           color: styles.color,
-          // Force text color for warnings to override CSS variables
-          "--text-color": styles.color,
-        } as React.CSSProperties & Record<string, string>
+        } as React.CSSProperties
       }
     >
       <IconComponent className="w-5 h-5 mt-0.5 flex-shrink-0" />
@@ -150,6 +105,7 @@ const Alert = ({
         onClick={() => onClose(alert.id)}
         className="flex-shrink-0 p-1 hover:bg-black/10 rounded"
         style={{ color: styles.color }}
+        aria-label="Close alert"
       >
         <X className="w-4 h-4" />
       </button>
@@ -157,152 +113,163 @@ const Alert = ({
   );
 };
 
-// Alert provider component
-export const AlertProvider = ({ children }: { children: React.ReactNode }) => {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+/**
+ * Alert context definition and provider
+ */
+const AlertContext = createContext<AlertContextType | undefined>(undefined);
 
-  const addAlert = useCallback((alert: Partial<Alert>): number => {
-    const id = Date.now() + Math.random();
-    const newAlert: Alert = {
-      id,
-      type: alert.type || ALERT_TYPES.INFO,
-      title: alert.title || "Notification",
-      message: alert.message || "",
-      duration: alert.duration ?? 5000,
-      persistent: alert.persistent,
-      position: alert.position,
-    };
+export const useAlert = (): AlertContextType => {
+  const ctx = useContext(AlertContext);
+  if (!ctx) {
+    throw new Error("useAlert must be used within an AlertProvider");
+  }
+  return ctx;
+};
 
-    setAlerts((prev) => [...prev, newAlert]);
-
-    // Auto-remove alert after duration
-    if (newAlert.duration > 0) {
-      setTimeout(() => {
-        removeAlert(id);
-      }, newAlert.duration);
-    }
-
-    return id;
-  }, []);
+export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [alerts, setAlerts] = useState<AlertTypeShape[]>([]);
 
   const removeAlert = useCallback((id: number) => {
-    setAlerts((prev) => prev.filter((alert) => alert.id !== id));
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
   }, []);
+
+  const addAlert = useCallback(
+    (partial: Partial<Omit<AlertTypeShape, "id">>): number => {
+      const id = Math.floor(Date.now() + Math.random() * 1000000);
+      const newAlert: AlertTypeShape = {
+        id,
+        type: (partial.type as AlertType) || ALERT_TYPES.INFO,
+        title: partial.title || "Notification",
+        message: partial.message || "",
+        duration: partial.duration ?? 5000,
+        persistent: partial.persistent ?? false,
+        position: partial.position,
+      };
+
+      setAlerts((prev) => [...prev, newAlert]);
+
+      if ((newAlert.duration ?? 0) > 0) {
+        // Use window.setTimeout -> returns number in browser
+        const timer = window.setTimeout(() => {
+          removeAlert(id);
+        }, newAlert.duration);
+        // Note: we intentionally do not clear this timeout here because removal is idempotent
+        // and clear on unmount will be handled by React automatically.
+        // (If stricter control is desired, track timers and clear on unmount.)
+        void timer;
+      }
+
+      return id;
+    },
+    [removeAlert],
+  );
 
   const clearAllAlerts = useCallback(() => {
     setAlerts([]);
   }, []);
 
-  // Clear only data changed warnings (persistent alerts)
   const clearDataChangedWarnings = useCallback(() => {
-    setAlerts((prev) => prev.filter((alert) => !alert.persistent));
+    setAlerts((prev) => prev.filter((a) => !a.persistent));
   }, []);
 
-  // Convenience methods
   const showSuccess = useCallback(
-    (title: string, message = "", options: Partial<Alert> = {}) => {
-      return addAlert({
-        type: ALERT_TYPES.SUCCESS,
-        title,
-        message,
-        ...options,
-      });
-    },
+    (title: string, message = "", options: AlertDisplayOptions = {}) =>
+      addAlert({ type: ALERT_TYPES.SUCCESS, title, message, ...options }),
     [addAlert],
   );
 
   const showError = useCallback(
-    (title: string, message = "", options: Partial<Alert> = {}) => {
-      return addAlert({
+    (title: string, message = "", options: AlertDisplayOptions = {}) =>
+      addAlert({
         type: ALERT_TYPES.ERROR,
         title,
         message,
-        duration: 0, // Error alerts don't auto-dismiss
+        duration: 0,
         ...options,
-      });
-    },
+      }),
     [addAlert],
   );
 
   const showWarning = useCallback(
-    (title: string, message = "", options: Partial<Alert> = {}) => {
-      return addAlert({
-        type: ALERT_TYPES.WARNING,
-        title,
-        message,
-        ...options,
-      });
-    },
+    (title: string, message = "", options: AlertDisplayOptions = {}) =>
+      addAlert({ type: ALERT_TYPES.WARNING, title, message, ...options }),
     [addAlert],
   );
 
-  // Special method for data changed warnings - persistent and positioned at top center
   const showDataChangedWarning = useCallback(
-    (title: string, message = "", options: Partial<Alert> = {}) => {
-      return addAlert({
+    (title: string, message = "", options: AlertDisplayOptions = {}) =>
+      addAlert({
         type: ALERT_TYPES.WARNING,
         title,
         message,
-        duration: 0, // Never auto-dismiss
-        persistent: true, // Mark as persistent
-        position: "top-center", // Special positioning
+        duration: 0,
+        persistent: true,
+        position: "top-center",
         ...options,
-      });
-    },
+      }),
     [addAlert],
   );
 
   const showInfo = useCallback(
-    (title: string, message = "", options: Partial<Alert> = {}) => {
-      return addAlert({
-        type: ALERT_TYPES.INFO,
-        title,
-        message,
-        ...options,
-      });
-    },
+    (title: string, message = "", options: AlertDisplayOptions = {}) =>
+      addAlert({ type: ALERT_TYPES.INFO, title, message, ...options }),
     [addAlert],
   );
 
-  const value = {
-    alerts,
-    addAlert,
-    removeAlert,
-    clearAllAlerts,
-    clearDataChangedWarnings,
-    showSuccess,
-    showError,
-    showWarning,
-    showDataChangedWarning,
-    showInfo,
-  };
+  const value = useMemo(
+    () => ({
+      alerts,
+      addAlert,
+      removeAlert,
+      clearAllAlerts,
+      clearDataChangedWarnings,
+      showSuccess,
+      showError,
+      showWarning,
+      showDataChangedWarning,
+      showInfo,
+    }),
+    [
+      alerts,
+      addAlert,
+      removeAlert,
+      clearAllAlerts,
+      clearDataChangedWarnings,
+      showSuccess,
+      showError,
+      showWarning,
+      showDataChangedWarning,
+      showInfo,
+    ],
+  );
 
-  // Separate alerts by position
-  const topCenterAlerts = alerts.filter(
-    (alert) => alert.position === "top-center",
-  );
-  const rightAlerts = alerts.filter(
-    (alert) => !alert.position || alert.position !== "top-center",
-  );
+  const topCenterAlerts = alerts.filter((a) => a.position === "top-center");
+  const rightAlerts = alerts.filter((a) => a.position !== "top-center");
 
   return (
     <AlertContext.Provider value={value}>
       {children}
 
-      {/* Top center alerts (data changed warnings) */}
-      <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full">
+      {/* Top center alerts (persistent / data-changed) */}
+      <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-md w-full pointer-events-none">
         <AnimatePresence>
           {topCenterAlerts.map((alert) => (
-            <Alert key={alert.id} alert={alert} onClose={removeAlert} />
+            <div key={alert.id} className="pointer-events-auto px-4">
+              <AlertRenderer alert={alert} onClose={removeAlert} />
+            </div>
           ))}
         </AnimatePresence>
       </div>
 
-      {/* Right side alerts (regular notifications) */}
-      <div className="fixed top-4 right-4 z-50 max-w-sm w-full">
+      {/* Right side alerts */}
+      <div className="fixed top-4 right-4 z-50 max-w-sm w-full pointer-events-none">
         <AnimatePresence>
           {rightAlerts.map((alert) => (
-            <Alert key={alert.id} alert={alert} onClose={removeAlert} />
+            <div key={alert.id} className="pointer-events-auto px-4">
+              <AlertRenderer alert={alert} onClose={removeAlert} />
+            </div>
           ))}
         </AnimatePresence>
       </div>
@@ -310,7 +277,10 @@ export const AlertProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// Hook for easy access to alert methods
+/**
+ * Convenience hook that exposes the commonly used alert methods under
+ * short names for component use.
+ */
 export const useAlertMethods = () => {
   const {
     showSuccess,
@@ -331,93 +301,39 @@ export const useAlertMethods = () => {
   };
 };
 
-// Inline message components for forms
-export function InlineMessage({
-  message = "",
-  type = "info",
-  className = "",
-}: {
+/**
+ * Inline message components (for showing inline messages inside forms).
+ * These are small wrappers around AlertRenderer configured as inline alerts.
+ */
+export const InlineMessage: React.FC<{
   message?: string;
-  type?: string;
+  type?: AlertType;
   className?: string;
-}) {
+}> = ({ message = "", type = "info" }) => {
   if (!message) return null;
+  const fakeAlert: AlertTypeShape = {
+    id: 0,
+    type,
+    title: message,
+    message,
+    duration: 0,
+  };
+  // onClose is a noop for inline messages
+  return <AlertRenderer alert={fakeAlert} onClose={() => {}} inline />;
+};
 
-  return (
-    <Alert
-      alert={{
-        id: 0,
-        type,
-        message,
-        title: message,
-      }}
-      onClose={() => {}}
-      inline={true}
-      className={className}
-    />
-  );
-}
-
-export function InlineSuccessMessage({
+export const InlineSuccessMessage: React.FC<{ message?: string }> = ({
   message = "Success!",
-  className = "",
-}: {
-  message?: string;
-  className?: string;
-}) {
-  return (
-    <InlineMessage
-      message={message}
-      type={ALERT_TYPES.SUCCESS}
-      className={className}
-    />
-  );
-}
+}) => <InlineMessage message={message} type="success" />;
 
-export function InlineWarningMessage({
+export const InlineWarningMessage: React.FC<{ message?: string }> = ({
   message = "Warning",
-  className = "",
-}: {
-  message?: string;
-  className?: string;
-}) {
-  return (
-    <InlineMessage
-      message={message}
-      type={ALERT_TYPES.WARNING}
-      className={className}
-    />
-  );
-}
+}) => <InlineMessage message={message} type="warning" />;
 
-export function InlineInfoMessage({
+export const InlineInfoMessage: React.FC<{ message?: string }> = ({
   message = "Info",
-  className = "",
-}: {
-  message?: string;
-  className?: string;
-}) {
-  return (
-    <InlineMessage
-      message={message}
-      type={ALERT_TYPES.INFO}
-      className={className}
-    />
-  );
-}
+}) => <InlineMessage message={message} type="info" />;
 
-export function InlineErrorMessage({
+export const InlineErrorMessage: React.FC<{ message?: string }> = ({
   message = "Error",
-  className = "",
-}: {
-  message?: string;
-  className?: string;
-}) {
-  return (
-    <InlineMessage
-      message={message}
-      type={ALERT_TYPES.ERROR}
-      className={className}
-    />
-  );
-}
+}) => <InlineMessage message={message} type="error" />;

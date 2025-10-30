@@ -1,33 +1,23 @@
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect } from "react";
 import {
   getCurrentUser,
   signIn,
   signOut,
   resetPassword,
+  fetchAuthSession,
+  confirmResetPassword,
 } from "aws-amplify/auth";
-import { fetchAuthSession } from "aws-amplify/auth";
 import { motion } from "framer-motion";
 import { Mail, Eye, EyeOff } from "lucide-react";
 import { LoadingSpinner } from "./ui/LoadingSpinner";
 import { InlineMessage, InlineErrorMessage } from "./ui/AlertSystem";
+import type { AlertType } from "./ui/alertTypes";
+import { UserGroupsContext } from "./UserGroupsContext";
 
-// Create context for user groups
-interface UserGroupsContextType {
-  userGroups: string[];
-  setUserGroups: (groups: string[]) => void;
-  refreshUserGroups: () => Promise<string[]>;
-  userName: string | null;
-}
-
-const UserGroupsContext = createContext<UserGroupsContextType | null>(null);
-
-export const useUserGroups = () => {
-  const context = useContext(UserGroupsContext);
-  if (!context) {
-    throw new Error("useUserGroups must be used within a UserGroupsProvider");
-  }
-  return context;
-};
+// Note: `UserGroupsContext` and `useUserGroups` were moved to
+// `src/components/UserGroupsContext.tsx` so this file only exports components.
+// This prevents fast-refresh issues caused by exporting non-component values
+// from files that also export React components.
 
 export function LoginForm({ onLoginSuccess }) {
   const [email, setEmail] = useState("");
@@ -35,7 +25,7 @@ export function LoginForm({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("error"); // 'error', 'success', 'info'
+  const [messageType, setMessageType] = useState<AlertType>("error"); // 'error', 'success', 'info'
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
@@ -47,8 +37,8 @@ export function LoginForm({ onLoginSuccess }) {
 
   // Password visibility states
   const [showPassword, setShowPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [_showNewPassword, setShowNewPassword] = useState(false);
+  const [_showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showResetNewPassword, setShowResetNewPassword] = useState(false);
   const [showResetConfirmPassword, setShowResetConfirmPassword] =
     useState(false);
@@ -60,7 +50,7 @@ export function LoginForm({ onLoginSuccess }) {
     }
   }, [showResetCodeForm]);
 
-  const resetForm = () => {
+  const _resetForm = () => {
     setError("");
     setMessage("");
     setMessageType("error");
@@ -79,7 +69,10 @@ export function LoginForm({ onLoginSuccess }) {
     setShowResetConfirmPassword(false);
   };
 
-  const setMessageWithType = (messageText, type = "error") => {
+  const setMessageWithType = (
+    messageText: string,
+    type: AlertType = "error",
+  ) => {
     setMessage(messageText);
     setMessageType(type);
     setError(""); // Clear any existing error
@@ -132,7 +125,7 @@ export function LoginForm({ onLoginSuccess }) {
     setError("");
 
     try {
-      const result = await resetPassword({ username: forgotPasswordEmail });
+      await resetPassword({ username: forgotPasswordEmail });
       setMessageWithType(
         "Password reset code sent to your email. Please check your inbox.",
         "success",
@@ -163,11 +156,8 @@ export function LoginForm({ onLoginSuccess }) {
         throw new Error("Password must be at least 8 characters long");
       }
 
-      // Import the confirmResetPassword function
-      const { confirmResetPassword } = await import("aws-amplify/auth");
-
-      // Confirm the password reset
-      const result = await confirmResetPassword({
+      // Call the statically imported confirmResetPassword from aws-amplify/auth
+      await confirmResetPassword({
         username: forgotPasswordEmail,
         confirmationCode: resetCode,
         newPassword: newPassword,
@@ -652,7 +642,7 @@ export function AuthWrapper({ children }) {
     fetchUserGroups();
   };
 
-  const handleLogout = async () => {
+  const _handleLogout = async () => {
     try {
       await signOut();
       setUser(null);

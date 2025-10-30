@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { User, Printer, Edit, Loader2 } from "lucide-react";
 import html2pdf from "html2pdf.js";
@@ -39,7 +39,11 @@ function TicketView({
   showSearch: boolean;
 }) {
   const api = useApi();
-  const { warning, dataChanged, error } = useAlertMethods();
+  const {
+    warning: _warning,
+    dataChanged: _dataChanged,
+    error: _error,
+  } = useAlertMethods();
   const [ticket, setTicket] = useState<LargeTicket | null>(null);
   const [loading, setLoading] = useState(true);
   const ticketCardRef = useRef(null);
@@ -48,8 +52,13 @@ function TicketView({
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null); // Track which status is being updated
 
   // Change detection
-  const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } =
-    useChangeDetection(api, `/tickets/${id}`);
+  const {
+    hasChanged,
+    isPolling: _isPolling,
+    startPolling,
+    stopPolling,
+    resetPolling: _resetPolling,
+  } = useChangeDetection(api, `/tickets/${id}`);
 
   useHotkeys(
     {
@@ -77,7 +86,7 @@ function TicketView({
 
   const fetchTicketRef = useRef<{ isMounted: boolean }>({ isMounted: true });
 
-  const fetchTicket = async () => {
+  const fetchTicket = useCallback(async () => {
     setLoading(true);
     try {
       const data = (await api.get(`/tickets/${id}`)) as {
@@ -96,17 +105,17 @@ function TicketView({
         setLoading(false);
       }
     }
-  };
+  }, [api, id, startPolling]);
 
   // Show warning when changes are detected
   useEffect(() => {
     if (hasChanged) {
-      dataChanged(
+      _dataChanged(
         "Ticket Data Changed",
         "The ticket has been modified by someone else. Please refresh the page to see the latest changes.",
       );
     }
-  }, [hasChanged]);
+  }, [hasChanged, _dataChanged]);
 
   const updateTicketStatus = async (status) => {
     if (!ticket || updatingStatus || convertStatus(ticket.status) === status)
@@ -121,12 +130,12 @@ function TicketView({
       setTicket(updatedTicket);
 
       // Restart polling with the updated ticket data
-      resetPolling(updatedTicket);
-    } catch (error) {
-      console.error(error);
-      error(
+      _resetPolling(updatedTicket);
+    } catch (err) {
+      console.error(err);
+      _error(
         "Status Update Failed",
-        `Failed to update status: ${error.message}`,
+        `Failed to update status: ${err?.message || String(err)}`,
       );
     } finally {
       setUpdatingStatus(null);
@@ -136,12 +145,13 @@ function TicketView({
   useEffect(() => {
     // Stop any existing polling when ID changes
     stopPolling();
-    fetchTicketRef.current.isMounted = true;
+    const _fetchTicketRef = fetchTicketRef.current;
+    _fetchTicketRef.isMounted = true;
     fetchTicket();
     return () => {
-      fetchTicketRef.current.isMounted = false;
+      _fetchTicketRef.isMounted = false;
     };
-  }, [id, api, refreshKey, stopPolling]);
+  }, [id, refreshKey, stopPolling, fetchTicket]);
 
   // Cleanup polling when component unmounts
   useEffect(() => {

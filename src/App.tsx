@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, createContext, useContext } from "react";
 import { motion } from "framer-motion";
 import { Search, UserPlus, User, LogOut } from "lucide-react";
 import { Amplify } from "aws-amplify";
-import { useUserGroups } from "./components/Auth";
+import { useUserGroups } from "./components/UserGroupsContext";
 import { useAlertMethods } from "./components/ui/AlertSystem";
 import apiClient from "./api/apiClient";
 import awsconfig from "./aws-exports";
@@ -271,9 +271,9 @@ export default function App() {
   const {
     success,
     error,
-    warning,
-    dataChanged,
-    info,
+    warning: _warning,
+    dataChanged: _dataChanged,
+    info: _info,
     clearDataChangedWarnings,
   } = useAlertMethods();
   const [showSearch, setShowSearch] = useState(false);

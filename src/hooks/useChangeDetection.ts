@@ -20,17 +20,20 @@ interface UseChangeDetectionReturn {
 function removePdfUrls(data: unknown): unknown {
   if (!data || typeof data !== "object") return data;
 
-  // Filter out top-level pdf_url
-  const { pdf_url, ...filteredData } = data as Record<string, unknown>;
+  // Filter out top-level pdf_url (rename to _pdf_url to avoid unused-var lint)
+  const { pdf_url: _pdf_url, ...filteredData } = data as Record<
+    string,
+    unknown
+  >;
 
-  // Filter out customer.pdf_url if it exists
+  // Filter out customer.pdf_url if it exists (rename to _customerPdfUrl to avoid unused-var lint)
   if (
     filteredData.customer &&
     typeof filteredData.customer === "object" &&
     filteredData.customer !== null &&
     "pdf_url" in filteredData.customer
   ) {
-    const { pdf_url: customerPdfUrl, ...filteredCustomer } =
+    const { pdf_url: _customerPdfUrl, ...filteredCustomer } =
       filteredData.customer as Record<string, unknown>;
     filteredData.customer = filteredCustomer;
   }
@@ -51,7 +54,7 @@ export function useChangeDetection(
   intervalMs: number = 30000,
 ): UseChangeDetectionReturn {
   const [hasChanged, setHasChanged] = useState(false);
-  const [originalData, setOriginalData] = useState<unknown>(null);
+  const [_originalData, setOriginalData] = useState<unknown>(null);
   const [isPolling, setIsPolling] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const originalDataRef = useRef<unknown>(null);
@@ -112,7 +115,7 @@ export function useChangeDetection(
       intervalRef.current = null;
     }
     setIsPolling(false);
-  }, [endpoint]);
+  }, []);
 
   const resetPolling = useCallback(
     (newData: unknown) => {

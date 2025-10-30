@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { STATUSES, DEVICES, convertStatus } from "../constants/appConstants.js";
@@ -94,7 +94,7 @@ export function TicketListView({
     const saved = localStorage.getItem("ticketStatusHidden");
     return saved ? new Set(JSON.parse(saved)) : new Set(["Resolved"]);
   });
-  const [selectedDevices, setSelectedDevices] = useState(() => {
+  const [selectedDevices, _setSelectedDevices] = useState(() => {
     const saved = localStorage.getItem("ticketSelectedDevices");
     return saved
       ? new Set(JSON.parse(saved))
@@ -104,7 +104,7 @@ export function TicketListView({
     const saved = localStorage.getItem("ticketStatusFilterCollapsed");
     return saved ? JSON.parse(saved) : true; // default: collapsed
   });
-  const [deviceFilterCollapsed, setDeviceFilterCollapsed] = useState(() => {
+  const [deviceFilterCollapsed, _setDeviceFilterCollapsed] = useState(() => {
     const saved = localStorage.getItem("ticketDeviceFilterCollapsed");
     return saved ? JSON.parse(saved) : true; // default: collapsed
   });
@@ -145,9 +145,11 @@ export function TicketListView({
 
   const toggleStatus = (status) => {
     const newStatusHidden = new Set(statusHidden);
-    newStatusHidden.has(status)
-      ? newStatusHidden.delete(status)
-      : newStatusHidden.add(status);
+    if (newStatusHidden.has(status)) {
+      newStatusHidden.delete(status);
+    } else {
+      newStatusHidden.add(status);
+    }
     setStatusHidden(newStatusHidden);
     localStorage.setItem(
       "ticketStatusHidden",
@@ -155,36 +157,39 @@ export function TicketListView({
     );
   };
 
-  async function fetchTickets(reset = false) {
-    setLoading(true);
-    try {
-      const currentPage = reset ? 1 : page + 1;
-      const data = (await api.get(`/tickets?page=${currentPage}`)) as {
-        tickets: SmallTicket[];
-      };
-      const tickets = data.tickets || [];
-      if (reset) {
-        setItems(tickets);
-        setPage(1);
-      } else {
-        // Filter out any duplicates by ticket ID
-        const existingIds = new Set(items.map((item) => item.id));
-        const newTickets = tickets.filter(
-          (ticket) => !existingIds.has(ticket.id),
-        );
-        setItems((prev) => [...prev, ...newTickets]);
-        setPage(currentPage);
+  const fetchTickets = useCallback(
+    async (reset = false) => {
+      setLoading(true);
+      try {
+        const currentPage = reset ? 1 : page + 1;
+        const data = (await api.get(`/tickets?page=${currentPage}`)) as {
+          tickets: SmallTicket[];
+        };
+        const tickets = data.tickets || [];
+        if (reset) {
+          setItems(tickets);
+          setPage(1);
+        } else {
+          // Filter out any duplicates by ticket ID
+          const existingIds = new Set(items.map((item) => item.id));
+          const newTickets = tickets.filter(
+            (ticket) => !existingIds.has(ticket.id),
+          );
+          setItems((prev) => [...prev, ...newTickets]);
+          setPage(currentPage);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  }
+    },
+    [api, page, items],
+  );
 
   useEffect(() => {
     fetchTickets(true);
-  }, []);
+  }, [fetchTickets]);
 
   useHotkeys(
     {
@@ -241,62 +246,6 @@ export function TicketListView({
           </AnimatePresence>
         </div>
       </div>
-      {/* // Commented out device filter selector because the filter needs to be fixed
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-6">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setDeviceFilterCollapsed(!deviceFilterCollapsed)}
-            className="flex items-center gap-2 text-md font-medium hover:opacity-80 transition-opacity text-on-surface"
-            tabIndex={-1}
-          >
-            <span>Device filter:</span>
-            {deviceFilterCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-          </button>
-          <AnimatePresence>
-            {!deviceFilterCollapsed && (
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2, ease: "easeInOut" }}
-                className="flex flex-wrap gap-1.5 sm:gap-2"
-              >
-                {DEVICES.map((device, index) => {
-                  const isSelected = selectedDevices.has(index);
-                  return (
-                    <button
-                      key={`${device || "Other"}-${index}`}
-                      onClick={() => {
-                        setSelectedDevices((previous) => {
-                          const next = new Set(previous);
-                          if (next.has(index)) next.delete(index);
-                          else next.add(index);
-                          localStorage.setItem(
-                            "ticketSelectedDevices",
-                            JSON.stringify([...next]),
-                          );
-                          return next;
-                        });
-                      }}
-                      className={cx(
-                        "md-chip text-md sm:text-md px-2 py-1 sm:px-3 sm:py-1.5",
-                        isSelected ? "md-chip--on" : "",
-                      )}
-                    >
-                      {device || "Other"}
-                    </button>
-                  );
-                })}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-      */}
 
       <div className="md-card overflow-hidden">
         {/* Desktop table header */}

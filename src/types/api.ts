@@ -29,14 +29,14 @@ export interface TicketProperties {
   everBeenWet?: string;
   previousDamageOrIssues?: string;
   currentIssue?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface CustomerProperties {
   notification_billing?: string;
   notification_reports?: string;
   notification_marketing?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface AssetProperties {
@@ -46,7 +46,7 @@ export interface AssetProperties {
   notification_reports?: string;
   notification_marketing?: string;
   blank?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ============================================================================
@@ -85,26 +85,26 @@ export interface Customer {
   city?: string;
   state?: string;
   zip?: string;
-  latitude?: any;
-  longitude?: any;
+  latitude?: number | null;
+  longitude?: number | null;
   notes?: string;
   get_sms?: boolean;
   opt_out?: boolean;
   disabled?: boolean;
   no_email?: boolean;
-  location_id?: any;
+  location_id?: number | null;
   properties?: CustomerProperties;
   online_profile_url?: string;
-  tax_rate_id?: any;
+  tax_rate_id?: number | null;
   notification_email?: string;
   invoice_cc_emails?: string;
-  invoice_term_id?: any;
+  invoice_term_id?: number | null;
   referred_by?: string;
-  ref_customer_id?: any;
+  ref_customer_id?: number | null;
   business_and_full_name?: string;
   business_then_name?: string;
-  location_name?: any;
-  contacts?: any[];
+  location_name?: string | null;
+  contacts?: unknown[];
 }
 
 export interface PostCustomer {
@@ -173,7 +173,7 @@ export interface Attachment {
   content_type?: string;
   file_size?: number;
   md5?: string;
-  name?: any;
+  name?: string | null;
 }
 
 // ============================================================================
@@ -227,10 +227,10 @@ export interface TicketTimer {
   updated_at?: string;
   billable?: boolean;
   notes?: string;
-  toggl_id?: any;
-  product_id?: any;
-  comment_id?: any;
-  ticket_line_item_id?: any;
+  toggl_id?: string | number | null;
+  product_id?: string | number | null;
+  comment_id?: string | number | null;
+  ticket_line_item_id?: string | number | null;
   active_duration?: number;
 }
 
@@ -244,9 +244,9 @@ export interface TicketType {
   created_at?: string;
   updated_at?: string;
   disabled?: boolean;
-  intake_terms?: any;
+  intake_terms?: Record<string, unknown> | string | null;
   skip_intake?: boolean;
-  outtake_terms?: any;
+  outtake_terms?: Record<string, unknown> | string | null;
   skip_outtake?: boolean;
   id?: number;
   ticket_fields?: TicketField[];
@@ -280,11 +280,11 @@ export interface Triggers {
   agent_offline_triggered?: string;
 }
 
-export interface WindowsUpdates {}
+export type WindowsUpdates = Record<string, unknown>;
 
-export interface Emsisoft {}
+export type Emsisoft = Record<string, unknown>;
 
-export interface General {}
+export type General = Record<string, unknown>;
 
 export interface RmmStore {
   id?: number;
@@ -296,31 +296,31 @@ export interface RmmStore {
   general?: General;
   created_at?: string;
   updated_at?: string;
-  override_alert_agent_offline_mins?: any;
-  override_alert_agent_rearm_after_mins?: any;
-  override_low_hd_threshold?: any;
-  override_autoresolve_offline_alert?: any;
-  override_low_hd_thresholds?: any;
+  override_alert_agent_offline_mins?: number | null;
+  override_alert_agent_rearm_after_mins?: number | null;
+  override_low_hd_threshold?: number | null;
+  override_autoresolve_offline_alert?: boolean | null;
+  override_low_hd_thresholds?: number | null;
 }
 
 export interface Asset {
   id: number;
   name?: string;
   customer_id?: number;
-  contact_id?: any;
+  contact_id?: number | string | null;
   created_at?: string;
   updated_at?: string;
   properties?: AssetProperties;
   asset_type?: string;
   asset_serial?: string;
-  external_rmm_link?: any;
+  external_rmm_link?: string | null;
   customer?: Customer;
-  rmm_links?: any[];
+  rmm_links?: unknown[];
   has_live_chat?: boolean;
-  snmp_enabled?: any;
+  snmp_enabled?: boolean | null;
   device_info?: DeviceInfo;
   rmm_store?: RmmStore;
-  address?: any;
+  address?: string | null;
 }
 
 // ============================================================================
@@ -392,28 +392,28 @@ export interface LargeTicket {
   properties?: TicketProperties;
   user_id?: number;
   updated_at?: string;
-  pdf_url?: any;
+  pdf_url?: string | null;
   intake_form_html?: string;
-  signature_name?: any;
-  signature_date?: any;
+  signature_name?: string | null;
+  signature_date?: string | null;
   asset_ids?: number[];
   priority?: string;
   resolved_at?: string;
-  outtake_form_name?: any;
-  outtake_form_date?: any;
-  outtake_form_html?: any;
-  address?: any;
+  outtake_form_name?: string | null;
+  outtake_form_date?: string | null;
+  outtake_form_html?: string | null;
+  address?: string | null;
   comments?: Comment[];
   attachments?: Attachment[];
   ticket_timers?: TicketTimer[];
-  line_items?: any[];
-  worksheet_results?: any[];
+  line_items?: unknown[];
+  worksheet_results?: unknown[];
   assets?: Asset[];
-  appointments?: any[];
+  appointments?: unknown[];
   ticket_fields?: TicketField[];
   ticket_answers?: TicketAnswer[];
   customer?: Customer;
-  contact?: any;
+  contact?: unknown | null;
   user?: User;
   ticket_type?: TicketType;
   ticket_type_id?: number;
@@ -466,9 +466,9 @@ export interface Result {
 }
 
 export interface SearchResult {
-  quick_result?: any;
+  quick_result?: unknown;
   results?: Result[];
-  error?: any;
+  error?: unknown;
 }
 
 // ============================================================================
@@ -517,7 +517,7 @@ export interface ApiContextValue {
 // Utility Types for API Calls
 // ============================================================================
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data?: T;
   error?: string;
   message?: string;
