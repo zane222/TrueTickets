@@ -268,7 +268,7 @@ export function TicketListView({
                 transition={{ duration: 0.2, ease: "easeInOut" }}
                 className="flex flex-wrap gap-1.5 sm:gap-2"
               >
-                {STATUSES.map((status, index) => (
+                {STATUSES.map((status, _index) => (
                   <button
                     key={status}
                     onClick={() => toggleStatus(status)}

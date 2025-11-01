@@ -98,7 +98,7 @@ function CustomerView({
         setCustomer(customerData);
 
         // Start change detection polling via ref
-        startPollingRef.current && startPollingRef.current(customerData);
+        if (startPollingRef.current) startPollingRef.current(customerData);
 
         // Load phones using the same api ref
         try {
@@ -225,7 +225,7 @@ function CustomerView({
     return () => {
       isMounted.current = false;
     };
-  }, [id, loadAllTickets]);
+  }, [loadAllTickets]);
 
   if (loading)
     return (

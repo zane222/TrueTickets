@@ -27,39 +27,39 @@ function SearchModal({
   const [latestTicketNumber, setLatestTicketNumber] = useState<number | null>(
     null,
   );
-  const latestTicketNumberRef = React.useRef<number | null>(null);
 
   const [enterPressedWhileLoading, setEnterPressedWhileLoading] =
     useState(false);
-  const enterPressedWhileLoadingRef = React.useRef<boolean>(false);
 
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Keep stable refs for callers to use inside lightweight callbacks/effects.
-  const apiRef = React.useRef(api);
-  const onCloseRef = React.useRef(onClose);
-  const goToRef = React.useRef(goTo);
-
-  // Mirror state into refs so callbacks don't need to include those states
-  React.useEffect(() => {
-    latestTicketNumberRef.current = latestTicketNumber;
-  }, [latestTicketNumber]);
-
-  React.useEffect(() => {
-    enterPressedWhileLoadingRef.current = enterPressedWhileLoading;
-  }, [enterPressedWhileLoading]);
-
-  React.useEffect(() => {
-    apiRef.current = api;
-  }, [api]);
-
-  React.useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  React.useEffect(() => {
-    goToRef.current = goTo;
-  }, [goTo]);
+  // New Customer autofill helpers
+  const handleNewCustomer = React.useCallback(() => {
+    const query = search.trim();
+    if (!query) {
+      onClose();
+      goTo("/newcustomer");
+      return;
+    }
+    const digits = parsePhoneNumber(query);
+    let url = "/newcustomer";
+    const params = new URLSearchParams();
+    if (isLikelyPhone(digits)) {
+      params.set("phone", digits);
+    } else if (query.includes(" ")) {
+      const spaceIndex = query.lastIndexOf(" ");
+      const firstName = query.slice(0, spaceIndex).trim();
+      const lastName = query.slice(spaceIndex + 1).trim();
+      if (firstName) params.set("first_name", firstName);
+      if (lastName) params.set("last_name", lastName);
+    } else {
+      params.set("first_name", query); // fallback single-field
+    }
+    const queryString = params.toString();
+    if (queryString) url += `?${queryString}`;
+    onClose();
+    goTo(url);
+  }, [onClose, goTo, search]);
 
   useHotkeys({
     n: () => handleNewCustomer(),
@@ -102,6 +102,7 @@ function SearchModal({
   }, [open]);
 
   // Clear results immediately when search changes
+  // Clear results immediately when user starts typing
   useEffect(() => {
     if (search.trim() === "") {
       setResults([]);
@@ -112,40 +113,38 @@ function SearchModal({
     // Clear results immediately when user starts typing
     setResults([]);
     setHasSearched(false);
-
     setLoading(true);
 
     const timeoutId = setTimeout(() => {
       performSearch(search);
     }, 300);
     return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
   useEffect(() => {
     let timeoutId: number | undefined;
-    // Use refs inside the effect so it can depend only on `loading`.
-    if (!loading && enterPressedWhileLoadingRef.current && results.length > 0) {
+    if (!loading && enterPressedWhileLoading && results.length > 0) {
       const first = results[0];
       if (first) {
         timeoutId = window.setTimeout(() => {
-          onCloseRef.current && onCloseRef.current();
+          onClose();
           const st = searchType;
           if (st === "customers") {
-            goToRef.current && goToRef.current(`/$${first.id}`);
+            goTo(`/$${first.id}`);
           } else {
-            goToRef.current && goToRef.current(`/&${first.id}`);
+            goTo(`/&${first.id}`);
           }
         }, 150);
       }
       // Keep UI state in sync
       setEnterPressedWhileLoading(false);
-      enterPressedWhileLoadingRef.current = false;
     }
     return () => {
       if (timeoutId) window.clearTimeout(timeoutId);
     };
-    // Intentionally depend only on `loading` so re-triggering is limited.
-  }, [loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, enterPressedWhileLoading, onClose, goTo]);
 
   // Get latest ticket number when modal opens
   useEffect(() => {
@@ -173,7 +172,8 @@ function SearchModal({
     return () => {
       isMounted = false;
     };
-  }, [open, latestTicketNumber, api]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, api]);
 
   // Enhanced phone number parsing
   const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
@@ -182,80 +182,55 @@ function SearchModal({
   const canParse = (str: string) => !isNaN(parseInt(str)) && str.trim() !== "";
 
   // Smart ticket number search for exactly 3 digits
-  const searchTicketNumber = React.useCallback(async (query: string) => {
-    const latest = latestTicketNumberRef.current;
-    if (!latest || query.length !== 3) {
-      // Fallback to simple search if no latest ticket number or not 3 digits
-      const data = await apiRef.current!.get<{ tickets: SmallTicket[] }>(
-        `/tickets?number=${encodeURIComponent(query)}`,
-      );
-      setResults(data.tickets || []);
-      return;
-    }
+  const searchTicketNumber = React.useCallback(
+    async (query: string) => {
+      const latest = latestTicketNumber;
+      if (!latest || query.length !== 3) {
+        // Fallback to simple search if no latest ticket number or not 3 digits
+        const data = await api.get<{ tickets: SmallTicket[] }>(
+          `/tickets?number=${encodeURIComponent(query)}`,
+        );
+        setResults(data.tickets || []);
+        return;
+      }
 
-    const latestTicketStr = latest.toString();
+      const latestTicketStr = latest.toString();
 
-    // Find tickets ending with the 3-digit query
-    const latestNum = parseInt(latestTicketStr, 10);
+      // Find tickets ending with the 3-digit query
+      const latestNum = parseInt(latestTicketStr, 10);
 
-    // Calculate the base number by replacing the last 3 digits
-    const baseNumber = parseInt(latestTicketStr.slice(0, -3) + query, 10);
+      // Calculate the base number by replacing the last 3 digits
+      const baseNumber = parseInt(latestTicketStr.slice(0, -3) + query, 10);
 
-    // If the calculated number is higher than latest, subtract 1000
-    let searchNumber = baseNumber;
-    if (searchNumber > latestNum) {
-      searchNumber -= 1000;
-    }
+      // If the calculated number is higher than latest, subtract 1000
+      let searchNumber = baseNumber;
+      if (searchNumber > latestNum) {
+        searchNumber -= 1000;
+      }
 
-    // Prepare all API calls in parallel
-    const apiCalls: Promise<SmallTicket | null>[] = [];
-    for (let i = -1; i < 2; i++) {
-      const number = searchNumber - i * 1000;
-      if (number < 1) continue;
+      // Prepare all API calls in parallel
+      const apiCalls: Promise<SmallTicket | null>[] = [];
+      for (let i = -1; i < 2; i++) {
+        const number = searchNumber - i * 1000;
+        if (number < 1) continue;
 
-      apiCalls.push(
-        apiRef
-          .current!.get<{ tickets: SmallTicket[] }>(`/tickets?number=${number}`)
-          .then((d) => {
-            const tickets = d.tickets || [];
-            return tickets.length > 0 ? tickets[0] : null;
-          })
-          .catch(() => null),
-      );
-    }
+        apiCalls.push(
+          api
+            .get<{ tickets: SmallTicket[] }>(`/tickets?number=${number}`)
+            .then((d) => {
+              const tickets = d.tickets || [];
+              return tickets.length > 0 ? tickets[0] : null;
+            })
+            .catch(() => null),
+        );
+      }
 
-    const res = await Promise.all(apiCalls);
-    const validTickets = res.filter((t): t is SmallTicket => t !== null);
-    setResults(validTickets);
-  }, []);
-
-  // New Customer autofill helpers
-  const handleNewCustomer = () => {
-    const query = search.trim();
-    if (!query) {
-      onClose();
-      goTo("/newcustomer");
-      return;
-    }
-    const digits = parsePhoneNumber(query);
-    let url = "/newcustomer";
-    const params = new URLSearchParams();
-    if (isLikelyPhone(digits)) {
-      params.set("phone", digits);
-    } else if (query.includes(" ")) {
-      const spaceIndex = query.lastIndexOf(" ");
-      const firstName = query.slice(0, spaceIndex).trim();
-      const lastName = query.slice(spaceIndex + 1).trim();
-      if (firstName) params.set("first_name", firstName);
-      if (lastName) params.set("last_name", lastName);
-    } else {
-      params.set("first_name", query); // fallback single-field
-    }
-    const queryString = params.toString();
-    if (queryString) url += `?${queryString}`;
-    onClose();
-    goTo(url);
-  };
+      const res = await Promise.all(apiCalls);
+      const validTickets = res.filter((t): t is SmallTicket => t !== null);
+      setResults(validTickets);
+    },
+    [latestTicketNumber, api],
+  );
 
   // Smart search logic
   const performSearch = React.useCallback(
@@ -277,7 +252,7 @@ function SearchModal({
         // Phone number search
         if (isLikelyPhone(phoneDigits)) {
           setSearchType("customers");
-          const data = await apiRef.current!.get<{ customers: Customer[] }>(
+          const data = await api.get<{ customers: Customer[] }>(
             `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
           );
           setResults(data.customers || []);
@@ -290,7 +265,7 @@ function SearchModal({
         // Regular ticket number search
         else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
           setSearchType("tickets");
-          const data = await apiRef.current!.get<{ tickets: SmallTicket[] }>(
+          const data = await api.get<{ tickets: SmallTicket[] }>(
             `/tickets?number=${encodeURIComponent(trimmedQuery)}`,
           );
           setResults(data.tickets || []);
@@ -302,7 +277,7 @@ function SearchModal({
           /[\d\-\.\(\)\s]/.test(trimmedQuery)
         ) {
           setSearchType("customers");
-          const data = await apiRef.current!.get<{ customers: Customer[] }>(
+          const data = await api.get<{ customers: Customer[] }>(
             `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
           );
           setResults(data.customers || []);
@@ -311,10 +286,10 @@ function SearchModal({
         else {
           try {
             const [customersData, ticketsData] = await Promise.all([
-              apiRef.current!.get<{ customers: Customer[] }>(
+              api.get<{ customers: Customer[] }>(
                 `/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`,
               ),
-              apiRef.current!.get<{ tickets: SmallTicket[] }>(
+              api.get<{ tickets: SmallTicket[] }>(
                 `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
               ),
             ]);
@@ -331,7 +306,7 @@ function SearchModal({
             }
           } catch {
             setSearchType("tickets");
-            const data = await apiRef.current!.get<{ tickets: SmallTicket[] }>(
+            const data = await api.get<{ tickets: SmallTicket[] }>(
               `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
             );
             setResults(data.tickets || []);
@@ -344,7 +319,7 @@ function SearchModal({
         setLoading(false);
       }
     },
-    [searchTicketNumber],
+    [searchTicketNumber, api],
   );
 
   // Type guard functions

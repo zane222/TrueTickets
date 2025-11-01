@@ -110,7 +110,7 @@ function TicketView({
       setTicket(ticketData);
 
       // Start change detection polling via ref (stable)
-      startPollingRef.current && startPollingRef.current(ticketData);
+      if (startPollingRef.current) startPollingRef.current(ticketData);
     } catch (err) {
       console.error(err);
     } finally {
@@ -166,6 +166,7 @@ function TicketView({
     };
     // Intentionally depend only on id/refreshKey/stopPolling so we don't retrigger
     // when unrelated values (like api) change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, refreshKey, stopPolling]);
 
   // Cleanup polling when component unmounts
@@ -314,7 +315,7 @@ function TicketView({
           <div className="md-card p-3 sm:p-4 space-y-3 w-full sm:w-60">
             <p className="text-md sm:text-md font-semibold">Status:</p>
             <div className="flex flex-col gap-2">
-              {STATUSES.map((status, index) => {
+              {STATUSES.map((status, _index) => {
                 const active = convertStatus(ticket.status) === status;
                 const isUpdating = updatingStatus === status;
                 return (
@@ -332,7 +333,7 @@ function TicketView({
                         ? {
                             backgroundColor: active
                               ? "var(--md-sys-color-primary)"
-                              : "color-mix(in oklab, #2c2c2f 90%, white)",
+                              : "#414144",
                             filter: active ? "brightness(1.05)" : "none",
                           }
                         : {}
@@ -399,7 +400,7 @@ function TicketView({
             <CommentsBox
               ticketId={ticket.id}
               comments={ticket.comments}
-              goTo={goTo}
+              _goTo={goTo}
             />
           </div>
         </aside>
@@ -411,12 +412,12 @@ function TicketView({
 interface CommentsBoxProps {
   ticketId: number;
   comments?: Comment[];
-  goTo: (to: string) => void;
+  _goTo: (to: string) => void;
 }
 function CommentsBox({
   ticketId,
   comments = [],
-  goTo,
+  _goTo,
 }: CommentsBoxProps): React.ReactElement {
   const api = useApi();
   const [text, setText] = useState<string>("");

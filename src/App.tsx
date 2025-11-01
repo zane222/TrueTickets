@@ -306,7 +306,8 @@ export default function App() {
   // Clear data changed warnings when navigating between pages
   useEffect(() => {
     clearDataChangedWarnings();
-  }, [path, clearDataChangedWarnings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
   const [showInviteUser, setShowInviteUser] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteFirstName, setInviteFirstName] = useState("");

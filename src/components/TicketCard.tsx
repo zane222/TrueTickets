@@ -69,7 +69,7 @@ export function TicketCard({
       id="result"
       className="text-black pl-[20px] w-[323px] pt-[6px] pb-[7px] origin-top"
       style={{
-        fontFamily: "ff2",
+        fontFamily: "ff2, Arial, sans-serif",
         fontStyle: "normal",
         fontWeight: 500,
         fontSize: "10.35pt",
