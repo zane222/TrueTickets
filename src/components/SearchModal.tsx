@@ -27,9 +27,39 @@ function SearchModal({
   const [latestTicketNumber, setLatestTicketNumber] = useState<number | null>(
     null,
   );
+  const latestTicketNumberRef = React.useRef<number | null>(null);
+
   const [enterPressedWhileLoading, setEnterPressedWhileLoading] =
     useState(false);
-  const searchInputRef = React.useRef(null);
+  const enterPressedWhileLoadingRef = React.useRef<boolean>(false);
+
+  const searchInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Keep stable refs for callers to use inside lightweight callbacks/effects.
+  const apiRef = React.useRef(api);
+  const onCloseRef = React.useRef(onClose);
+  const goToRef = React.useRef(goTo);
+
+  // Mirror state into refs so callbacks don't need to include those states
+  React.useEffect(() => {
+    latestTicketNumberRef.current = latestTicketNumber;
+  }, [latestTicketNumber]);
+
+  React.useEffect(() => {
+    enterPressedWhileLoadingRef.current = enterPressedWhileLoading;
+  }, [enterPressedWhileLoading]);
+
+  React.useEffect(() => {
+    apiRef.current = api;
+  }, [api]);
+
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  React.useEffect(() => {
+    goToRef.current = goTo;
+  }, [goTo]);
 
   useHotkeys({
     n: () => handleNewCustomer(),
@@ -92,21 +122,29 @@ function SearchModal({
   }, [search]);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout | undefined;
-    if (!loading && enterPressedWhileLoading && results.length > 0) {
+    let timeoutId: number | undefined;
+    // Use refs inside the effect so it can depend only on `loading`.
+    if (!loading && enterPressedWhileLoadingRef.current && results.length > 0) {
       const first = results[0];
       if (first) {
-        timeoutId = setTimeout(() => {
-          onClose();
-          if (searchType === "customers") goTo(`/$${first.id}`);
-          else goTo(`/&${first.id}`);
+        timeoutId = window.setTimeout(() => {
+          onCloseRef.current && onCloseRef.current();
+          const st = searchType;
+          if (st === "customers") {
+            goToRef.current && goToRef.current(`/$${first.id}`);
+          } else {
+            goToRef.current && goToRef.current(`/&${first.id}`);
+          }
         }, 150);
       }
+      // Keep UI state in sync
       setEnterPressedWhileLoading(false);
+      enterPressedWhileLoadingRef.current = false;
     }
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
+      if (timeoutId) window.clearTimeout(timeoutId);
     };
+    // Intentionally depend only on `loading` so re-triggering is limited.
   }, [loading]);
 
   // Get latest ticket number when modal opens
@@ -115,9 +153,9 @@ function SearchModal({
     if (open && !latestTicketNumber) {
       const fetchLatestTicketNumber = async () => {
         try {
-          const data = (await api.get("/tickets?page=1")) as {
-            tickets: SmallTicket[];
-          };
+          const data = await api.get<{ tickets: SmallTicket[] }>(
+            "/tickets?page=1",
+          );
           if (!isMounted) return;
           const tickets = data.tickets || [];
           if (tickets.length > 0) {
@@ -144,25 +182,24 @@ function SearchModal({
   const canParse = (str: string) => !isNaN(parseInt(str)) && str.trim() !== "";
 
   // Smart ticket number search for exactly 3 digits
-  const searchTicketNumber = async (query: string) => {
-    if (!latestTicketNumber || query.length !== 3) {
+  const searchTicketNumber = React.useCallback(async (query: string) => {
+    const latest = latestTicketNumberRef.current;
+    if (!latest || query.length !== 3) {
       // Fallback to simple search if no latest ticket number or not 3 digits
-      const data = (await api.get(
+      const data = await apiRef.current!.get<{ tickets: SmallTicket[] }>(
         `/tickets?number=${encodeURIComponent(query)}`,
-      )) as { tickets: SmallTicket[] };
+      );
       setResults(data.tickets || []);
       return;
     }
 
-    const latestTicketStr = latestTicketNumber.toString();
+    const latestTicketStr = latest.toString();
 
     // Find tickets ending with the 3-digit query
-    // For "035" with latest 36039, we want 35035 and 34035
-    const queryNum = parseInt(query);
-    const latestNum = parseInt(latestTicketStr);
+    const latestNum = parseInt(latestTicketStr, 10);
 
     // Calculate the base number by replacing the last 3 digits
-    const baseNumber = parseInt(latestTicketStr.slice(0, -3) + query);
+    const baseNumber = parseInt(latestTicketStr.slice(0, -3) + query, 10);
 
     // If the calculated number is higher than latest, subtract 1000
     let searchNumber = baseNumber;
@@ -170,42 +207,27 @@ function SearchModal({
       searchNumber -= 1000;
     }
 
-    // Prepare all API calls to run in parallel, searching the last 2 tickets and the next 1 (in case) who's number ends with the search query
-    const apiCalls = [];
+    // Prepare all API calls in parallel
+    const apiCalls: Promise<SmallTicket | null>[] = [];
     for (let i = -1; i < 2; i++) {
       const number = searchNumber - i * 1000;
-
       if (number < 1) continue;
 
-      // Create promise for each API call
       apiCalls.push(
-        (
-          api.get(`/tickets?number=${number}`) as Promise<{
-            tickets: SmallTicket[];
-          }>
-        )
-          .then((data) => {
-            const tickets = data.tickets || [];
-            // Each GET returns at most one ticket, so return the first one if it exists
+        apiRef
+          .current!.get<{ tickets: SmallTicket[] }>(`/tickets?number=${number}`)
+          .then((d) => {
+            const tickets = d.tickets || [];
             return tickets.length > 0 ? tickets[0] : null;
           })
-          .catch((error) => {
-            console.error(`Error fetching ticket ${number}:`, error);
-            return null;
-          }),
+          .catch(() => null),
       );
     }
 
-    // Execute all API calls in parallel and wait for all to complete
-    const results = await Promise.all(apiCalls);
-
-    // Filter out null results (failed or empty responses)
-    const validTickets = results.filter(
-      (ticket): ticket is SmallTicket => ticket !== null,
-    );
-
+    const res = await Promise.all(apiCalls);
+    const validTickets = res.filter((t): t is SmallTicket => t !== null);
     setResults(validTickets);
-  };
+  }, []);
 
   // New Customer autofill helpers
   const handleNewCustomer = () => {
@@ -252,55 +274,54 @@ function SearchModal({
         const trimmedQuery = query.trim();
         const phoneDigits = parsePhoneNumber(trimmedQuery);
 
-        // Check if it's a phone number search
+        // Phone number search
         if (isLikelyPhone(phoneDigits)) {
           setSearchType("customers");
-          const data = (await api.get(
+          const data = await apiRef.current!.get<{ customers: Customer[] }>(
             `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
-          )) as { customers: Customer[] };
+          );
           setResults(data.customers || []);
         }
-        // Check if it's a 3-digit ticket number search
+        // 3-digit ticket number
         else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
           setSearchType("tickets");
           await searchTicketNumber(trimmedQuery);
         }
-        // Check if it's a regular ticket number search (not 3 digits)
+        // Regular ticket number search
         else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
           setSearchType("tickets");
-          const data = (await api.get(
+          const data = await apiRef.current!.get<{ tickets: SmallTicket[] }>(
             `/tickets?number=${encodeURIComponent(trimmedQuery)}`,
-          )) as { tickets: SmallTicket[] };
+          );
           setResults(data.tickets || []);
         }
-        // Check if it's a partial phone number (has dashes, dots, etc.)
+        // Partial phone number
         else if (
           phoneDigits.length >= 3 &&
           phoneDigits.length < 7 &&
           /[\d\-\.\(\)\s]/.test(trimmedQuery)
         ) {
           setSearchType("customers");
-          const data = (await api.get(
+          const data = await apiRef.current!.get<{ customers: Customer[] }>(
             `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
-          )) as { customers: Customer[] };
+          );
           setResults(data.customers || []);
         }
-        // For text queries, search both customers and tickets, show the best results
+        // Text queries: search both and pick best
         else {
           try {
             const [customersData, ticketsData] = await Promise.all([
-              api.get(
+              apiRef.current!.get<{ customers: Customer[] }>(
                 `/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`,
-              ) as Promise<{ customers: Customer[] }>,
-              api.get(
+              ),
+              apiRef.current!.get<{ tickets: SmallTicket[] }>(
                 `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
-              ) as Promise<{ tickets: SmallTicket[] }>,
+              ),
             ]);
 
             const customers = customersData.customers || [];
             const tickets = ticketsData.tickets || [];
 
-            // If we have customers with good matches, show customers
             if (customers.length > 0) {
               setSearchType("customers");
               setResults(customers);
@@ -308,23 +329,22 @@ function SearchModal({
               setSearchType("tickets");
               setResults(tickets);
             }
-          } catch (error) {
-            // Fallback to ticket search if both fail
+          } catch {
             setSearchType("tickets");
-            const data = (await api.get(
+            const data = await apiRef.current!.get<{ tickets: SmallTicket[] }>(
               `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
-            )) as { tickets: SmallTicket[] };
+            );
             setResults(data.tickets || []);
           }
         }
-      } catch (error) {
-        console.error("Search error:", error);
+      } catch (err) {
+        console.error("Search error:", err);
         setResults([]);
       } finally {
         setLoading(false);
       }
     },
-    [api, searchTicketNumber, latestTicketNumber],
+    [searchTicketNumber],
   );
 
   // Type guard functions

@@ -147,22 +147,38 @@ export interface PropsWithChildren<P = Record<string, unknown>> {
 export type AsyncFunction<T = unknown> = (...args: unknown[]) => Promise<T>;
 
 // ============================================================================
-// Auth Types
+// Auth Types (re-exports / aliases)
+// ---------------------------------------------------------------------------
+// Use the Amplify-provided types where possible and fall back to the minimal
+// UI-focused shape for places that only require a subset of the full Amplify
+// user object. This avoids redundant type definitions and keeps the app
+// compatible with multiple Amplify versions.
 // ============================================================================
+
+import type {
+  AmplifyAuthUser,
+  AuthUserMinimal,
+  IdTokenPayload,
+  CognitoGroups,
+} from "./amplify";
+
+export type { AmplifyAuthUser, AuthUserMinimal, IdTokenPayload, CognitoGroups };
 
 export interface UserGroup {
   groupName: string;
   description?: string;
 }
 
-export interface AuthUser {
-  username: string;
-  email?: string;
-  groups?: string[];
-  attributes?: Record<string, unknown>;
-  [key: string]: unknown;
-}
+/**
+ * `AuthUser` in the app uses the full Amplify user type. This keeps the app
+ * consistently typed with Amplify's definitions.
+ */
+export type AuthUser = AmplifyAuthUser;
 
+/**
+ * AuthSession is kept lightweight and mirrors the shape the app consumes.
+ * Token payloads and groups are strongly typed via re-exports from `amplify`.
+ */
 export interface AuthSession {
   tokens?: {
     idToken?: {

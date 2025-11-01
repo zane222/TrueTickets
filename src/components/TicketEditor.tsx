@@ -10,19 +10,21 @@ import { getTicketDeviceInfo } from "../utils/appUtils.jsx";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { LargeTicket, TicketProperties } from "../types/api";
 
+interface TicketEditorProps {
+  ticketId?: number;
+  customerId?: number;
+  goTo: (to: string) => void;
+  showSearch: boolean;
+}
+
 function TicketEditor({
   ticketId,
   customerId,
   goTo,
   showSearch,
-}: {
-  ticketId?: number;
-  customerId?: number;
-  goTo: (to: string) => void;
-  showSearch: boolean;
-}) {
+}: TicketEditorProps): React.ReactElement {
   const api = useApi();
-  const { warning, dataChanged } = useAlertMethods();
+  const { dataChanged } = useAlertMethods();
   const [previousTicket, setPreviousTicket] = useState<LargeTicket | null>(
     null,
   );
@@ -32,13 +34,15 @@ function TicketEditor({
   const [deviceIdx, setDeviceIdx] = useState<number | null>(null);
   const [timeEstimate, setTimeEstimate] = useState("");
   const [itemsLeft, setItemsLeft] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<boolean>(false);
   const [existingProperties, setExistingProperties] =
     useState<TicketProperties>({});
 
   // Change detection
-  const { hasChanged, isPolling, startPolling, stopPolling, resetPolling } =
-    useChangeDetection(api, `/tickets/${ticketId}`);
+  const { hasChanged, startPolling, stopPolling } = useChangeDetection(
+    api,
+    `/tickets/${ticketId}`,
+  );
 
   // Load existing ticket data when editing
   useEffect(() => {
@@ -53,9 +57,9 @@ function TicketEditor({
     let isMounted = true;
     (async () => {
       try {
-        const data = (await api.get(`/tickets/${ticketId}`)) as {
-          ticket: LargeTicket;
-        };
+        const data = await api.get<{ ticket: LargeTicket }>(
+          `/tickets/${ticketId}`,
+        );
         if (!isMounted) return;
         const ticket = data.ticket;
         setPreviousTicket(ticket);
@@ -180,7 +184,7 @@ function TicketEditor({
     showSearch,
   );
 
-  function toggleItem(name: string) {
+  function toggleItem(name: string): void {
     setItemsLeft((items) =>
       items.includes(name)
         ? items.filter((item) => item !== name)
@@ -188,7 +192,7 @@ function TicketEditor({
     );
   }
 
-  async function save() {
+  async function save(): Promise<void> {
     setSaving(true);
     try {
       const properties = { ...existingProperties };
@@ -301,9 +305,10 @@ function TicketEditor({
           properties: properties,
         };
 
-        result = (await api.put(`/tickets/${ticketId}`, updatedTicket)) as {
-          ticket: LargeTicket;
-        };
+        result = await api.put<{ ticket: LargeTicket }>(
+          `/tickets/${ticketId}`,
+          updatedTicket,
+        );
       } else {
         // For new tickets, create the full payload
         const payload = {
@@ -331,9 +336,7 @@ function TicketEditor({
               ),
           },
         };
-        result = (await api.post(`/tickets`, payload)) as {
-          ticket: LargeTicket;
-        }; // create the ticket
+        result = await api.post<{ ticket: LargeTicket }>(`/tickets`, payload);
       }
       const idOfNewlyCreatedOrUpdatedTicket = result.ticket.id;
       goTo(`/&${idOfNewlyCreatedOrUpdatedTicket}`);

@@ -112,13 +112,24 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
     if (apiClient.baseUrl !== lambdaUrl) {
       apiClient.baseUrl = lambdaUrl;
     }
+
+    // Expose typed/generic wrappers so callers can request a typed response:
+    const get = <T = unknown,>(path: string): Promise<T> =>
+      apiClient.get<T>(path);
+    const post = <T = unknown,>(path: string, body?: unknown): Promise<T> =>
+      apiClient.post<T>(path, body);
+    const put = <T = unknown,>(path: string, body?: unknown): Promise<T> =>
+      apiClient.put<T>(path, body);
+    const del = <T = unknown,>(path: string): Promise<T> =>
+      apiClient.del<T>(path);
+
     return {
       lambdaUrl,
       setLambdaUrl,
-      get: (path: string) => apiClient.get(path),
-      post: (path: string, body?: unknown) => apiClient.post(path, body),
-      put: (path: string, body?: unknown) => apiClient.put(path, body),
-      del: (path: string) => apiClient.del(path),
+      get,
+      post,
+      put,
+      del,
     };
   }, [lambdaUrl]);
   return <ApiCtx.Provider value={client}>{children}</ApiCtx.Provider>;
@@ -412,7 +423,7 @@ export default function App() {
       console.log("Loading users with apiClient, attempt:", retryCount + 1);
 
       const api = apiClient;
-      const result = (await api.get("/users")) as { users: CognitoUser[] };
+      const result = await api.get<{ users: CognitoUser[] }>("/users");
 
       console.log("Users loaded:", result);
 

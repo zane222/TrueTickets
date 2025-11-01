@@ -27,17 +27,18 @@ import { useHotkeys } from "../hooks/useHotkeys";
 import NavigationButton from "./ui/NavigationButton";
 import { TicketCard } from "./TicketCard";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
-import type { LargeTicket } from "../types/api";
+import type { LargeTicket, Comment } from "../types/api";
 
+interface TicketViewProps {
+  id: number;
+  goTo: (to: string) => void;
+  showSearch: boolean;
+}
 function TicketView({
   id,
   goTo,
   showSearch,
-}: {
-  id: number;
-  goTo: (to: string) => void;
-  showSearch: boolean;
-}) {
+}: TicketViewProps): React.ReactElement {
   const api = useApi();
   const {
     warning: _warning,
@@ -46,9 +47,9 @@ function TicketView({
   } = useAlertMethods();
   const [ticket, setTicket] = useState<LargeTicket | null>(null);
   const [loading, setLoading] = useState(true);
-  const ticketCardRef = useRef(null);
-  const pdfIntervalRef = useRef(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const ticketCardRef = useRef<HTMLDivElement | null>(null);
+  const pdfIntervalRef = useRef<number | null>(null);
+  const [refreshKey, setRefreshKey] = useState<number>(0);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null); // Track which status is being updated
 
   // Change detection
@@ -86,18 +87,30 @@ function TicketView({
 
   const fetchTicketRef = useRef<{ isMounted: boolean }>({ isMounted: true });
 
+  // Keep stable refs for external dependencies so the callback can remain small
+  const apiRef = React.useRef(api);
+  const startPollingRef = React.useRef(startPolling);
+
+  React.useEffect(() => {
+    apiRef.current = api;
+  }, [api]);
+
+  React.useEffect(() => {
+    startPollingRef.current = startPolling;
+  }, [startPolling]);
+
   const fetchTicket = useCallback(async () => {
     setLoading(true);
     try {
-      const data = (await api.get(`/tickets/${id}`)) as {
-        ticket: LargeTicket;
-      };
+      const data = await apiRef.current!.get<{ ticket: LargeTicket }>(
+        `/tickets/${id}`,
+      );
       if (!fetchTicketRef.current.isMounted) return;
       const ticketData = data.ticket;
       setTicket(ticketData);
 
-      // Start change detection polling
-      startPolling(ticketData);
+      // Start change detection polling via ref (stable)
+      startPollingRef.current && startPollingRef.current(ticketData);
     } catch (err) {
       console.error(err);
     } finally {
@@ -105,7 +118,7 @@ function TicketView({
         setLoading(false);
       }
     }
-  }, [api, id, startPolling]);
+  }, [id]);
 
   // Show warning when changes are detected
   useEffect(() => {
@@ -117,7 +130,7 @@ function TicketView({
     }
   }, [hasChanged, _dataChanged]);
 
-  const updateTicketStatus = async (status) => {
+  const updateTicketStatus = async (status: string): Promise<void> => {
     if (!ticket || updatingStatus || convertStatus(ticket.status) === status)
       return; // Prevent multiple updates or updating to the same status
     setUpdatingStatus(status);
@@ -131,12 +144,10 @@ function TicketView({
 
       // Restart polling with the updated ticket data
       _resetPolling(updatedTicket);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      _error(
-        "Status Update Failed",
-        `Failed to update status: ${err?.message || String(err)}`,
-      );
+      const msg = err instanceof Error ? err.message : String(err);
+      _error("Status Update Failed", `Failed to update status: ${msg}`);
     } finally {
       setUpdatingStatus(null);
     }
@@ -147,11 +158,15 @@ function TicketView({
     stopPolling();
     const _fetchTicketRef = fetchTicketRef.current;
     _fetchTicketRef.isMounted = true;
-    fetchTicket();
+    // call stable fetchTicket without including it in deps to minimize re-runs;
+    // fetchTicket itself depends only on `id` and uses refs for larger dependencies.
+    void fetchTicket();
     return () => {
       _fetchTicketRef.isMounted = false;
     };
-  }, [id, refreshKey, stopPolling, fetchTicket]);
+    // Intentionally depend only on id/refreshKey/stopPolling so we don't retrigger
+    // when unrelated values (like api) change.
+  }, [id, refreshKey, stopPolling]);
 
   // Cleanup polling when component unmounts
   useEffect(() => {
@@ -159,7 +174,7 @@ function TicketView({
       stopPolling();
       // Cleanup PDF interval if still running
       if (pdfIntervalRef.current) {
-        clearInterval(pdfIntervalRef.current);
+        window.clearInterval(pdfIntervalRef.current);
         pdfIntervalRef.current = null;
       }
     };
@@ -216,18 +231,21 @@ function TicketView({
           pdfWindow.onload = function () {
             pdfWindow.print();
           };
-          const interval = setInterval(function () {
+          const interval = window.setInterval(function () {
             if (pdfWindow.closed) {
-              clearInterval(interval);
+              window.clearInterval(interval);
               pdfIntervalRef.current = null;
               URL.revokeObjectURL(pdf);
             }
           }, 1000);
           pdfIntervalRef.current = interval;
         });
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      error("PDF Generation Failed", "Error generating PDF. Please try again.");
+    } catch (err: unknown) {
+      console.error("Error generating PDF:", err);
+      _error(
+        "PDF Generation Failed",
+        "Error generating PDF. Please try again.",
+      );
     }
   };
 
@@ -390,16 +408,27 @@ function TicketView({
   );
 }
 
-function CommentsBox({ ticketId, comments, goTo }) {
+interface CommentsBoxProps {
+  ticketId: number;
+  comments?: Comment[];
+  goTo: (to: string) => void;
+}
+function CommentsBox({
+  ticketId,
+  comments = [],
+  goTo,
+}: CommentsBoxProps): React.ReactElement {
   const api = useApi();
-  const [text, setText] = useState("");
-  const [list, setList] = useState([]);
-  const [createLoading, setCreateLoading] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [textareaRef, setTextareaRef] = useState(null);
+  const [text, setText] = useState<string>("");
+  const [list, setList] = useState<Comment[]>(comments || []);
+  const [createLoading, setCreateLoading] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<{ username?: string } | null>(
+    null,
+  );
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    setList(comments);
+    setList(comments || []);
   }, [comments]);
 
   // Get current user information
@@ -416,15 +445,18 @@ function CommentsBox({ ticketId, comments, goTo }) {
   }, []);
 
   // Auto-resize textarea
-  const autoResize = () => {
-    if (textareaRef) {
-      textareaRef.style.height = "auto";
-      textareaRef.style.height = textareaRef.scrollHeight + "px";
+  const autoResize = (): void => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height =
+        textareaRef.current.scrollHeight + "px";
     }
   };
 
   // Handle text change and auto-resize
-  const handleTextChange = (event) => {
+  const handleTextChange = (
+    event: React.ChangeEvent<HTMLTextAreaElement>,
+  ): void => {
     setText(event.target.value);
     autoResize();
   };
@@ -434,7 +466,7 @@ function CommentsBox({ ticketId, comments, goTo }) {
     autoResize();
   }, [text]);
 
-  async function create() {
+  async function create(): Promise<void> {
     if (createLoading) return; // Prevent multiple submissions
     setCreateLoading(true);
     try {
@@ -448,19 +480,55 @@ function CommentsBox({ ticketId, comments, goTo }) {
         const session = await fetchAuthSession();
         const idTokenPayload = session.tokens?.idToken?.payload;
 
-        // Try multiple sources for the name
-        techName =
-          userAttributes?.["custom:given_name"] ||
-          userAttributes?.given_name ||
-          userAttributes?.name ||
-          idTokenPayload?.["custom:given_name"] ||
-          idTokenPayload?.["given_name"] ||
-          idTokenPayload?.["name"] ||
-          currentUser?.username ||
-          "True Tickets";
-      } catch (error) {
-        console.error("Error getting user attributes:", error);
-        techName = currentUser?.username || "True Tickets";
+        // Try multiple sources for the name (safely coerce to strings)
+        const tryString = (v: unknown): string | undefined =>
+          typeof v === "string" && v.trim() ? v : undefined;
+
+        // Normalize unknown shapes into plain objects we can index safely.
+        const uaUnknown = userAttributes as unknown;
+        const uaObj =
+          uaUnknown && typeof uaUnknown === "object"
+            ? (uaUnknown as Record<string, unknown>)
+            : {};
+        const idUnknown = idTokenPayload as unknown;
+        const idObj =
+          idUnknown && typeof idUnknown === "object"
+            ? (idUnknown as Record<string, unknown>)
+            : {};
+
+        const attrName =
+          tryString(uaObj["custom:given_name"]) ??
+          tryString(uaObj["given_name"]) ??
+          tryString(uaObj["name"]);
+
+        const idName =
+          tryString(idObj["custom:given_name"]) ??
+          tryString(idObj["given_name"]) ??
+          tryString(idObj["name"]);
+
+        // Safely extract username from currentUser if it's an object with a string username
+        let currentUserName: string | undefined;
+        if (currentUser && typeof currentUser === "object") {
+          const cu = currentUser as Record<string, unknown>;
+          if (typeof cu.username === "string" && cu.username.trim()) {
+            currentUserName = cu.username;
+          }
+        }
+
+        techName = attrName ?? idName ?? currentUserName ?? "True Tickets";
+      } catch (err: unknown) {
+        console.error("Error getting user attributes:", err);
+
+        // Fallback: try to read username from currentUser safely
+        let currentUserName: string | undefined;
+        if (currentUser && typeof currentUser === "object") {
+          const cu = currentUser as Record<string, unknown>;
+          if (typeof cu.username === "string" && cu.username.trim()) {
+            currentUserName = cu.username;
+          }
+        }
+
+        techName = currentUserName ?? "True Tickets";
       }
 
       await api.post(`/tickets/${ticketId}/comment`, {
@@ -473,8 +541,8 @@ function CommentsBox({ ticketId, comments, goTo }) {
       setText("");
       // Trigger a refresh event to reload the ticket data
       window.dispatchEvent(new CustomEvent("refreshTicket"));
-    } catch (error) {
-      console.error(error);
+    } catch (err: unknown) {
+      console.error(err);
     } finally {
       setCreateLoading(false);
     }
@@ -483,7 +551,7 @@ function CommentsBox({ ticketId, comments, goTo }) {
   return (
     <div className="space-y-4">
       <textarea
-        ref={setTextareaRef}
+        ref={textareaRef}
         value={text}
         onChange={handleTextChange}
         className="md-textarea"
@@ -500,7 +568,7 @@ function CommentsBox({ ticketId, comments, goTo }) {
       <div className="space-y-3">
         {(list || [])
           .filter((comment) => {
-            const body = (comment.body ?? comment.comment ?? "").trim();
+            const body = (comment.body ?? "").trim();
             return body !== "Ticket marked as Pre-Diagnosed.";
           })
           .map((comment) => (
@@ -521,7 +589,7 @@ function CommentsBox({ ticketId, comments, goTo }) {
 
               {/* Body */}
               <div className="whitespace-pre-wrap leading-relaxed pt-5 text-base">
-                {formatCommentWithLinks(comment.body || comment.comment || "")}
+                {formatCommentWithLinks(comment.body || "")}
               </div>
             </div>
           ))}
@@ -530,7 +598,13 @@ function CommentsBox({ ticketId, comments, goTo }) {
   );
 }
 
-function InlineErrorMessage({ message, className }) {
+function InlineErrorMessage({
+  message,
+  className,
+}: {
+  message: string;
+  className?: string;
+}): React.ReactElement {
   return (
     <div className={className}>
       <div className="text-red-500 font-medium">{message}</div>

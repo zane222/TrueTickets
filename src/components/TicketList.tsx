@@ -1,20 +1,21 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { STATUSES, DEVICES, convertStatus } from "../constants/appConstants.js";
 import { cx, fmtDate, getTicketDeviceInfo } from "../utils/appUtils.jsx";
 import { useHotkeys } from "../hooks/useHotkeys";
 import NavigationButton from "./ui/NavigationButton";
-import type { SmallTicket, ApiContextValue } from "../types/api";
+import type { SmallTicket, ApiContextValue } from "../types";
 
 // Ticket list item component that can use hooks
+interface TicketListItemProps {
+  ticket: SmallTicket;
+  goTo: (to: string) => void;
+}
 function TicketListItem({
   ticket,
   goTo,
-}: {
-  ticket: SmallTicket;
-  goTo: (to: string) => void;
-}) {
+}: TicketListItemProps): React.ReactElement {
   const targetUrl = `${window.location.origin}/&${ticket.id}`;
   return (
     <motion.div
@@ -80,15 +81,16 @@ function TicketListItem({
   );
 }
 
+export interface TicketListViewProps {
+  goTo: (to: string) => void;
+  showSearch: boolean;
+  api: ApiContextValue;
+}
 export function TicketListView({
   goTo,
   showSearch,
   api,
-}: {
-  goTo: (to: string) => void;
-  showSearch: boolean;
-  api: ApiContextValue;
-}) {
+}: TicketListViewProps): React.ReactElement {
   // Load filter states from localStorage with defaults
   const [statusHidden, setStatusHidden] = useState(() => {
     const saved = localStorage.getItem("ticketStatusHidden");
@@ -110,9 +112,9 @@ export function TicketListView({
   });
 
   const [items, setItems] = useState<SmallTicket[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const listRef = useRef(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [page, setPage] = useState<number>(1);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   // Save state changes to localStorage
   useEffect(() => {
@@ -143,7 +145,7 @@ export function TicketListView({
     );
   }, [deviceFilterCollapsed]);
 
-  const toggleStatus = (status) => {
+  const toggleStatus = (status: string): void => {
     const newStatusHidden = new Set(statusHidden);
     if (newStatusHidden.has(status)) {
       newStatusHidden.delete(status);
@@ -157,39 +159,76 @@ export function TicketListView({
     );
   };
 
+  // Refs to avoid putting changing state (items/page) into fetchTickets deps,
+  // which would recreate the callback and cause the effect to re-run repeatedly.
+  const itemsRef = useRef<SmallTicket[]>([]);
+  const pageRef = useRef<number>(1);
+  // Guard to prevent overlapping / reentrant fetches
+  const isFetchingRef = useRef<boolean>(false);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+
   const fetchTickets = useCallback(
-    async (reset = false) => {
+    async (reset = false): Promise<void> => {
+      // Prevent re-entrant calls — if a fetch is already in progress, skip.
+      if (isFetchingRef.current) {
+        // Optionally log for debugging
+        // console.debug('fetchTickets skipped because another fetch is in progress');
+        return;
+      }
+
+      isFetchingRef.current = true;
       setLoading(true);
       try {
-        const currentPage = reset ? 1 : page + 1;
-        const data = (await api.get(`/tickets?page=${currentPage}`)) as {
-          tickets: SmallTicket[];
-        };
+        const currentPage = reset ? 1 : pageRef.current + 1;
+        const data = await api.get<{ tickets: SmallTicket[] }>(
+          `/tickets?page=${currentPage}`,
+        );
         const tickets = data.tickets || [];
         if (reset) {
           setItems(tickets);
           setPage(1);
+          itemsRef.current = tickets;
+          pageRef.current = 1;
         } else {
-          // Filter out any duplicates by ticket ID
-          const existingIds = new Set(items.map((item) => item.id));
+          // Filter out any duplicates by ticket ID using the ref (stable)
+          const existingIds = new Set(itemsRef.current.map((item) => item.id));
           const newTickets = tickets.filter(
             (ticket) => !existingIds.has(ticket.id),
           );
-          setItems((prev) => [...prev, ...newTickets]);
+          // Use functional update to avoid depending on `items` in closure
+          setItems((prev) => {
+            const merged = [...prev, ...newTickets];
+            itemsRef.current = merged;
+            return merged;
+          });
           setPage(currentPage);
+          pageRef.current = currentPage;
         }
       } catch (error) {
         console.error(error);
       } finally {
         setLoading(false);
+        // release guard so subsequent calls can proceed
+        isFetchingRef.current = false;
       }
     },
-    [api, page, items],
+    [api],
   );
 
   useEffect(() => {
+    // Run once on mount to load initial tickets.
     fetchTickets(true);
-  }, [fetchTickets]);
+    // Intentionally ignore fetchTickets in deps to avoid re-running if its identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useHotkeys(
     {

@@ -19,15 +19,30 @@ export interface NavigateFunction {
 
 // ============================================================================
 // API Context Types
-// ============================================================================
-
+// ---------------------------------------------------------------------------
+// The ApiContextValue methods are generic so callers can request typed
+// responses without using `as` casts. This keeps the context flexible while
+// enabling strong typing at call sites via `api.get<MyType>(...)`.
 export interface ApiContextValue {
   lambdaUrl: string;
   setLambdaUrl: (url: string) => void;
-  get: (path: string) => Promise<unknown>;
-  post: (path: string, body?: unknown) => Promise<unknown>;
-  put: (path: string, body?: unknown) => Promise<unknown>;
-  del: (path: string) => Promise<unknown>;
+  /**
+   * Generic GET helper.
+   * Usage: const data = await api.get<{ tickets: SmallTicket[] }>(path);
+   */
+  get: <T = unknown>(path: string) => Promise<T>;
+  /**
+   * Generic POST helper.
+   */
+  post: <T = unknown>(path: string, body?: unknown) => Promise<T>;
+  /**
+   * Generic PUT helper.
+   */
+  put: <T = unknown>(path: string, body?: unknown) => Promise<T>;
+  /**
+   * Generic DELETE helper.
+   */
+  del: <T = unknown>(path: string) => Promise<T>;
 }
 
 // ============================================================================

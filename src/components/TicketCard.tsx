@@ -4,12 +4,28 @@ import React, { useEffect, useRef } from "react";
  * TicketCard component template for creating printable ticket to stick to the device
  * Must be kept the same to have the same look and feel as the previously used website's ticket card
  */
-// Function to count the number of lines in an element
-function NumberOfLines(element) {
+// Function to count the number of lines in an element (typed)
+function NumberOfLines(element: HTMLElement | null): number {
   if (!element) return 0;
-  const lineHeight = parseFloat(window.getComputedStyle(element).lineHeight);
+  const computed = window.getComputedStyle(element);
+  // lineHeight may be 'normal' in some fonts, so fall back to fontSize if needed
+  const lineHeightStr =
+    computed.lineHeight && computed.lineHeight !== "normal"
+      ? computed.lineHeight
+      : computed.fontSize;
+  const lineHeight = parseFloat(lineHeightStr as string) || 12;
   const height = element.offsetHeight;
-  return Math.round(height / lineHeight);
+  return Math.max(0, Math.round(height / lineHeight));
+}
+
+interface TicketCardProps {
+  password?: string;
+  ticketNumber?: string | number;
+  subject?: string;
+  itemsLeft?: string;
+  name?: string;
+  creationDate?: string;
+  phoneNumber?: string;
 }
 
 export function TicketCard({
@@ -20,16 +36,8 @@ export function TicketCard({
   name = "",
   creationDate = "",
   phoneNumber = "",
-}: {
-  password?: string;
-  ticketNumber?: string | number;
-  subject?: string;
-  itemsLeft?: string;
-  name?: string;
-  creationDate?: string;
-  phoneNumber?: string;
-}) {
-  const subjectRef = useRef(null);
+}: TicketCardProps): React.ReactElement {
+  const subjectRef = useRef<HTMLParagraphElement | null>(null);
 
   // Effect to adjust font size if subject text exceeds 3 lines
   useEffect(() => {

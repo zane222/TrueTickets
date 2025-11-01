@@ -57,7 +57,10 @@ class ApiClient {
     }
   }
 
-  async request(path: string, options: RequestOptions = {}): Promise<unknown> {
+  async request<T = unknown>(
+    path: string,
+    options: RequestOptions = {},
+  ): Promise<T> {
     const { method = "GET", body } = options;
 
     // Define user management endpoints that should NOT get /api prefix
@@ -91,18 +94,19 @@ class ApiClient {
       });
 
       if (!response.ok) {
-        // Try to parse any JSON error body so callers can display server messages
+        // Read the response body exactly once to avoid consuming the body stream multiple times
         let parsedErrorBody: unknown = null;
+        let bodyText: string | null = null;
         try {
-          const text = await response.text();
-          parsedErrorBody = text ? JSON.parse(text) : null;
-        } catch {
-          // ignore parse errors, keep raw text
+          bodyText = await response.text();
           try {
-            parsedErrorBody = await response.text();
+            parsedErrorBody = bodyText ? JSON.parse(bodyText) : null;
           } catch {
-            parsedErrorBody = null;
+            // If it's not valid JSON, keep the raw text
+            parsedErrorBody = bodyText ?? null;
           }
+        } catch {
+          parsedErrorBody = null;
         }
 
         if (response.status === 401) {
@@ -117,17 +121,17 @@ class ApiClient {
               body: body ? JSON.stringify(body) : undefined,
             });
             if (!retryResponse.ok) {
-              // try to parse retry response body
+              // Read retry response body once and parse if possible
               let retryParsed: unknown = null;
               try {
                 const t = await retryResponse.text();
-                retryParsed = t ? JSON.parse(t) : null;
-              } catch {
                 try {
-                  retryParsed = await retryResponse.text();
+                  retryParsed = t ? JSON.parse(t) : null;
                 } catch {
-                  retryParsed = null;
+                  retryParsed = t ? t : null;
                 }
+              } catch {
+                retryParsed = null;
               }
               const err: ApiError = new Error(
                 (retryParsed &&
@@ -141,7 +145,7 @@ class ApiClient {
               err.body = retryParsed;
               throw err;
             }
-            return await retryResponse.json();
+            return (await retryResponse.json()) as T;
           } catch {
             throw new Error("Authentication failed. Please log in again.");
           }
@@ -154,31 +158,38 @@ class ApiClient {
           if (errorMessage) {
             alert(`API Error: ${errorMessage}`);
           }
+          // Throw an ApiError so callers can handle non-OK responses consistently.
+          const err: ApiError = new Error(
+            errorMessage || `${response.status} ${response.statusText}`,
+          );
+          err.status = response.status;
+          err.body = parsedErrorBody;
+          throw err;
         }
       }
 
-      return await response.json();
+      return (await response.json()) as T;
     } catch (error) {
       console.error("API request failed:", error);
       throw error;
     }
   }
 
-  // API methods
-  async get(path: string): Promise<unknown> {
-    return this.request(path, { method: "GET" });
+  // API methods (generic)
+  async get<T = unknown>(path: string): Promise<T> {
+    return this.request<T>(path, { method: "GET" });
   }
 
-  async post(path: string, body?: unknown): Promise<unknown> {
-    return this.request(path, { method: "POST", body });
+  async post<T = unknown>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, { method: "POST", body });
   }
 
-  async put(path: string, body?: unknown): Promise<unknown> {
-    return this.request(path, { method: "PUT", body });
+  async put<T = unknown>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, { method: "PUT", body });
   }
 
-  async del(path: string): Promise<unknown> {
-    return this.request(path, { method: "DELETE" });
+  async del<T = unknown>(path: string): Promise<T> {
+    return this.request<T>(path, { method: "DELETE" });
   }
 }
 

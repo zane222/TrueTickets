@@ -3,10 +3,10 @@ import apiClient from "../api/apiClient";
 import { useAlertMethods } from "../components/ui/AlertSystem";
 
 interface ApiMethods {
-  get: (path: string) => Promise<unknown>;
-  post: (path: string, body?: unknown) => Promise<unknown>;
-  put: (path: string, body?: unknown) => Promise<unknown>;
-  del: (path: string) => Promise<unknown>;
+  get: <T = unknown>(path: string) => Promise<T>;
+  post: <T = unknown>(path: string, body?: unknown) => Promise<T>;
+  put: <T = unknown>(path: string, body?: unknown) => Promise<T>;
+  del: <T = unknown>(path: string) => Promise<T>;
 }
 
 /**
@@ -18,9 +18,9 @@ export function useApi(): ApiMethods {
 
   const api = useMemo(
     () => ({
-      get: async (path: string) => {
+      get: async <T = unknown>(path: string): Promise<T> => {
         try {
-          return await apiClient.get(path);
+          return await apiClient.get<T>(path);
         } catch (err: unknown) {
           console.error("API GET error:", err);
           error(
@@ -31,9 +31,9 @@ export function useApi(): ApiMethods {
           throw err;
         }
       },
-      post: async (path: string, body?: unknown) => {
+      post: async <T = unknown>(path: string, body?: unknown): Promise<T> => {
         try {
-          return await apiClient.post(path, body);
+          return await apiClient.post<T>(path, body);
         } catch (err: unknown) {
           console.error("API POST error:", err);
           error(
@@ -44,9 +44,9 @@ export function useApi(): ApiMethods {
           throw err;
         }
       },
-      put: async (path: string, body?: unknown) => {
+      put: async <T = unknown>(path: string, body?: unknown): Promise<T> => {
         try {
-          return await apiClient.put(path, body);
+          return await apiClient.put<T>(path, body);
         } catch (err: unknown) {
           console.error("API PUT error:", err);
           error(
@@ -57,9 +57,9 @@ export function useApi(): ApiMethods {
           throw err;
         }
       },
-      del: async (path: string) => {
+      del: async <T = unknown>(path: string): Promise<T> => {
         try {
-          return await apiClient.del(path);
+          return await apiClient.del<T>(path);
         } catch (err: unknown) {
           console.error("API DELETE error:", err);
           error(

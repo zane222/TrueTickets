@@ -16,7 +16,6 @@ export default defineConfig([
       parserOptions: {
         ecmaVersion: "latest",
         sourceType: "module",
-        // project: true, // only if you have tsconfig.json
       },
       globals: globals.browser,
     },
@@ -27,13 +26,22 @@ export default defineConfig([
       "react-refresh": reactRefresh,
     },
 
-    // Flat config uses `rules` only, no string extends for TS plugin
+    settings: {
+      react: {
+        version: "detect", // ensures React 19 semantics are used
+      },
+    },
+
     rules: {
       // TypeScript rules
       ...tsPlugin.configs.recommended.rules,
 
-      // React hooks rules
+      // React hooks (React 19 aware)
       ...reactHooks.configs["recommended-latest"].rules,
+      // OR use this if you want fewer warnings in React 19:
+      // ...reactHooks.configs.recommended.rules,
+
+      // React Refresh for Vite
       ...reactRefresh.configs.vite.rules,
 
       // Custom overrides
@@ -42,10 +50,6 @@ export default defineConfig([
         "warn",
         { varsIgnorePattern: "^[A-Z_]", argsIgnorePattern: "^_" },
       ],
-    },
-
-    settings: {
-      react: { version: "detect" },
     },
   },
 ]);

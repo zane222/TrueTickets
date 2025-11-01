@@ -8,44 +8,64 @@ import { useHotkeys } from "../hooks/useHotkeys";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Customer, Phone } from "../types/api";
 
-function NewCustomer({
-  goTo,
-  customerId,
-  showSearch,
-}: {
+/**
+ * Props and form types for NewCustomer component
+ */
+interface NewCustomerProps {
   goTo: (to: string) => void;
   customerId?: number;
   showSearch: boolean;
-}) {
+}
+
+/**
+ * Form shape with index signature so callers can access by string keys
+ */
+interface CustomerForm {
+  first_name: string;
+  last_name: string;
+  business_name: string;
+  phone: string;
+  email: string;
+  [key: string]: string;
+}
+
+export default function NewCustomer({
+  goTo,
+  customerId,
+  showSearch,
+}: NewCustomerProps): React.ReactElement {
   const api = useApi();
   const { error, dataChanged } = useAlertMethods();
-  const [form, setForm] = useState({
+
+  const [form, setForm] = useState<CustomerForm>({
     first_name: "",
     last_name: "",
     business_name: "",
     phone: "",
     email: "",
   });
-  const [allPhones, setAllPhones] = useState([""]); // All phone numbers in a single array
-  const [primaryPhoneIndex, setPrimaryPhoneIndex] = useState(0); // Track which phone is primary
-  const [applying, setApplying] = useState(false);
-  const [storedCustomer, setStoredCustomer] = useState<Customer | null>(null);
-  const [loading, setLoading] = useState(!!customerId); // Show loading when editing existing customer
 
-  // Change detection (only when editing existing customer)
+  const [allPhones, setAllPhones] = useState<string[]>([""]);
+  const [primaryPhoneIndex, setPrimaryPhoneIndex] = useState<number>(0);
+  const [applying, setApplying] = useState<boolean>(false);
+  const [storedCustomer, setStoredCustomer] = useState<Customer | null>(null);
+  const [loading, setLoading] = useState<boolean>(!!customerId);
+
+  // NOTE: useChangeDetection requires an endpoint string; when customerId is not provided
+  // we pass an empty string. startPolling will only be called when editing an existing customer.
   const {
     hasChanged,
     isPolling: _isPolling,
     startPolling,
     stopPolling,
     resetPolling: _resetPolling,
-  } = useChangeDetection(api, customerId ? `/customers/${customerId}` : null);
+  } = useChangeDetection(api, customerId ? `/customers/${customerId}` : "");
 
   useEffect(() => {
     try {
       if (customerId) return;
 
-      // Only prefill if not editing an existing customer
+      // Prefill some fields from query params if present
       const params = new URLSearchParams(window.location.search);
       const phone = params.get("phone") || "";
       const first_name = params.get("first_name") || "";
@@ -61,22 +81,20 @@ function NewCustomer({
       if (phone) {
         setAllPhones([formatPhoneLive(phone)]);
       }
-    } catch (e) {
-      console.error("Failed to parse URL params:", e);
+    } catch (err: unknown) {
+      console.error("Failed to parse URL params:", err);
     }
   }, [customerId]);
 
-  // Keybinds
+  // Hotkeys
   useHotkeys(
     {
       h: () => goTo("/"),
       s: () => {
-        // Trigger search modal from parent
         const searchEvent = new CustomEvent("openSearch");
         window.dispatchEvent(searchEvent);
       },
       c: () => {
-        // Cancel functionality - go back to customer if editing, otherwise go to home
         if (customerId) {
           goTo(`/$${customerId}`);
         } else {
@@ -87,7 +105,8 @@ function NewCustomer({
     showSearch,
   );
 
-  const formatPhoneLive = (value) => {
+  // Format a phone number as the user types (simple live formatting)
+  const formatPhoneLive = (value?: string | null): string => {
     const digits = (value || "").replace(/\D/g, "");
     const areaCode = digits.slice(0, 3);
     const exchange = digits.slice(3, 6);
@@ -96,13 +115,12 @@ function NewCustomer({
     if (digits.length <= 6) return `${areaCode}-${exchange}`;
     return `${areaCode}-${exchange}-${number}`;
   };
-  const sanitizePhone = (value) => (value || "").replace(/\D/g, "");
 
-  // Helper to set primary phone without reordering the list
-  const setPrimaryPhone = (index) => {
+  const sanitizePhone = (value?: string | null): string =>
+    (value || "").replace(/\D/g, "");
+
+  const setPrimaryPhone = (index: number): void => {
     if (index < 0 || index >= allPhones.length) return;
-
-    // Update which index is marked as primary (for visual indication only)
     setPrimaryPhoneIndex(index);
   };
 
@@ -110,55 +128,47 @@ function NewCustomer({
   useEffect(() => {
     if (!customerId) return;
 
-    // Immediately show loading state when customerId changes
     setLoading(true);
 
     let isMounted = true;
     (async () => {
       try {
-        const data = (await api.get(`/customers/${customerId}`)) as {
-          customer: Customer;
-        };
+        // use the provided customerId (not `id`) and request a typed response
+        const data = await api.get<{ customer: Customer }>(
+          `/customers/${customerId}`,
+        );
         if (!isMounted) return;
         const customer = data.customer;
-        setStoredCustomer(customer); // Store the customer data
+        setStoredCustomer(customer);
 
-        // Start change detection polling
+        // Start change detection polling with the loaded customer
         startPolling(customer);
 
         setForm({
           first_name: customer.firstname || "",
           last_name: customer.lastname || "",
           business_name: customer.business_name || "",
-          phone: "", // We'll set this after loading phones
+          phone: "", // will set after loading phones
           email: customer.email || "",
         });
 
-        // Load all phones
+        // Load phones
         try {
-          const phoneData = (await api.get(
+          const phoneData = await api.get<{ phones: Phone[] }>(
             `/customers/${customerId}/phones`,
-          )) as { phones: Phone[] };
+          );
           if (!isMounted) return;
           const phoneArray = phoneData.phones || [];
           const numbers = phoneArray
-            .map((phone) => phone?.number || "")
+            .map((p) => p?.number || "")
             .filter(Boolean);
 
           if (numbers.length > 0) {
-            // Format all phone numbers
-            const formattedNumbers = numbers.map((number) =>
-              formatPhoneLive(number),
-            );
+            const formattedNumbers = numbers.map((n) => formatPhoneLive(n));
             setAllPhones(formattedNumbers);
-            setPrimaryPhoneIndex(0); // First phone is primary by default
-            // Set the first phone as the primary in the form for saving
-            setForm((previous) => ({
-              ...previous,
-              phone: formattedNumbers[0],
-            }));
+            setPrimaryPhoneIndex(0);
+            setForm((prev) => ({ ...prev, phone: formattedNumbers[0] }));
           } else {
-            // Fallback to mobile/phone if no phones endpoint
             const basePhone =
               customer.mobile && String(customer.mobile).trim()
                 ? customer.mobile
@@ -166,11 +176,10 @@ function NewCustomer({
             const formattedPhone = formatPhoneLive(basePhone || "");
             setAllPhones([formattedPhone]);
             setPrimaryPhoneIndex(0);
-            setForm((previous) => ({ ...previous, phone: formattedPhone }));
+            setForm((prev) => ({ ...prev, phone: formattedPhone }));
           }
         } catch {
           if (!isMounted) return;
-          // Fallback to mobile/phone if phones endpoint fails
           const basePhone =
             customer.mobile && String(customer.mobile).trim()
               ? customer.mobile
@@ -178,29 +187,28 @@ function NewCustomer({
           const formattedPhone = formatPhoneLive(basePhone || "");
           setAllPhones([formattedPhone]);
           setPrimaryPhoneIndex(0);
-          setForm((previous) => ({ ...previous, phone: formattedPhone }));
+          setForm((prev) => ({ ...prev, phone: formattedPhone }));
         }
-      } catch (e) {
-        console.error(e);
+      } catch (err) {
+        console.error(err);
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     })();
+
     return () => {
       isMounted = false;
     };
   }, [customerId, api, startPolling]);
 
-  // Cleanup polling when component unmounts or customerId changes
+  // Stop polling when unmounted or when customerId changes
   useEffect(() => {
     return () => {
       stopPolling();
     };
-  }, [customerId, stopPolling]);
+  }, [stopPolling, customerId]);
 
-  // Show warning when changes are detected
+  // Notify user when server-side changes are detected
   useEffect(() => {
     if (hasChanged && customerId) {
       dataChanged(
@@ -208,46 +216,43 @@ function NewCustomer({
         "The customer has been modified by someone else. Any unsaved changes may be lost if you continue editing.",
       );
     }
-  }, [hasChanged, customerId]);
+  }, [hasChanged, customerId, dataChanged]);
 
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<boolean>(false);
 
-  // Helpers for phone syncing and reordering
-  async function getPhonesOnServer(id: number) {
-    const phoneData = (await api.get(`/customers/${id}/phones`)) as {
-      phones: Phone[];
-    };
-    const phoneArray = phoneData.phones || [];
-    return phoneArray;
+  // API helpers for phones
+  async function getPhonesOnServer(id: number): Promise<Phone[]> {
+    const phoneData = await api.get<{ phones: Phone[] }>(
+      `/customers/${id}/phones`,
+    );
+    return phoneData.phones || [];
   }
-  async function deletePhones(id: number, phones: Phone[]) {
+
+  async function deletePhones(id: number, phones: Phone[]): Promise<void> {
     if (!phones || phones.length === 0) return;
     await Promise.all(
       phones.map((phone) => {
-        const phoneId = phone?.id ?? phone?.phone_id;
+        const phoneId = phone.id ?? phone.phone_id;
         if (!phoneId) return Promise.resolve();
         return api.del(`/customers/${id}/phones/${phoneId}`).catch(() => {});
       }),
     );
   }
-  async function postPhones(id: number, numbers: string[]) {
+
+  async function postPhones(id: number, numbers: string[]): Promise<void> {
     if (!numbers || numbers.length === 0) return;
 
-    // Create all phone creation promises in parallel
     const phonePromises = numbers.map((number) =>
       api
         .post(`/customers/${id}/phones`, { number: number, primary: true })
-        .catch((error) => {
-          console.error(`Failed to create phone ${number}:`, error);
-          return null; // Return null for failed requests
+        .catch((err: unknown) => {
+          console.error(`Failed to create phone ${number}:`, err);
+          return null;
         }),
     );
 
-    // Execute all phone creation requests in parallel
     const results = await Promise.all(phonePromises);
-
-    // Log any failures for debugging
-    const failures = results.filter((result) => result === null);
+    const failures = results.filter((r) => r === null);
     if (failures.length > 0) {
       console.warn(
         `${failures.length} phone creation(s) failed out of ${numbers.length} attempts`,
@@ -255,39 +260,50 @@ function NewCustomer({
     }
   }
 
-  // for some reason the server picks the order completely randomly. This keeps putting the phones until the selected one to be first is first
-  async function makeCorrectPhoneBeFirst(id: number, selected: string) {
+  // Ensure selected phone becomes first on server (server returns random order sometimes)
+  async function makeCorrectPhoneBeFirst(
+    id: number,
+    selected: string,
+  ): Promise<void> {
     try {
       const phones = await getPhonesOnServer(id);
       const first = phones?.[0];
-      if (!first) return; // nothing to order
-      if ((first.number || "") === selected) return; // already first
+      if (!first) return;
+      if ((first.number || "") === selected) return;
       const targetIndex = phones.findIndex(
-        (phone) => (phone.number || "") === selected,
+        (p) => (p.number || "") === selected,
       );
-      if (targetIndex === -1) return; // target not present
-      // Delete current first and target, then post target then old first, then recurse
-      const oldFirstId = first.id;
-      const targetId = phones[targetIndex].id;
-      await api.del(`/customers/${id}/phones/${oldFirstId}`).catch(() => {});
-      await api.del(`/customers/${id}/phones/${targetId}`).catch(() => {});
+      if (targetIndex === -1) return;
+
+      const oldFirstId = first.id ?? first.phone_id;
+      const targetId = phones[targetIndex].id ?? phones[targetIndex].phone_id;
+
+      if (oldFirstId) {
+        await api.del(`/customers/${id}/phones/${oldFirstId}`).catch(() => {});
+      }
+      if (targetId) {
+        await api.del(`/customers/${id}/phones/${targetId}`).catch(() => {});
+      }
+
       await api
         .post(`/customers/${id}/phones`, { number: selected, primary: true })
         .catch(() => {});
       await api
         .post(`/customers/${id}/phones`, {
-          number: first.number,
+          number: first.number ?? "",
           primary: true,
         })
         .catch(() => {});
-      // Re-check until selected is first
+
+      // Recurse until correct order is achieved (server is flaky)
       return makeCorrectPhoneBeFirst(id, selected);
     } catch {
       // swallow and return
     }
   }
 
-  async function save() {
+  // Save existing customer (edit) or create new customer
+  async function save(): Promise<void> {
     setSaving(true);
     try {
       const primaryPhone = allPhones[primaryPhoneIndex] || "";
@@ -299,9 +315,10 @@ function NewCustomer({
         phone: "",
         email: form.email,
       };
-      let data;
+      let data: { customer: Customer } | undefined;
+
       if (customerId) {
-        // Edit flow with phone reordering
+        // Edit flow
         if ((sanitized.firstname || "").replace(/\u200B/g, "").trim() === "") {
           error("Validation Error", "First name is required");
           setSaving(false);
@@ -317,34 +334,34 @@ function NewCustomer({
           setSaving(false);
           return;
         }
+
         setApplying(true);
         try {
-          // Send the full customer object with updated fields
           await api.put(`/customers/${customerId}`, {
-            ...storedCustomer,
+            ...(storedCustomer || {}),
             ...sanitized,
           });
 
-          const currentPhones = [];
-          allPhones.forEach((phone) => {
-            const digits = sanitizePhone(phone);
+          const currentPhones: string[] = [];
+          allPhones.forEach((p) => {
+            const digits = sanitizePhone(p);
             if (digits.length === 10) currentPhones.push(digits);
           });
-          // Distinct
+
           const distinct = Array.from(new Set(currentPhones));
-          // Delete old phones and post new ones
           const old = await getPhonesOnServer(customerId);
           await deletePhones(customerId, old || []);
           await postPhones(customerId, distinct);
-          // Reorder to make primary phone first
+
           const primaryDigits = sanitizePhone(primaryPhone);
           await makeCorrectPhoneBeFirst(customerId, primaryDigits);
-          // Navigate to view
+
           goTo(`/$${customerId}`);
-        } catch (err) {
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
           error(
             "Customer Edit Failed",
-            "Failed to update customer: " + (err?.message || "Unknown error"),
+            "Failed to update customer: " + (msg || "Unknown error"),
           );
         } finally {
           setApplying(false);
@@ -352,20 +369,23 @@ function NewCustomer({
         }
         return;
       } else {
-        data = (await api.post(`/customers`, {
-          customer: sanitized,
-        })) as { customer: Customer };
+        // Create new customer
+        data = (await api.post(`/customers`, { customer: sanitized })) as {
+          customer: Customer;
+        };
       }
-      const customer = data.customer;
-      goTo(`/$${customer.id}`);
-    } catch (error) {
-      console.error(error);
+
+      const createdCustomer = data!.customer;
+      goTo(`/$${createdCustomer.id}`);
+    } catch (err: unknown) {
+      console.error(err);
     } finally {
       setSaving(false);
     }
   }
 
-  async function saveAndCreateTicket() {
+  // Create customer then navigate to create ticket flow
+  async function saveAndCreateTicket(): Promise<void> {
     setSaving(true);
     try {
       const primaryPhone = allPhones[primaryPhoneIndex] || "";
@@ -378,7 +398,7 @@ function NewCustomer({
         email: form.email,
       };
 
-      // Validation for new customers
+      // Validation
       if ((sanitized.firstname || "").replace(/\u200B/g, "").trim() === "") {
         error("Validation Error", "First name is required");
         setSaving(false);
@@ -392,35 +412,35 @@ function NewCustomer({
       }
 
       if (customerId) {
-        // For editing existing customer, just navigate to new ticket
         goTo(`/$${customerId}?newticket`);
         return;
       }
 
-      // Create new customer and navigate to new ticket page
-      const data = (await api.post(`/customers`, {
-        customer: sanitized,
-      })) as { customer: Customer };
-      const customer = data.customer;
-      goTo(`/$${customer.id}?newticket`);
-    } catch (error) {
-      console.error(error);
+      const data = (await api.post(`/customers`, { customer: sanitized })) as {
+        customer: Customer;
+      };
+      const createdCustomer = data.customer;
+      goTo(`/$${createdCustomer.id}?newticket`);
+    } catch (err: unknown) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : String(err);
       error(
         "Customer Creation Failed",
-        "Failed to create customer: " + (error?.message || "Unknown error"),
+        "Failed to create customer: " + (msg || "Unknown error"),
       );
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading)
+  if (loading) {
     return (
       <LoadingSpinnerWithText
         text="Loading customer data..."
         className="mx-auto max-w-2xl px-3 sm:px-6 py-3 sm:py-6 text-center"
       />
     );
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-3 sm:px-6 py-3 sm:py-6">
@@ -476,7 +496,7 @@ function NewCustomer({
                   </motion.div>
                 )}
               </div>
-              {/* Loading overlay animation */}
+
               {saving && (
                 <motion.div
                   className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
@@ -492,6 +512,7 @@ function NewCustomer({
             </motion.button>
           </div>
         </div>
+
         {["first_name", "last_name", "business_name"].map((fieldKey) => (
           <div key={fieldKey} className="space-y-2">
             <label className="text-md font-medium capitalize">
@@ -500,13 +521,14 @@ function NewCustomer({
             <input
               className="md-input text-md sm:text-base py-3 sm:py-2"
               value={form[fieldKey]}
-              onChange={(event) =>
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
                 setForm({ ...form, [fieldKey]: event.target.value })
               }
               tabIndex={1}
             />
           </div>
         ))}
+
         <div className="space-y-2">
           <label className="text-md font-medium">
             Phone Numbers (make box empty to erase)
@@ -514,32 +536,27 @@ function NewCustomer({
           <div className="space-y-3">
             {allPhones.map((phone, index) => {
               const isPrimary = index === primaryPhoneIndex;
-
               return (
                 <div key={index} className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={() => setPrimaryPhone(index)}
-                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                      isPrimary
-                        ? "border-blue-500 bg-blue-500"
-                        : "border-gray-300 hover:border-gray-400"
-                    }`}
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${isPrimary ? "border-blue-500 bg-blue-500" : "border-gray-300 hover:border-gray-400"}`}
                     title={
                       isPrimary ? "Primary phone" : "Click to make primary"
                     }
                     tabIndex={-1}
                   >
                     {isPrimary && (
-                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                      <div className="w-2 h-2 bg-white rounded-full" />
                     )}
                   </button>
+
                   <input
                     className="md-input flex-1 text-md sm:text-base py-3 sm:py-2"
                     value={phone}
-                    onChange={(event) => {
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                       const value = event.target.value;
-                      // Update the phone in the allPhones array
                       setAllPhones((prev) =>
                         prev.map((p, i) =>
                           i === index ? formatPhoneLive(value) : p,
@@ -551,6 +568,7 @@ function NewCustomer({
                     placeholder="Phone number"
                     tabIndex={1}
                   />
+
                   {isPrimary && (
                     <span className="text-md font-medium text-blue-600">
                       Primary
@@ -559,6 +577,7 @@ function NewCustomer({
                 </div>
               );
             })}
+
             <div>
               <button
                 type="button"
@@ -571,12 +590,13 @@ function NewCustomer({
             </div>
           </div>
         </div>
+
         <div className="space-y-2">
           <label className="text-md font-medium">Email</label>
           <input
             className="md-input text-md sm:text-base py-3 sm:py-2"
             value={form.email}
-            onChange={(event) =>
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
               setForm({ ...form, email: event.target.value })
             }
             autoComplete={"email"}
@@ -587,5 +607,3 @@ function NewCustomer({
     </div>
   );
 }
-
-export default NewCustomer;

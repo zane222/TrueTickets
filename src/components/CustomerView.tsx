@@ -15,23 +15,25 @@ import NavigationButton from "./ui/NavigationButton";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Customer, SmallTicket, Phone } from "../types/api";
 
+interface CustomerViewProps {
+  id: number;
+  goTo: (to: string) => void;
+  showSearch: boolean;
+}
+
 function CustomerView({
   id,
   goTo,
   showSearch,
-}: {
-  id: number;
-  goTo: (to: string) => void;
-  showSearch: boolean;
-}) {
+}: CustomerViewProps): React.ReactElement {
   const api = useApi();
   const { warning: _warning, dataChanged: _dataChanged } = useAlertMethods();
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [tickets, setTickets] = useState<SmallTicket[]>([]);
-  const [tPage, setTPage] = useState(1);
-  const [tLoading, setTLoading] = useState(false);
-  const [tHasMore, setTHasMore] = useState(true);
+  const [_tPage, setTPage] = useState<number>(1);
+  const [tLoading, setTLoading] = useState<boolean>(false);
+  const [_tHasMore, setTHasMore] = useState<boolean>(true);
   const [allPhones, setAllPhones] = useState<string[]>([]);
 
   // Change detection
@@ -70,35 +72,49 @@ function CustomerView({
     }
   }, [tickets]);
 
-  useEffect(() => {
-    let isMounted = true;
-    (async () => {
+  // Stabilized fetch: keep effect deps minimal by using refs + a stable callback.
+  const apiRef = React.useRef(api);
+  const startPollingRef = React.useRef(startPolling);
+
+  // keep refs up to date
+  React.useEffect(() => {
+    apiRef.current = api;
+  }, [api]);
+
+  React.useEffect(() => {
+    startPollingRef.current = startPolling;
+  }, [startPolling]);
+
+  // Stable fetch callback that accepts the id and a mounted ref so the effect can
+  // call it without including large dependencies.
+  const fetchCustomer = React.useCallback(
+    async (idParam: number, mountedRef: { current: boolean }) => {
       try {
-        const data = (await api.get(`/customers/${id}`)) as {
-          customer: Customer;
-        };
-        if (!isMounted) return;
+        const data = await apiRef.current!.get<{ customer: Customer }>(
+          `/customers/${encodeURIComponent(idParam.toString())}`,
+        );
+        if (!mountedRef.current) return;
         const customerData = data.customer;
         setCustomer(customerData);
 
-        // Start change detection polling
-        startPolling(customerData);
+        // Start change detection polling via ref
+        startPollingRef.current && startPollingRef.current(customerData);
 
-        // Load all phone numbers
+        // Load phones using the same api ref
         try {
-          const phoneData = (await api.get(`/customers/${id}/phones`)) as {
-            phones: Phone[];
-          };
-          if (!isMounted) return;
+          const phoneData = await apiRef.current!.get<{ phones: Phone[] }>(
+            `/customers/${encodeURIComponent(idParam.toString())}/phones`,
+          );
+          if (!mountedRef.current) return;
           const phoneArray = phoneData.phones || [];
           const numbers = phoneArray
-            .map((phone) => phone?.number || "")
+            .map((p) => p?.number || "")
             .filter(Boolean);
           setAllPhones(numbers);
         } catch {
-          if (!isMounted) return;
+          if (!mountedRef.current) return;
           // Fallback to mobile/phone if phones endpoint fails
-          const customer = data.customer;
+          const customer = customerData;
           const basePhone =
             customer.mobile && String(customer.mobile).trim()
               ? customer.mobile
@@ -112,15 +128,23 @@ function CustomerView({
       } catch (error) {
         console.error(error);
       } finally {
-        if (isMounted) {
+        if (mountedRef.current) {
           setLoading(false);
         }
       }
-    })();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!id) return;
+    const mountedRef = { current: true };
+    // call the stable callback, passing the id and mounted ref
+    void fetchCustomer(id, mountedRef);
     return () => {
-      isMounted = false;
+      mountedRef.current = false;
     };
-  }, [id]);
+  }, [id, fetchCustomer]);
 
   // Show warning when changes are detected
 
@@ -131,7 +155,7 @@ function CustomerView({
         "The customer has been modified by someone else. Please refresh the page to see the latest changes.",
       );
     }
-  }, [hasChanged]);
+  }, [hasChanged, _dataChanged]);
 
   useEffect(() => {
     // Stop any existing polling when customer ID changes
@@ -164,9 +188,9 @@ function CustomerView({
         let hasMore = true;
 
         while (hasMore) {
-          const data = (await api.get(
+          const data = await api.get<{ tickets: SmallTicket[] }>(
             `/tickets?customer_id=${encodeURIComponent(id)}&page=${page}`,
-          )) as { tickets: SmallTicket[] };
+          );
           if (!isMounted.current) return;
           const tickets = data.tickets || [];
           if (!tickets || tickets.length === 0) {
@@ -368,7 +392,13 @@ function CustomerView({
   );
 }
 
-function InlineErrorMessage({ message, className }) {
+function InlineErrorMessage({
+  message,
+  className,
+}: {
+  message: string;
+  className?: string;
+}): React.ReactElement {
   return (
     <div className={className}>
       <div className="text-red-500 font-medium">{message}</div>

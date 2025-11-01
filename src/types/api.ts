@@ -263,7 +263,11 @@ export interface SnmpConfig {
   community?: string;
 }
 
-export interface DeviceInfo {
+/**
+ * AssetDeviceInfo - renamed from DeviceInfo to avoid name collision with
+ * UI-level DeviceInfo elsewhere in the codebase.
+ */
+export interface AssetDeviceInfo {
   snmp_config?: SnmpConfig;
 }
 
@@ -318,7 +322,7 @@ export interface Asset {
   rmm_links?: unknown[];
   has_live_chat?: boolean;
   snmp_enabled?: boolean | null;
-  device_info?: DeviceInfo;
+  device_info?: AssetDeviceInfo;
   rmm_store?: RmmStore;
   address?: string | null;
 }
@@ -503,15 +507,11 @@ export interface ApiKey {
 // ============================================================================
 // API Context Type
 // ============================================================================
-
-export interface ApiContextValue {
-  lambdaUrl: string;
-  setLambdaUrl: (url: string) => void;
-  get: (path: string) => Promise<unknown>;
-  post: (path: string, body?: unknown) => Promise<unknown>;
-  put: (path: string, body?: unknown) => Promise<unknown>;
-  del: (path: string) => Promise<unknown>;
-}
+// The `ApiContextValue` interface was removed from this file to avoid a
+// duplicate definition. A single, canonical `ApiContextValue` should live
+// in `src/types/components.ts` (or `src/types/index.ts`) and be re-exported
+// from there. This prevents type collisions when the same interface is used
+// by both UI components and API client modules.
 
 // ============================================================================
 // Utility Types for API Calls
