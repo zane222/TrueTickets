@@ -176,6 +176,9 @@ function TopBar({
             True Tickets - Computer and Cellphone Inc
           </span>
           <span className="sm:hidden">True Tickets</span>
+          <span className="ml-2 text-xs font-normal text-outline opacity-70">
+            v{__APP_VERSION__}
+          </span>
         </NavigationButton>
         <div className="flex items-center gap-1.5 sm:gap-3">
           <NavigationButton

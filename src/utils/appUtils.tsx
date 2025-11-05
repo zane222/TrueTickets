@@ -126,91 +126,66 @@ export function getTicketPassword(
 
 /**
  * Get device type from subject text based on keywords
+ * Checks one word at a time and returns on first match using a hashmap
  */
-function getDeviceTypeFromSubject(subjectText: string): string | null {
+export function getDeviceTypeFromSubject(subjectText: string): string | null {
   if (!subjectText) return null;
 
-  const text = subjectText.toLowerCase();
+  // Hashmap of keywords to device types
+  const keywordMap: Record<string, string> = {
+    // Phone keywords
+    iphone: "Phone",
+    iph: "Phone",
+    ip: "Phone",
+    galaxy: "Phone",
+    pixel: "Phone",
+    oneplus: "Phone",
+    samsung: "Phone",
+    huawei: "Phone",
+    phone: "Phone",
+    moto: "Phone",
+    // Tablet keywords
+    ipad: "Tablet",
+    tablet: "Tablet",
+    kindle: "Tablet",
+    tab: "Tablet",
+    // Laptop keywords
+    laptop: "Laptop",
+    macbook: "Laptop",
+    thinkpad: "Laptop",
+    elitebook: "Laptop",
+    chromebook: "Laptop",
+    inspiron: "Laptop",
+    predator: "Laptop",
+    latitude: "Laptop",
+    ltop: "Laptop",
+    // Desktop keywords
+    desktop: "Desktop",
+    pc: "Desktop",
+    tower: "Desktop",
+    omen: "Desktop",
+    // Watch keywords
+    watch: "Watch",
+    smartwatch: "Watch",
+    // Console keywords
+    playstation: "Console",
+    xbox: "Console",
+    nintendo: "Console",
+    switch: "Console",
+    ps6: "Console",
+    ps5: "Console",
+    ps4: "Console",
+    console: "Console",
+    controller: "Console",
+  };
 
-  // Phone keywords
-  if (
-    text.includes("iphone ") ||
-    text.includes("iph ") ||
-    text.includes("ip ") ||
-    text.includes("galaxy ") ||
-    text.includes("pixel ") ||
-    text.includes("oneplus ") ||
-    text.includes("samsung ") ||
-    text.includes("huawei ") ||
-    text.includes("phone ") ||
-    text.includes("moto ")
-  ) {
-    return "Phone";
-  }
+  // Split into words and check each one
+  const words = subjectText.toLowerCase().split(/\s+/);
 
-  // Tablet keywords
-  if (
-    text.includes("ipad ") ||
-    text.includes("tablet ") ||
-    text.includes("kindle ") ||
-    text.includes("tab ")
-  ) {
-    return "Tablet";
-  }
-
-  // Laptop keywords
-  if (
-    text.includes("laptop ") ||
-    text.includes("macbook ") ||
-    text.includes("thinkpad ") ||
-    text.includes("elitebook ") ||
-    text.includes("chromebook ") ||
-    text.includes("inspiron ") ||
-    text.includes("predator ") ||
-    text.includes("latitude ") ||
-    text.includes("ltop ")
-  ) {
-    return "Laptop";
-  }
-
-  // Desktop keywords
-  if (
-    text.includes("desktop ") ||
-    text.includes("pc ") ||
-    text.includes("tower ") ||
-    text.includes("omen ")
-  ) {
-    return "Desktop";
-  }
-
-  // Watch keywords
-  if (text.includes("watch ") || text.includes("smartwatch ")) {
-    return "Watch";
-  }
-
-  // Console keywords
-  if (
-    text.includes("playstation ") ||
-    text.includes("xbox ") ||
-    text.includes("nintendo ") ||
-    text.includes("switch ") ||
-    text.includes("ps6 ") ||
-    text.includes("ps5 ") ||
-    text.includes("ps4 ") ||
-    text.includes("console ") ||
-    text.includes("controller ")
-  ) {
-    return "Console";
-  }
-
-  // All in one keywords
-  if (
-    text.includes("all in one ") ||
-    text.includes("all-in-one ") ||
-    text.includes("imac ") ||
-    text.includes("aio ")
-  ) {
-    return "All in one";
+  for (const word of words) {
+    if (word in keywordMap) {
+      return keywordMap[word];
+    }
   }
 
   return null; // No match found

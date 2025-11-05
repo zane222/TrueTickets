@@ -64,31 +64,26 @@ function SearchModal({
   useHotkeys({
     n: () => handleNewCustomer(),
     c: () => onClose(),
-    enter: (e) => {
-      e.preventDefault();
-
-      // If there are results right now, click the first
-      if (!loading && results.length > 0) {
-        const first = results[0];
-        if (first) {
-          onClose();
-          if (searchType === "customers") {
-            goTo(`/$${first.id}`);
-          } else {
-            goTo(`/&${first.id}`);
-          }
-        }
-      } else if (loading) {
-        setEnterPressedWhileLoading(true);
-      }
-    },
-    escape: (e) => {
-      e.preventDefault();
-      if (document.activeElement === searchInputRef.current) {
-        searchInputRef.current.blur();
-      }
-    },
   });
+
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    // If there are results right now, click the first
+    if (!loading && results.length > 0) {
+      const first = results[0];
+      if (first) {
+        onClose();
+        if (searchType === "customers") {
+          goTo(`/$${first.id}`);
+        } else {
+          goTo(`/&${first.id}`);
+        }
+      }
+    } else {
+      setEnterPressedWhileLoading(true);
+    }
+  };
 
   // Reset search state when modal closes
   useEffect(() => {
@@ -128,9 +123,9 @@ function SearchModal({
       const first = results[0];
       if (first) {
         timeoutId = window.setTimeout(() => {
+          // click after delay so the use can see the results for a moment
           onClose();
-          const st = searchType;
-          if (st === "customers") {
+          if (searchType === "customers") {
             goTo(`/$${first.id}`);
           } else {
             goTo(`/&${first.id}`);
@@ -144,7 +139,7 @@ function SearchModal({
       if (timeoutId) window.clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, enterPressedWhileLoading, onClose, goTo]);
+  }, [loading]);
 
   // Get latest ticket number when modal opens
   useEffect(() => {
@@ -360,7 +355,7 @@ function SearchModal({
         </div>
 
         {/* Search Input */}
-        <div className="relative pl-10 sm:pl-12">
+        <form onSubmit={handleSearchSubmit} className="relative pl-10 sm:pl-12">
           <input
             ref={searchInputRef}
             value={search}
@@ -371,7 +366,7 @@ function SearchModal({
             tabIndex={1}
           />
           <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-        </div>
+        </form>
 
         {/* Results */}
         <div className="md-card overflow-hidden flex-1 overflow-y-auto">

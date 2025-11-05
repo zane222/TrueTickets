@@ -6,7 +6,10 @@ import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
 import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
-import { getTicketDeviceInfo } from "../utils/appUtils.jsx";
+import {
+  getTicketDeviceInfo,
+  getDeviceTypeFromSubject,
+} from "../utils/appUtils.tsx";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { LargeTicket, TicketProperties } from "../types/api";
 
@@ -32,6 +35,7 @@ function TicketEditor({
   const [subject, setSubject] = useState("");
   const [password, setPassword] = useState("");
   const [deviceIdx, setDeviceIdx] = useState<number | null>(null);
+  const [isDeviceManual, setIsDeviceManual] = useState(true);
   const [timeEstimate, setTimeEstimate] = useState("");
   const [itemsLeft, setItemsLeft] = useState<string[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
@@ -48,6 +52,7 @@ function TicketEditor({
   useEffect(() => {
     if (!ticketId) {
       setLoading(false);
+      setIsDeviceManual(false);
       return;
     }
 
@@ -146,18 +151,20 @@ function TicketEditor({
     }
   }, [hasChanged, dataChanged]);
 
-  // Auto-select device type when subject changes (only for new tickets)
+  // Auto-select device type when subject changes (only for new tickets, and only if not manually selected)
   useEffect(() => {
-    if (!ticketId && subject) {
-      // Create a mock ticket object to use with getTicketDeviceInfo
-      const mockTicket = { subject: subject };
-      const deviceInfo = getTicketDeviceInfo(mockTicket);
-      const suggestedDeviceIdx = DEVICES.indexOf(deviceInfo.device);
-      if (suggestedDeviceIdx !== -1 && deviceIdx === null) {
-        setDeviceIdx(suggestedDeviceIdx);
+    if (subject && !isDeviceManual) {
+      // Get device type directly from subject text
+      const suggestedDevice = getDeviceTypeFromSubject(subject);
+      if (suggestedDevice) {
+        const suggestedDeviceIdx = DEVICES.indexOf(suggestedDevice);
+        if (suggestedDeviceIdx !== -1) {
+          setDeviceIdx(suggestedDeviceIdx);
+          setIsDeviceManual(false);
+        }
       }
     }
-  }, [subject, ticketId, deviceIdx]);
+  }, [subject, ticketId]);
 
   useHotkeys(
     {
@@ -515,6 +522,7 @@ function TicketEditor({
                       aria-checked={active}
                       onClick={() => {
                         setDeviceIdx(index);
+                        setIsDeviceManual(true);
                       }}
                       className={`inline-flex items-center gap-2 md-chip ${active ? "md-chip--on" : ""}`}
                       tabIndex={-1}

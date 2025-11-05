@@ -13,28 +13,33 @@ interface UseChangeDetectionReturn {
 }
 
 /**
- * Removes pdf_url from data (both top-level and nested in customer)
+ * Removes pdf_url and attachments from data (both top-level and nested in customer)
  * @param data - The data object to filter
- * @returns Filtered data without pdf_url fields
+ * @returns Filtered data without pdf_url and attachments fields
  */
 function removePdfUrls(data: unknown): unknown {
   if (!data || typeof data !== "object") return data;
 
-  // Filter out top-level pdf_url (rename to _pdf_url to avoid unused-var lint)
-  const { pdf_url: _pdf_url, ...filteredData } = data as Record<
-    string,
-    unknown
-  >;
+  // Filter out top-level pdf_url and attachments (rename to _pdf_url and _attachments to avoid unused-var lint)
+  const {
+    pdf_url: _pdf_url,
+    attachments: _attachments,
+    ...filteredData
+  } = data as Record<string, unknown>;
 
-  // Filter out customer.pdf_url if it exists (rename to _customerPdfUrl to avoid unused-var lint)
+  // Filter out customer.pdf_url and customer.attachments if they exist (rename to _customerPdfUrl and _customerAttachments to avoid unused-var lint)
   if (
     filteredData.customer &&
     typeof filteredData.customer === "object" &&
     filteredData.customer !== null &&
-    "pdf_url" in filteredData.customer
+    ("pdf_url" in filteredData.customer ||
+      "attachments" in filteredData.customer)
   ) {
-    const { pdf_url: _customerPdfUrl, ...filteredCustomer } =
-      filteredData.customer as Record<string, unknown>;
+    const {
+      pdf_url: _customerPdfUrl,
+      attachments: _customerAttachments,
+      ...filteredCustomer
+    } = filteredData.customer as Record<string, unknown>;
     filteredData.customer = filteredCustomer;
   }
 

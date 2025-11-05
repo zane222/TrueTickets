@@ -21,11 +21,12 @@ export function useHotkeys(map: HotkeyMap, disable?: boolean): void {
 
       const targetTag = (event.target as HTMLElement)?.tagName;
       // Ignore typing shortcuts inside inputs/textareas except Enter and Escape
-      if (
-        (targetTag === "INPUT" || targetTag === "TEXTAREA") &&
-        !["Enter", "Escape"].includes(event.key)
-      )
+      if (targetTag === "INPUT" || targetTag === "TEXTAREA") {
+        if (event.key === "Escape") {
+          (event.target as HTMLElement).blur();
+        }
         return;
+      }
 
       // Handle complex key combinations
       let keyCombo = "";
