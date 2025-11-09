@@ -5,8 +5,10 @@ import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
 import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
+import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Customer, Phone } from "../types/api";
+import type { KeyBind } from "./ui/KeyBindsModal";
 
 /**
  * Props and form types for NewCustomer component
@@ -102,6 +104,27 @@ export default function NewCustomer({
       return () => clearTimeout(timeoutId);
     }
   }, [customerId, loading]);
+
+  // Register keybinds for this page
+  const newCustomerKeybinds: KeyBind[] = [
+    {
+      key: "H",
+      description: "Home",
+      category: "Navigation",
+    },
+    {
+      key: "S",
+      description: "Search",
+      category: "Navigation",
+    },
+    {
+      key: "C",
+      description: "Cancel",
+      category: "Navigation",
+    },
+  ];
+
+  useRegisterKeybinds(newCustomerKeybinds);
 
   // Hotkeys
   useHotkeys(

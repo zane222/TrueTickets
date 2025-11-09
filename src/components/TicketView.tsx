@@ -24,10 +24,12 @@ import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
 import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
+import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
 import { TicketCard } from "./TicketCard";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { LargeTicket, Comment } from "../types/api";
+import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketViewProps {
   id: number;
@@ -60,6 +62,82 @@ function TicketView({
     stopPolling,
     resetPolling: _resetPolling,
   } = useChangeDetection(api, `/tickets/${id}`);
+
+  // Register keybinds for this page
+  const ticketViewKeybinds: KeyBind[] = [
+    {
+      key: "H",
+      description: "Home",
+      category: "Navigation",
+    },
+    {
+      key: "S",
+      description: "Search",
+      category: "Navigation",
+    },
+    {
+      key: "C",
+      description: "Customer",
+      category: "Navigation",
+    },
+    {
+      key: "E",
+      description: "Edit",
+      category: "Navigation",
+    },
+    {
+      key: "P",
+      description: "Print",
+      category: "Ticket",
+    },
+    {
+      key: "Ctrl + Tab",
+      description: "Create comment",
+      category: "Ticket",
+    },
+    {
+      key: "D",
+      description: "Diagnosing",
+      category: "Status",
+    },
+    {
+      key: "F",
+      description: "Finding Price",
+      category: "Status",
+    },
+    {
+      key: "A",
+      description: "Approval Needed",
+      category: "Status",
+    },
+    {
+      key: "W",
+      description: "Waiting for Parts",
+      category: "Status",
+    },
+    {
+      key: "O",
+      description: "Waiting (Other)",
+      category: "Status",
+    },
+    {
+      key: "I",
+      description: "In Progress",
+      category: "Status",
+    },
+    {
+      key: "R",
+      description: "Ready",
+      category: "Status",
+    },
+    {
+      key: "X",
+      description: "Resolved",
+      category: "Status",
+    },
+  ];
+
+  useRegisterKeybinds(ticketViewKeybinds);
 
   useHotkeys(
     {

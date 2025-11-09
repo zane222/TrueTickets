@@ -6,12 +6,14 @@ import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
 import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
+import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import {
   getTicketDeviceInfo,
   getDeviceTypeFromSubject,
 } from "../utils/appUtils.tsx";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { LargeTicket, TicketProperties } from "../types/api";
+import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketEditorProps {
   ticketId?: number;
@@ -208,6 +210,27 @@ function TicketEditor({
       return () => clearTimeout(timeoutId);
     }
   }, [ticketId, customerId, loading]);
+
+  // Register keybinds for this page
+  const ticketEditorKeybinds: KeyBind[] = [
+    {
+      key: "H",
+      description: "Home",
+      category: "Navigation",
+    },
+    {
+      key: "S",
+      description: "Search",
+      category: "Navigation",
+    },
+    {
+      key: "C",
+      description: "Cancel",
+      category: "Navigation",
+    },
+  ];
+
+  useRegisterKeybinds(ticketEditorKeybinds);
 
   useHotkeys(
     {

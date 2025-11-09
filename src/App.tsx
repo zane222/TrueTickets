@@ -10,6 +10,10 @@ import { getCurrentUser, signOut } from "aws-amplify/auth";
 import { useRoute } from "./hooks/useRoute";
 import { LoadingSpinnerWithText } from "./components/ui/LoadingSpinner";
 import NavigationButton from "./components/ui/NavigationButton";
+import { KeyBindsModal } from "./components/ui/KeyBindsModal";
+import type { KeyBind } from "./components/ui/KeyBindsModal";
+import { KeyBindsProvider } from "./components/KeyBindsProvider";
+import { useKeyBindsContext } from "./hooks/useKeyBindsContext";
 import SearchModal from "./components/SearchModal";
 import TicketEditor from "./components/TicketEditor";
 import TicketView from "./components/TicketView";
@@ -278,7 +282,7 @@ function TopBar({
 /*************************
  * App
  *************************/
-export default function App() {
+function App() {
   const api = useApi();
   const { userGroups = [], refreshUserGroups, userName } = useUserGroups();
   const { path, navigate } = useRoute();
@@ -558,6 +562,9 @@ export default function App() {
     return { view: "home" };
   }, [path]);
 
+  // Get keybinds from context
+  const { keybinds } = useKeyBindsContext();
+
   return (
     <ApiProvider>
       <div className="min-h-screen material-surface">
@@ -574,6 +581,8 @@ export default function App() {
           onLogout={handleLogout}
           userName={userName}
         />
+        
+        <KeyBindsModal keybinds={keybinds} />
 
         {route.view === "home" && (
           <TicketListView goTo={navigate} showSearch={showSearch} api={api} />
@@ -860,3 +869,13 @@ export default function App() {
     </ApiProvider>
   );
 }
+
+function AppWithProviders() {
+  return (
+    <KeyBindsProvider>
+      <App />
+    </KeyBindsProvider>
+  );
+}
+
+export default AppWithProviders;

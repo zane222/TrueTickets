@@ -11,9 +11,11 @@ import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
 import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
+import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Customer, SmallTicket, Phone } from "../types/api";
+import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface CustomerViewProps {
   id: number;
@@ -46,6 +48,31 @@ function CustomerView({
   } = useChangeDetection(api, `/customers/${id}`);
 
   // Keyboard shortcuts
+  const customerViewKeybinds: KeyBind[] = [
+    {
+      key: "H",
+      description: "Home",
+      category: "Navigation",
+    },
+    {
+      key: "E",
+      description: "Edit",
+      category: "Navigation",
+    },
+    {
+      key: "S",
+      description: "Search",
+      category: "Navigation",
+    },
+    {
+      key: "N",
+      description: "New customer",
+      category: "Navigation",
+    },
+  ];
+
+  useRegisterKeybinds(customerViewKeybinds);
+
   useHotkeys(
     {
       h: () => goTo("/"),

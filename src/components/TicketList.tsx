@@ -4,8 +4,10 @@ import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { STATUSES, DEVICES, convertStatus } from "../constants/appConstants.js";
 import { cx, fmtDate, getTicketDeviceInfo } from "../utils/appUtils.jsx";
 import { useHotkeys } from "../hooks/useHotkeys";
+import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
 import type { SmallTicket, ApiContextValue } from "../types";
+import type { KeyBind } from "./ui/KeyBindsModal";
 
 // Ticket list item component that can use hooks
 interface TicketListItemProps {
@@ -229,6 +231,26 @@ export function TicketListView({
     // Intentionally ignore fetchTickets in deps to avoid re-running if its identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const ticketListKeybinds: KeyBind[] = [
+    {
+      key: "H",
+      description: "Home",
+      category: "Navigation",
+    },
+    {
+      key: "S",
+      description: "Search",
+      category: "Navigation",
+    },
+    {
+      key: "N",
+      description: "New customer",
+      category: "Navigation",
+    },
+  ];
+
+  useRegisterKeybinds(ticketListKeybinds);
 
   useHotkeys(
     {
