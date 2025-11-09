@@ -161,6 +161,7 @@ export function getDeviceTypeFromSubject(subjectText: string): string | null {
     ltop: "Laptop",
     // Desktop keywords
     desktop: "Desktop",
+    dtop: "Desktop",
     pc: "Desktop",
     tower: "Desktop",
     omen: "Desktop",

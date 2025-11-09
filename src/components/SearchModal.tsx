@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { formatPhone } from "../utils/appUtils.jsx";
 import { convertStatus } from "../constants/appConstants.js";
@@ -32,6 +32,10 @@ function SearchModal({
     useState(false);
 
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
+  
+  // Refs to track current search and abort controller for cancellation
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const currentSearchQueryRef = useRef<string>("");
 
   // New Customer autofill helpers
   const handleNewCustomer = React.useCallback(() => {
@@ -88,6 +92,11 @@ function SearchModal({
   // Reset search state when modal closes
   useEffect(() => {
     if (!open) {
+      // Cancel any pending requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
       setSearch("");
       setResults([]);
       setLoading(false);
@@ -96,24 +105,42 @@ function SearchModal({
     }
   }, [open]);
 
-  // Clear results immediately when search changes
   // Clear results immediately when user starts typing
   useEffect(() => {
     if (search.trim() === "") {
+      // Cancel any pending requests when search is cleared
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      currentSearchQueryRef.current = "";
       setResults([]);
       setHasSearched(false);
       setSearchType("tickets");
       return;
     }
+    
+    // Cancel previous search request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
+    // Store the current search query for verification later
+    currentSearchQueryRef.current = search.trim();
+    
     // Clear results immediately when user starts typing
     setResults([]);
     setHasSearched(false);
     setLoading(true);
 
     const timeoutId = setTimeout(() => {
-      performSearch(search);
+      performSearch(search, abortControllerRef.current!.signal);
     }, 300);
-    return () => clearTimeout(timeoutId);
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
@@ -174,18 +201,21 @@ function SearchModal({
   const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
   const isLikelyPhone = (digits: string) =>
     digits.length >= 7 && digits.length <= 11;
-  const canParse = (str: string) => !isNaN(parseInt(str)) && str.trim() !== "";
+  const canParse = (str: string) => /^\d/.test(str.trim()) && !isNaN(parseInt(str));
 
   // Smart ticket number search for exactly 3 digits
   const searchTicketNumber = React.useCallback(
-    async (query: string) => {
+    async (query: string, signal: AbortSignal) => {
       const latest = latestTicketNumber;
       if (!latest || query.length !== 3) {
         // Fallback to simple search if no latest ticket number or not 3 digits
         const data = await api.get<{ tickets: SmallTicket[] }>(
           `/tickets?number=${encodeURIComponent(query)}`,
         );
-        setResults(data.tickets || []);
+        // Only update state if this request wasn't aborted and query still matches
+        if (!signal.aborted && currentSearchQueryRef.current === query) {
+          setResults(data.tickets || []);
+        }
         return;
       }
 
@@ -222,14 +252,18 @@ function SearchModal({
 
       const res = await Promise.all(apiCalls);
       const validTickets = res.filter((t): t is SmallTicket => t !== null);
-      setResults(validTickets);
+      
+      // Only update state if this request wasn't aborted and query still matches
+      if (!signal.aborted && currentSearchQueryRef.current === query) {
+        setResults(validTickets);
+      }
     },
     [latestTicketNumber, api],
   );
 
   // Smart search logic
   const performSearch = React.useCallback(
-    async (query: string) => {
+    async (query: string, signal: AbortSignal) => {
       if (!query.trim()) {
         setResults([]);
         setHasSearched(false);
@@ -250,12 +284,15 @@ function SearchModal({
           const data = await api.get<{ customers: Customer[] }>(
             `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
           );
-          setResults(data.customers || []);
+          // Only update state if this request wasn't aborted and query still matches
+          if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
+            setResults(data.customers || []);
+          }
         }
         // 3-digit ticket number
         else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
           setSearchType("tickets");
-          await searchTicketNumber(trimmedQuery);
+          await searchTicketNumber(trimmedQuery, signal);
         }
         // Regular ticket number search
         else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
@@ -263,19 +300,26 @@ function SearchModal({
           const data = await api.get<{ tickets: SmallTicket[] }>(
             `/tickets?number=${encodeURIComponent(trimmedQuery)}`,
           );
-          setResults(data.tickets || []);
+          // Only update state if this request wasn't aborted and query still matches
+          if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
+            setResults(data.tickets || []);
+          }
         }
         // Partial phone number
         else if (
           phoneDigits.length >= 3 &&
           phoneDigits.length < 7 &&
-          /[\d\-\.\(\)\s]/.test(trimmedQuery)
+          /[\d\-\.\(\)\s]/.test(trimmedQuery) &&
+          !/[a-zA-Z]/.test(trimmedQuery)
         ) {
           setSearchType("customers");
           const data = await api.get<{ customers: Customer[] }>(
             `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
           );
-          setResults(data.customers || []);
+          // Only update state if this request wasn't aborted and query still matches
+          if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
+            setResults(data.customers || []);
+          }
         }
         // Text queries: search both and pick best
         else {
@@ -289,29 +333,44 @@ function SearchModal({
               ),
             ]);
 
-            const customers = customersData.customers || [];
-            const tickets = ticketsData.tickets || [];
+            // Only update state if this request wasn't aborted and query still matches
+            if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
+              const customers = customersData.customers || [];
+              const tickets = ticketsData.tickets || [];
 
-            if (customers.length > 0) {
-              setSearchType("customers");
-              setResults(customers);
-            } else {
-              setSearchType("tickets");
-              setResults(tickets);
+              if (customers.length > 0) {
+                setSearchType("customers");
+                setResults(customers);
+              } else {
+                setSearchType("tickets");
+                setResults(tickets);
+              }
             }
           } catch {
             setSearchType("tickets");
             const data = await api.get<{ tickets: SmallTicket[] }>(
               `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
             );
-            setResults(data.tickets || []);
+            // Only update state if this request wasn't aborted and query still matches
+            if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
+              setResults(data.tickets || []);
+            }
           }
         }
       } catch (err) {
-        console.error("Search error:", err);
-        setResults([]);
+        // Ignore aborted requests
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.error("Search error:", err);
+        }
+        // Only clear results if not aborted
+        if (!signal.aborted) {
+          setResults([]);
+        }
       } finally {
-        setLoading(false);
+        // Only update loading state if not aborted
+        if (!signal.aborted) {
+          setLoading(false);
+        }
       }
     },
     [searchTicketNumber, api],

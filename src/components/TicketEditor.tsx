@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { DEVICES, ITEMS_LEFT } from "../constants/appConstants.js";
@@ -41,6 +41,10 @@ function TicketEditor({
   const [saving, setSaving] = useState<boolean>(false);
   const [existingProperties, setExistingProperties] =
     useState<TicketProperties>({});
+  const [customerName, setCustomerName] = useState<string>("");
+
+  // Ref for subject input to manage focus
+  const subjectInputRef = useRef<HTMLInputElement>(null);
 
   // Change detection
   const { hasChanged, startPolling, stopPolling } = useChangeDetection(
@@ -72,6 +76,11 @@ function TicketEditor({
         // Start change detection polling
         startPolling(ticket);
         setSubject(ticket.subject || "");
+        
+        // Set customer name if available
+        if (ticket.customer_business_then_name) {
+          setCustomerName(ticket.customer_business_then_name);
+        }
 
         // Load existing properties to preserve them
         const properties = (ticket.properties || {}) as TicketProperties;
@@ -141,6 +150,26 @@ function TicketEditor({
     };
   }, [ticketId, stopPolling]);
 
+  // Set customer name from previous ticket (for editing) or from URL parameter (for new tickets)
+  useEffect(() => {
+    if (previousTicket?.customer_business_then_name) {
+      setCustomerName(previousTicket.customer_business_then_name);
+    } else if (previousTicket?.customer) {
+      const customer = previousTicket.customer;
+      const name = customer.business_name || `${customer.firstname || ""} ${customer.lastname || ""}`.trim();
+      setCustomerName(name);
+    } else if (!ticketId) {
+      // For new tickets, check URL parameter
+      const params = new URLSearchParams(window.location.search);
+      const customerNameParam = params.get("customerName");
+      if (customerNameParam) {
+        setCustomerName(decodeURIComponent(customerNameParam));
+      }
+    }
+  }, [previousTicket, ticketId]);
+
+
+
   // Show warning when changes are detected
   useEffect(() => {
     if (hasChanged) {
@@ -165,6 +194,20 @@ function TicketEditor({
       }
     }
   }, [subject, ticketId]);
+
+  // Focus on subject input when component mounts or when navigating to a new/different ticket
+  useEffect(() => {
+    // Only focus after loading completes and form is rendered
+    if (!loading) {
+      // Small delay to ensure the input is rendered and DOM is stable
+      const timeoutId = setTimeout(() => {
+        if (subjectInputRef.current) {
+          subjectInputRef.current.focus();
+        }
+      }, 50);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [ticketId, customerId, loading]);
 
   useHotkeys(
     {
@@ -366,10 +409,17 @@ function TicketEditor({
     <div className="mx-auto max-w-4xl px-4 sm:px-6 py-4 sm:py-6">
       <div className="md-card p-4 sm:p-8 space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between">
-          <div className="text-2xl font-bold text-primary">
-            {ticketId
-              ? `Edit Ticket - #${previousTicket?.number ?? ticketId}`
-              : "New Ticket"}
+          <div>
+            <div className="text-2xl font-bold text-primary">
+              {ticketId
+                ? `Edit Ticket - #${previousTicket?.number ?? ticketId}`
+                : "New Ticket"}
+            </div>
+            {customerName && (
+              <div className="text-md text-outline mt-1">
+                {customerName}
+              </div>
+            )}
           </div>
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <button
@@ -404,7 +454,7 @@ function TicketEditor({
                     }
               }
               transition={{ duration: 0.15 }}
-              tabIndex={0}
+              tabIndex={4}
             >
               <div className="flex items-center justify-center gap-2">
                 <span>
@@ -447,6 +497,7 @@ function TicketEditor({
         <div className="space-y-2">
           <label className="text-md font-medium">Subject</label>
           <input
+            ref={subjectInputRef}
             className="md-input"
             value={subject}
             onChange={(event) => setSubject(event.target.value)}
@@ -466,7 +517,7 @@ function TicketEditor({
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Device password"
-                tabIndex={1}
+                tabIndex={2}
               />
             </div>
 
@@ -501,7 +552,7 @@ function TicketEditor({
                 value={timeEstimate}
                 onChange={(event) => setTimeEstimate(event.target.value)}
                 placeholder="e.g. 30 min, 2 hours, Call by: 11th"
-                tabIndex={1}
+                tabIndex={3}
               />
             </div>
 

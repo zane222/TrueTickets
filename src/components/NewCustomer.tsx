@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { useApi } from "../hooks/useApi";
@@ -51,6 +51,9 @@ export default function NewCustomer({
   const [storedCustomer, setStoredCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState<boolean>(!!customerId);
 
+  // Ref for first_name input to manage focus
+  const firstNameInputRef = useRef<HTMLInputElement>(null);
+
   // NOTE: useChangeDetection requires an endpoint string; when customerId is not provided
   // we pass an empty string. startPolling will only be called when editing an existing customer.
   const {
@@ -85,6 +88,20 @@ export default function NewCustomer({
       console.error("Failed to parse URL params:", err);
     }
   }, [customerId]);
+
+  // Focus on first_name input when component mounts or when navigating to a new/different customer
+  useEffect(() => {
+    // Only focus after loading completes and form is rendered
+    if (!loading) {
+      // Small delay to ensure the input is rendered and DOM is stable
+      const timeoutId = setTimeout(() => {
+        if (firstNameInputRef.current) {
+          firstNameInputRef.current.focus();
+        }
+      }, 50);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [customerId, loading]);
 
   // Hotkeys
   useHotkeys(
@@ -474,7 +491,7 @@ export default function NewCustomer({
                     }
               }
               transition={{ duration: 0.15 }}
-              tabIndex={0}
+              tabIndex={5}
             >
               <div className="flex items-center justify-center gap-2">
                 <span>
@@ -519,12 +536,13 @@ export default function NewCustomer({
               {fieldKey.replace("_", " ")}
             </label>
             <input
+              ref={fieldKey === "first_name" ? firstNameInputRef : null}
               className="md-input text-md sm:text-base py-3 sm:py-2"
               value={form[fieldKey]}
               onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
                 setForm({ ...form, [fieldKey]: event.target.value })
               }
-              tabIndex={1}
+              tabIndex={fieldKey === "first_name" ? 1 : fieldKey === "last_name" ? 2 : 3}
             />
           </div>
         ))}
@@ -566,7 +584,7 @@ export default function NewCustomer({
                     inputMode={"numeric"}
                     autoComplete={"tel"}
                     placeholder="Phone number"
-                    tabIndex={1}
+                    tabIndex={4}
                   />
 
                   {isPrimary && (
@@ -600,7 +618,7 @@ export default function NewCustomer({
               setForm({ ...form, email: event.target.value })
             }
             autoComplete={"email"}
-            tabIndex={1}
+            tabIndex={-1}
           />
         </div>
       </div>

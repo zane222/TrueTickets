@@ -1,0 +1,13 @@
+[package]
+name = "TrueTickets"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lambda_http = "0.13.0"
+tokio = { version = "1", features = ["macros"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+url = "2.5"
+urlencoding = "2.1"

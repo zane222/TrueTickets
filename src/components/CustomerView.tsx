@@ -48,13 +48,18 @@ function CustomerView({
   // Keyboard shortcuts
   useHotkeys(
     {
+      h: () => goTo("/"),
       e: () => goTo(`/$${id}?edit`),
       s: () => {
         // Trigger search modal from parent
         const searchEvent = new CustomEvent("openSearch");
         window.dispatchEvent(searchEvent);
       },
-      n: () => goTo(`/$${id}?newticket`),
+      n: () => {
+        const customerName = customer?.business_and_full_name || customer?.fullname || "";
+        const encodedName = encodeURIComponent(customerName);
+        goTo(`/$${id}?newticket&customerName=${encodedName}`);
+      },
     },
     showSearch,
   );
@@ -256,8 +261,12 @@ function CustomerView({
           Edit Customer
         </NavigationButton>
         <NavigationButton
-          onClick={() => goTo(`/$${id}?newticket`)}
-          targetUrl={`${window.location.origin}/$${id}?newticket`}
+          onClick={() => {
+            const customerName = customer?.business_and_full_name || customer?.fullname || "";
+            const encodedName = encodeURIComponent(customerName);
+            goTo(`/$${id}?newticket&customerName=${encodedName}`);
+          }}
+          targetUrl={`${window.location.origin}/$${id}?newticket&customerName=${encodeURIComponent(customer?.business_and_full_name || customer?.fullname || "")}`}
           className="md-btn-primary elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
           tabIndex={-1}
         >
