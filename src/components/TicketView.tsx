@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { User, Printer, Edit, Loader2 } from "lucide-react";
+import { User, Printer, Edit, Loader2, Image, Download } from "lucide-react";
 import html2pdf from "html2pdf.js";
 import {
   getCurrentUser,
@@ -48,6 +48,7 @@ function TicketView({
     error: _error,
   } = useAlertMethods();
   const [ticket, setTicket] = useState<LargeTicket | null>(null);
+
   const [loading, setLoading] = useState(true);
   const ticketCardRef = useRef<HTMLDivElement | null>(null);
   const pdfIntervalRef = useRef<number | null>(null);
@@ -63,8 +64,15 @@ function TicketView({
     resetPolling: _resetPolling,
   } = useChangeDetection(api, `/tickets/${id}`);
 
+  // Helper function to decode \u escape sequences in URLs
+  const decodeUrl = useCallback((url: string): string => {
+    return url.replace(/\\u([0-9a-fA-F]{4})/g, (match, code) => {
+      return String.fromCharCode(parseInt(code, 16));
+    });
+  }, []);
+
   // Register keybinds for this page
-  const ticketViewKeybinds: KeyBind[] = [
+  const ticketViewKeybinds: KeyBind[] = useMemo(() => [
     {
       key: "H",
       description: "Home",
@@ -135,7 +143,7 @@ function TicketView({
       description: "Resolved",
       category: "Status",
     },
-  ];
+  ], []);
 
   useRegisterKeybinds(ticketViewKeybinds);
 
@@ -328,6 +336,8 @@ function TicketView({
     }
   };
 
+
+
   return (
     <div className="mx-auto max-w-6xl px-3 sm:px-6 py-3 sm:py-6">
       {/* Top Action Buttons */}
@@ -471,8 +481,34 @@ function TicketView({
           </div>
         </div>
 
-        {/* RIGHT SIDE: Comments */}
-        <aside className="lg:col-start-7 lg:col-span-6">
+        {/* RIGHT SIDE: Attachments and Comments */}
+        <aside className="lg:col-start-7 lg:col-span-6 space-y-4 sm:space-y-6">
+          {/* Attachments Section */}
+          {ticket.attachments && ticket.attachments.length > 0 && (
+            <div className="md-card p-4 sm:p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Image className="w-5 h-5" />
+                <h3 className="text-lg font-semibold">Attachments ({ticket.attachments.length})</h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {ticket.attachments.map((attachment) => {
+                  const decodedUrl = decodeUrl(attachment.file?.url || "");
+                  return (
+                    <div key={attachment.id} className="border border-outline rounded-lg overflow-hidden">
+                      {attachment.file?.url && (
+                        <img
+                          src={decodedUrl}
+                          alt={attachment.file_name}
+                          className="w-full h-auto max-h-64 object-cover"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="md-card p-4 sm:p-6">
             <div className="text-lg font-semibold mb-4">Comments</div>
             <CommentsBox

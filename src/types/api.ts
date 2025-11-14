@@ -1,4 +1,4 @@
-// API Types based on RepairShoprObjects.cs
+// API Types based on RepairShopr API responses
 // These types match the RepairShopr API responses and requests
 
 // ============================================================================
@@ -57,11 +57,23 @@ export interface User {
   id?: number;
   email?: string;
   full_name?: string;
+  name?: string;
   created_at?: string;
   updated_at?: string;
   group?: string;
   "admin?"?: boolean;
   color?: string;
+}
+
+// ============================================================================
+// Mentionable Types
+// ============================================================================
+
+export interface Mentionable {
+  type: string;
+  id: number;
+  name: string;
+  email: string;
 }
 
 // ============================================================================
@@ -76,10 +88,10 @@ export interface Customer {
   business_name?: string;
   email?: string;
   phone?: string;
-  mobile?: string;
+  mobile?: string | null;
   created_at?: string;
   updated_at?: string;
-  pdf_url?: string;
+  pdf_url?: string | null;
   address?: string;
   address_2?: string;
   city?: string;
@@ -93,6 +105,7 @@ export interface Customer {
   disabled?: boolean;
   no_email?: boolean;
   location_id?: number | null;
+  location_name?: string | null;
   properties?: CustomerProperties;
   online_profile_url?: string;
   tax_rate_id?: number | null;
@@ -103,7 +116,7 @@ export interface Customer {
   ref_customer_id?: number | null;
   business_and_full_name?: string;
   business_then_name?: string;
-  location_name?: string | null;
+  tag_list?: string[];
   contacts?: unknown[];
 }
 
@@ -131,6 +144,14 @@ export interface Comment {
   tech?: string;
   hidden?: boolean;
   user_id?: number;
+  sms_body?: string | null;
+  ticket_automation_id?: number | null;
+  destination_emails?: string | null;
+  account_id?: number;
+  email_sender?: string | null;
+  new_sms_body?: string | null;
+  is_rich_text?: boolean;
+  display_order?: number | null;
 }
 
 export interface PostComment {
@@ -174,6 +195,7 @@ export interface Attachment {
   file_size?: number;
   md5?: string;
   name?: string | null;
+  user_id?: number | null;
 }
 
 // ============================================================================
@@ -185,7 +207,7 @@ export interface Answer {
   content?: string;
   created_at?: string;
   updated_at?: string;
-  account_id?: number;
+  account_id?: number | null;
   id?: number;
 }
 
@@ -194,7 +216,7 @@ export interface TicketAnswer {
   content?: string;
   created_at?: string;
   updated_at?: string;
-  account_id?: number;
+  account_id?: number | null;
   id?: number;
 }
 
@@ -340,18 +362,18 @@ export interface SmallTicket {
   customer_business_then_name?: string;
   due_date?: string;
   resolved_at?: string;
-  start_at?: string;
-  end_at?: string;
-  location_id?: number;
+  start_at?: string | null;
+  end_at?: string | null;
+  location_id?: number | null;
   problem_type?: string;
   status?: string;
   ticket_type_id?: number;
   properties?: TicketProperties;
-  user_id?: number;
+  user_id?: number | null;
   updated_at?: string;
-  pdf_url?: string;
-  priority?: string;
-  user?: User;
+  pdf_url?: string | null;
+  priority?: string | null;
+  user?: User | null;
   customer?: Customer;
   device_type?: string;
 }
@@ -364,20 +386,20 @@ export interface Ticket {
   customer_id?: number;
   customer_business_then_name?: string;
   due_date?: string;
-  resolved_at?: string;
-  start_at?: string;
-  end_at?: string;
-  location_id?: number;
+  resolved_at?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  location_id?: number | null;
   problem_type?: string;
   status?: string;
   ticket_type_id?: number;
   properties?: TicketProperties;
-  user_id?: number;
+  user_id?: number | null;
   updated_at?: string;
-  pdf_url?: string;
-  priority?: string;
+  pdf_url?: string | null;
+  priority?: string | null;
   comments?: Comment[];
-  user?: User;
+  user?: User | null;
 }
 
 export interface LargeTicket {
@@ -388,25 +410,28 @@ export interface LargeTicket {
   customer_id?: number;
   customer_business_then_name?: string;
   due_date?: string;
-  start_at?: string;
-  end_at?: string;
-  location_id?: number;
+  start_at?: string | null;
+  end_at?: string | null;
+  location_id?: number | null;
   problem_type?: string;
   status?: string;
   properties?: TicketProperties;
-  user_id?: number;
+  user_id?: number | null;
   updated_at?: string;
   pdf_url?: string | null;
   intake_form_html?: string;
   signature_name?: string | null;
   signature_date?: string | null;
   asset_ids?: number[];
-  priority?: string;
-  resolved_at?: string;
+  priority?: string | null;
+  resolved_at?: string | null;
   outtake_form_name?: string | null;
   outtake_form_date?: string | null;
   outtake_form_html?: string | null;
   address?: string | null;
+  tag_list?: string[];
+  public_mentionables?: Mentionable[];
+  private_mentionables?: Mentionable[];
   comments?: Comment[];
   attachments?: Attachment[];
   ticket_timers?: TicketTimer[];
@@ -418,7 +443,7 @@ export interface LargeTicket {
   ticket_answers?: TicketAnswer[];
   customer?: Customer;
   contact?: unknown | null;
-  user?: User;
+  user?: User | null;
   ticket_type?: TicketType;
   ticket_type_id?: number;
 }

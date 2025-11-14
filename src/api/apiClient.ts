@@ -68,6 +68,7 @@ class ApiClient {
       "/invite-user",
       "/users",
       "/update-user-group",
+      "/image-proxy",
     ];
 
     // Add /api prefix only for RepairShopr API calls, not for user management
@@ -168,6 +169,14 @@ class ApiClient {
         }
       }
 
+      // Check content type to determine how to parse response
+      const contentType = response.headers.get("content-type") || "";
+      
+      if (contentType.includes("image") || contentType.includes("application/octet-stream")) {
+        // For binary/image responses, return blob
+        return (await response.blob()) as T;
+      }
+      
       return (await response.json()) as T;
     } catch (error) {
       console.error("API request failed:", error);

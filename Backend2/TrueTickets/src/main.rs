@@ -1,3 +1,7 @@
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::panic)]
+#![deny(unused_must_use)]
+
 use lambda_http::{run, service_fn, Body, Request, RequestExt, Response};
 use serde_json::{json, Value};
 use aws_config::BehaviorVersion;
@@ -44,7 +48,7 @@ fn error_response(
     response
         .header("Content-Type", "application/json")
         .body(body.to_string().into())
-        .unwrap()
+        .expect("Couldn't create error response")
 }
 
 /// Build a successful response with CORS headers
@@ -58,7 +62,7 @@ fn success_response(status: u16, body: String) -> Response<Body> {
     response
         .header("Content-Type", "application/json")
         .body(body.into())
-        .unwrap()
+        .expect("Couldn't create success response")
 }
 
 /// Handle CORS preflight requests
@@ -72,7 +76,7 @@ fn handle_options() -> Response<Body> {
     response
         .header("Content-Type", "application/json")
         .body(Body::Empty)
-        .unwrap()
+        .expect("Couldn't handle CORS request")
 }
 
 /// Extract user groups from the Cognito authorizer context
@@ -102,7 +106,7 @@ fn get_user_groups_from_event(event: &Request) -> Vec<String> {
 
 /// Check if user can invite other users
 fn can_invite_users(user_groups: &[String]) -> bool {
-    let allowed_groups = vec![
+    let allowed_groups = [
         "TrueTickets-Cacell-ApplicationAdmin",
         "TrueTickets-Cacell-Owner",
         "TrueTickets-Cacell-Manager",
@@ -114,7 +118,7 @@ fn can_invite_users(user_groups: &[String]) -> bool {
 
 /// Check if user can manage users
 fn can_manage_users(user_groups: &[String]) -> bool {
-    let allowed_groups = vec!["TrueTickets-Cacell-ApplicationAdmin", "TrueTickets-Cacell-Owner"];
+    let allowed_groups = ["TrueTickets-Cacell-ApplicationAdmin", "TrueTickets-Cacell-Owner"];
     user_groups
         .iter()
         .any(|group| allowed_groups.contains(&group.as_str()))
@@ -124,17 +128,16 @@ fn can_manage_users(user_groups: &[String]) -> bool {
 fn generate_temp_password() -> String {
     use rand::Rng;
     let mut rng = rand::thread_rng();
-    
+
     // Generate 6 random digits
     let digits: String = (0..6)
         .map(|_| rng.gen_range(0..10).to_string())
         .collect();
-    
+
     // Add required special characters to ensure complexity
     format!("{}A1!", digits)
 }
 
-/// Handle RepairShopr API proxy requests
 async fn handle_repairshopr_proxy(
     event: &Request,
     path: &str,
@@ -318,12 +321,12 @@ async fn handle_user_invitation(event: &Request, cognito_client: &CognitoClient)
             .name("email")
             .value(email)
             .build()
-            .unwrap(),
+            .expect("Couldn't add email when inviting user"),
         AttributeType::builder()
             .name("email_verified")
             .value("true")
             .build()
-            .unwrap(),
+            .expect("Couldn't set email to verified when inviting user"),
     ];
 
     if !first_name.is_empty() {
@@ -332,7 +335,7 @@ async fn handle_user_invitation(event: &Request, cognito_client: &CognitoClient)
                 .name("custom:given_name")
                 .value(first_name)
                 .build()
-                .unwrap(),
+                .expect("Couldn't add given name when inviting user"),
         );
     }
 
@@ -387,7 +390,7 @@ async fn handle_user_invitation(event: &Request, cognito_client: &CognitoClient)
                 eprintln!("Warning: Could not add user to group: {}", e);
             }
 
-            let user = response.user().unwrap();
+            let user = response.user().expect("Couldn't collect user info after successfully inviting them");
             let user_info = json!({
                 "username": user.username(),
                 "enabled": user.enabled(),
@@ -458,7 +461,7 @@ async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) -> R
 
             for user in response.users() {
                 let username = user.username().unwrap_or("").to_string();
-                 
+
                 // Get user groups
                 let user_groups = match cognito_client
                     .admin_list_groups_for_user()
@@ -710,14 +713,12 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient) -> 
 
     let method = event.method().to_string();
     let mut path = event.uri().path().to_string();
-    
+
     // Strip /Prod or /prod prefix if it exists
-    if path.starts_with("/Prod") {
-        path = path[5..].to_string();
-    } else if path.starts_with("/prod") {
+    if path.starts_with("/Prod") || path.starts_with("/prod") {
         path = path[5..].to_string();
     }
-    
+
     let path = path.as_str();
 
     // Handle CORS preflight requests
