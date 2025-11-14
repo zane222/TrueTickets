@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { User, Printer, Edit, Loader2, Image, Download } from "lucide-react";
+import { User, Printer, Edit, Loader2, Image, Download, Plus, X } from "lucide-react";
 import html2pdf from "html2pdf.js";
 import {
   getCurrentUser,
@@ -54,6 +54,12 @@ function TicketView({
   const pdfIntervalRef = useRef<number | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null); // Track which status is being updated
+  const [fullScreenAttachment, setFullScreenAttachment] = useState<{ id: number; url: string; fileName?: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const attachmentsRef = useRef<HTMLDivElement>(null);
 
   // Change detection
   const {
@@ -70,6 +76,68 @@ function TicketView({
       return String.fromCharCode(parseInt(code, 16));
     });
   }, []);
+
+  const handleFileUpload = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("attachable_type", "Ticket");
+        formData.append("attachable_id", String(id));
+
+        try {
+          // Post to dummy endpoint for testing
+          await fetch("https://httpbin.org/post", {
+            method: "POST",
+            body: formData,
+          });
+          console.log(`File uploaded: ${file.name}`);
+        } catch (err) {
+          console.error("Error uploading file:", err);
+        }
+      }
+    } finally {
+      setUploading(false);
+    }
+  }, [id]);
+
+  const handleAddAttachment = () => {
+    // Check if device has camera capability
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      // On mobile, open camera by default
+      cameraInputRef.current?.click();
+    } else {
+      // On desktop, open file picker
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleDrag = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+      e.dataTransfer.dropEffect = "copy";
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileUpload(e.dataTransfer.files);
+    }
+  }, [handleFileUpload]);
 
   // Register keybinds for this page
   const ticketViewKeybinds: KeyBind[] = useMemo(() => [
@@ -339,13 +407,13 @@ function TicketView({
 
 
   return (
-    <div className="mx-auto max-w-6xl px-3 sm:px-6 py-3 sm:py-6">
+    <div className="mx-auto max-w-6xl px-6 py-6">
       {/* Top Action Buttons */}
-      <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-4 mb-4 sm:mb-6">
+      <div className="flex flex-row justify-end gap-4 mb-6">
         <NavigationButton
           onClick={() => goTo(`/$${ticket.customer?.id || ticket.customer_id}`)}
           targetUrl={`${window.location.origin}/$${ticket.customer?.id || ticket.customer_id}`}
-          className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
+          className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
           tabIndex={-1}
         >
           <User className="w-5 h-5" />
@@ -353,7 +421,7 @@ function TicketView({
         </NavigationButton>
         <button
           onClick={generatePDF}
-          className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
+          className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
           tabIndex={-1}
         >
           <Printer className="w-5 h-5" />
@@ -362,7 +430,7 @@ function TicketView({
         <NavigationButton
           onClick={() => goTo(`/&${ticket.id}?edit`)}
           targetUrl={`${window.location.origin}/&${ticket.id}?edit`}
-          className="md-btn-primary elev-1 inline-flex items-center justify-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full sm:w-auto"
+          className="md-btn-primary elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
           tabIndex={-1}
         >
           <Edit className="w-5 h-5" />
@@ -370,12 +438,12 @@ function TicketView({
         </NavigationButton>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
-        {/* LEFT SIDE: Ticket + statuses */}
-        <div className="lg:col-span-4 space-y-8 lg:space-y-20">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* LEFT SIDE: Ticket + Status + Attachments */}
+        <div className="lg:col-span-6 space-y-20 w-[520px]">
           {/* Ticket Card - Scaled up */}
-          <div className="transform scale-100 sm:scale-148 origin-top-left bg-white rounded-md shadow-lg overflow-hidden">
-            <div ref={ticketCardRef} className="w-full h-auto">
+          <div className="relative mx-auto bg-white rounded-md shadow-lg overflow-hidden h-[150px] w-[520px]">
+            <div ref={ticketCardRef} className="absolute inset-0 origin-top-left scale-[1.48]">
               <TicketCard
                 password={getTicketPassword(ticket)}
                 ticketNumber={ticket.number ?? ticket.id}
@@ -399,9 +467,11 @@ function TicketView({
             </div>
           </div>
 
-          {/* Status buttons */}
-          <div className="md-card p-3 sm:p-4 space-y-3 w-full sm:w-60">
-            <p className="text-md sm:text-md font-semibold">Status:</p>
+          {/* Status and Attachments side by side */}
+          <div className="grid grid-cols-2 gap-6">
+            {/* Status buttons */}
+            <div className="md-card p-4 space-y-3">
+            <p className="text-md font-semibold">Status:</p>
             <div className="flex flex-col gap-2">
               {STATUSES.map((status, _index) => {
                 const active = convertStatus(ticket.status) === status;
@@ -411,7 +481,7 @@ function TicketView({
                     key={status}
                     onClick={() => updateTicketStatus(status)}
                     disabled={isUpdating || active}
-                    className={`${active ? "md-btn-primary" : "md-btn-surface"} text-left relative overflow-hidden py-3 sm:py-2 text-md sm:text-base touch-manipulation w-full ${
+                    className={`${active ? "md-btn-primary" : "md-btn-surface"} text-left relative overflow-hidden py-2 text-base touch-manipulation w-full ${
                       isUpdating || active ? "cursor-not-allowed" : ""
                     }`}
                     style={active ? { borderRadius: "12px" } : {}}
@@ -478,38 +548,105 @@ function TicketView({
                 );
               })}
             </div>
+            </div>
+
+            {/* Attachments Section */}
+            <div className="md-card p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <p className="text-md font-semibold">Attachments</p>
+                <button
+                  onClick={handleAddAttachment}
+                  disabled={uploading}
+                  className="p-1 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
+                  title="Add attachment"
+                >
+                  {uploading ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
+                </button>
+              </div>
+
+              {/* Drag and drop area or attachments grid */}
+              {ticket.attachments && ticket.attachments.length > 0 ? (
+                <div
+                  ref={attachmentsRef}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                  className={`grid grid-cols-1 gap-4 rounded-lg border-2 transition-colors ${
+                    dragActive
+                      ? "border-dashed border-primary bg-primary/5"
+                      : "border-transparent"
+                  }`}
+                >
+                  {ticket.attachments.map((attachment) => {
+                    const decodedUrl = decodeUrl(attachment.file?.url || "");
+                    return (
+                      <div
+                        key={attachment.id}
+                        className="border border-outline rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow max-h-45"
+                        onClick={() =>
+                          setFullScreenAttachment({
+                            id: attachment.id,
+                            url: decodedUrl,
+                            fileName: attachment.file_name,
+                          })
+                        }
+                      >
+                        {attachment.file?.url && (
+                          <img
+                            src={decodedUrl}
+                            alt={attachment.file_name}
+                            className="w-full h-auto max-h-64 object-cover"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  ref={attachmentsRef}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                  className={`p-6 rounded-lg border-2 border-dashed transition-colors text-center ${
+                    dragActive
+                      ? "border-primary bg-primary/5"
+                      : "border-outline/30"
+                  }`}
+                >
+                  <Image className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm text-outline">
+                    {dragActive ? "Upload file" : "Drag and drop files here or click the + button to add attachments"}
+                  </p>
+                </div>
+              )}
+
+              {/* Hidden file inputs */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx"
+                onChange={(e) => handleFileUpload(e.target.files)}
+                className="hidden"
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => handleFileUpload(e.target.files)}
+                className="hidden"
+              />
+            </div>
           </div>
         </div>
 
-        {/* RIGHT SIDE: Attachments and Comments */}
-        <aside className="lg:col-start-7 lg:col-span-6 space-y-4 sm:space-y-6">
-          {/* Attachments Section */}
-          {ticket.attachments && ticket.attachments.length > 0 && (
-            <div className="md-card p-4 sm:p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Image className="w-5 h-5" />
-                <h3 className="text-lg font-semibold">Attachments ({ticket.attachments.length})</h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {ticket.attachments.map((attachment) => {
-                  const decodedUrl = decodeUrl(attachment.file?.url || "");
-                  return (
-                    <div key={attachment.id} className="border border-outline rounded-lg overflow-hidden">
-                      {attachment.file?.url && (
-                        <img
-                          src={decodedUrl}
-                          alt={attachment.file_name}
-                          className="w-full h-auto max-h-64 object-cover"
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="md-card p-4 sm:p-6">
+        {/* RIGHT SIDE: Comments */}
+        <aside className="lg:col-start-7 lg:col-span-6 space-y-6">
+          <div className="md-card p-6">
             <div className="text-lg font-semibold mb-4">Comments</div>
             <CommentsBox
               ticketId={ticket.id}
@@ -519,6 +656,40 @@ function TicketView({
           </div>
         </aside>
       </div>
+
+      {/* Drag and drop upload tooltip */}
+      {dragActive && (
+        <div
+          className="fixed bg-black text-white px-3 py-2 rounded-md text-sm font-medium pointer-events-none z-40 whitespace-nowrap"
+          style={{
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          Upload
+        </div>
+      )}
+
+      {/* Full-screen attachment modal */}
+      {fullScreenAttachment && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
+          <div className="relative w-full h-full flex items-center justify-center">
+            <button
+              onClick={() => setFullScreenAttachment(null)}
+              className="absolute top-4 right-4 p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors z-10"
+              title="Close"
+            >
+              <X size={24} className="text-white" />
+            </button>
+            <img
+              src={fullScreenAttachment.url}
+              alt={fullScreenAttachment.fileName}
+              className="max-w-[90vw] max-h-[90vh] object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

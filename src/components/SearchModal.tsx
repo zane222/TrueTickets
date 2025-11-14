@@ -218,7 +218,8 @@ function SearchModal({
           setLoading(false);
           if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
             pendingSubmit.current = false;
-            window.open(`${window.location.origin}/&${data.tickets[0].id}`, "_blank");
+            onClose();
+            goTo(`/&${data.tickets[0].id}`);
           }
         }
         return;
@@ -269,11 +270,12 @@ function SearchModal({
         setLoading(false);
         if (pendingSubmit.current && validTickets.length > 0) {
           pendingSubmit.current = false;
-          window.open(`${window.location.origin}/&${validTickets[0].id}`, "_blank");
+          onClose();
+          goTo(`/&${validTickets[0].id}`);
         }
       }
     },
-    [latestTicketNumber, api],
+    [latestTicketNumber, api, onClose, goTo],
   );
 
   // Smart search logic
@@ -300,7 +302,8 @@ function SearchModal({
             setLoading(false);
             if (pendingSubmit.current && data.customers && data.customers.length > 0) {
               pendingSubmit.current = false;
-              window.open(`${window.location.origin}/$${data.customers[0].id}`, "_blank");
+              onClose();
+              goTo(`/$${data.customers[0].id}`);
             }
           }
         }
@@ -327,7 +330,8 @@ function SearchModal({
             setLoading(false);
             if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
               pendingSubmit.current = false;
-              window.open(`${window.location.origin}/&${data.tickets[0].id}`, "_blank");
+              onClose();
+              goTo(`/&${data.tickets[0].id}`);
             }
           }
         }
@@ -353,7 +357,8 @@ function SearchModal({
             setLoading(false);
             if (pendingSubmit.current && data.customers && data.customers.length > 0) {
               pendingSubmit.current = false;
-              window.open(`${window.location.origin}/$${data.customers[0].id}`, "_blank");
+              onClose();
+              goTo(`/$${data.customers[0].id}`);
             }
           }
         }
@@ -380,7 +385,8 @@ function SearchModal({
                 setStatus("");
                 if (pendingSubmit.current) {
                   pendingSubmit.current = false;
-                  window.open(`${window.location.origin}/$${customers[0].id}`, "_blank");
+                  onClose();
+                  goTo(`/$${customers[0].id}`);
                 }
               } else {
                 setSearchType("tickets");
@@ -392,7 +398,8 @@ function SearchModal({
                 }
                 if (pendingSubmit.current && tickets.length > 0) {
                   pendingSubmit.current = false;
-                  window.open(`${window.location.origin}/&${tickets[0].id}`, "_blank");
+                  onClose();
+                  goTo(`/&${tickets[0].id}`);
                 }
               }
               setLoading(false);
@@ -413,7 +420,8 @@ function SearchModal({
               setLoading(false);
               if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
                 pendingSubmit.current = false;
-                window.open(`${window.location.origin}/&${data.tickets[0].id}`, "_blank");
+                onClose();
+                goTo(`/&${data.tickets[0].id}`);
               }
             }
           }
@@ -431,7 +439,7 @@ function SearchModal({
         }
       }
     },
-    [searchTicketNumber, api],
+    [searchTicketNumber, api, onClose, goTo],
   );
 
   // Type guard functions

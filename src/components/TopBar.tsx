@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { Search, UserPlus, User, LogOut } from "lucide-react";
 import NavigationButton from "./ui/NavigationButton";
@@ -30,6 +30,23 @@ export function TopBar({
   onLogout,
   userName,
 }: TopBarProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+
+    if (showUserMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [showUserMenu, setShowUserMenu]);
+
   return (
     <div className="sticky top-0 z-30 w-full material-app-bar backdrop-blur-md">
       <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-4">
@@ -68,7 +85,7 @@ export function TopBar({
           </NavigationButton>
 
           {/* User menu dropdown */}
-          <div className="relative">
+          <div className="relative" ref={menuRef}>
             <motion.button
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"

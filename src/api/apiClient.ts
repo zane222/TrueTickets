@@ -21,7 +21,7 @@ class ApiClient {
     this.sessionExpiry = null;
   }
 
-  async getAuthHeaders(): Promise<Record<string, string>> {
+  async getAuthHeaders(isMultipart = false): Promise<Record<string, string>> {
     try {
       // Check if we have a cached session that's still valid
       if (
@@ -31,7 +31,7 @@ class ApiClient {
       ) {
         const token = this.cachedSession.tokens.idToken.toString();
         return {
-          "Content-Type": "application/json",
+          ...(isMultipart ? {} : { "Content-Type": "application/json" }),
           Authorization: `Bearer ${token}`,
         };
       }
@@ -48,7 +48,7 @@ class ApiClient {
         throw new Error("No authentication token available");
       }
       return {
-        "Content-Type": "application/json",
+        ...(isMultipart ? {} : { "Content-Type": "application/json" }),
         Authorization: `Bearer ${token}`,
       };
     } catch (error) {
@@ -62,6 +62,7 @@ class ApiClient {
     options: RequestOptions = {},
   ): Promise<T> {
     const { method = "GET", body } = options;
+    const isMultipart = body instanceof FormData;
 
     // Define user management endpoints that should NOT get /api prefix
     const userManagementEndpoints = [
@@ -86,12 +87,12 @@ class ApiClient {
     }
 
     try {
-      const headers = await this.getAuthHeaders();
+      const headers = await this.getAuthHeaders(isMultipart);
 
       const response = await fetch(url, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: isMultipart ? body : body ? JSON.stringify(body) : undefined,
       });
 
       if (!response.ok) {
@@ -115,11 +116,11 @@ class ApiClient {
           try {
             this.cachedSession = null;
             this.sessionExpiry = null;
-            const newHeaders = await this.getAuthHeaders();
+            const newHeaders = await this.getAuthHeaders(isMultipart);
             const retryResponse = await fetch(url, {
               method,
               headers: newHeaders,
-              body: body ? JSON.stringify(body) : undefined,
+              body: isMultipart ? body : body ? JSON.stringify(body) : undefined,
             });
             if (!retryResponse.ok) {
               // Read retry response body once and parse if possible
