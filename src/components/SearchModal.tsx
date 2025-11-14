@@ -17,22 +17,16 @@ function SearchModal({
   goTo: (to: string) => void;
 }) {
   const api = useApi();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState<string>("");
   const [results, setResults] = useState<(SmallTicket | Customer)[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [searchType, setSearchType] = useState<"tickets" | "customers">(
-    "tickets",
-  );
-  const [latestTicketNumber, setLatestTicketNumber] = useState<number | null>(
-    null,
-  );
-
-  const [enterPressedWhileLoading, setEnterPressedWhileLoading] =
-    useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [status, setStatus] = useState<"Enter a search query" | "No results found" | "">("Enter a search query");
+  const [searchType, setSearchType] = useState<"tickets" | "customers">("tickets");
+  const [latestTicketNumber, setLatestTicketNumber] = useState<number | null>(null);
+  const pendingSubmit = useRef<boolean>(false);
 
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
-  
+
   // Refs to track current search and abort controller for cancellation
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentSearchQueryRef = useRef<string>("");
@@ -73,8 +67,11 @@ function SearchModal({
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // If there are results right now, click the first
-    if (!loading && results.length > 0) {
+    if (loading) {
+      pendingSubmit.current = true;
+      return;
+    }
+    if (results.length > 0) {
       const first = results[0];
       if (first) {
         onClose();
@@ -84,8 +81,6 @@ function SearchModal({
           goTo(`/&${first.id}`);
         }
       }
-    } else {
-      setEnterPressedWhileLoading(true);
     }
   };
 
@@ -100,8 +95,9 @@ function SearchModal({
       setSearch("");
       setResults([]);
       setLoading(false);
-      setHasSearched(false);
+      setStatus("Enter a search query");
       setSearchType("tickets");
+      pendingSubmit.current = false;
     }
   }, [open]);
 
@@ -115,42 +111,42 @@ function SearchModal({
       }
       currentSearchQueryRef.current = "";
       setResults([]);
-      setHasSearched(false);
-      setSearchType("tickets");
+      setStatus("Enter a search query");
+      setLoading(false);
       return;
     }
-    
+
     // Cancel previous search request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
-    
+
     // Store the current search query for verification later
     currentSearchQueryRef.current = search.trim();
-    
+
     // Clear results immediately when user starts typing
     setResults([]);
-    setHasSearched(false);
+    setStatus("");
     setLoading(true);
 
     const timeoutId = setTimeout(() => {
       performSearch(search, abortControllerRef.current!.signal);
     }, 300);
-    
+
     return () => {
       clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, searchType]);
 
   useEffect(() => {
     let timeoutId: number | undefined;
-    if (!loading && enterPressedWhileLoading && results.length > 0) {
+    if (!loading && pendingSubmit.current && results.length > 0) {
       const first = results[0];
       if (first) {
         timeoutId = window.setTimeout(() => {
-          // click after delay so the use can see the results for a moment
+          // click after delay so the user can see the results for a moment
           onClose();
           if (searchType === "customers") {
             goTo(`/$${first.id}`);
@@ -160,13 +156,12 @@ function SearchModal({
         }, 150);
       }
       // Keep UI state in sync
-      setEnterPressedWhileLoading(false);
+      pendingSubmit.current = false;
     }
     return () => {
       if (timeoutId) window.clearTimeout(timeoutId);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+  }, [loading, results, searchType, onClose, goTo]);
 
   // Get latest ticket number when modal opens
   useEffect(() => {
@@ -215,6 +210,16 @@ function SearchModal({
         // Only update state if this request wasn't aborted and query still matches
         if (!signal.aborted && currentSearchQueryRef.current === query) {
           setResults(data.tickets || []);
+          if (data.tickets?.length === 0) {
+            setStatus("No results found");
+          } else {
+            setStatus("");
+          }
+          setLoading(false);
+          if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
+            pendingSubmit.current = false;
+            window.open(`${window.location.origin}/&${data.tickets[0].id}`, "_blank");
+          }
         }
         return;
       }
@@ -252,10 +257,20 @@ function SearchModal({
 
       const res = await Promise.all(apiCalls);
       const validTickets = res.filter((t): t is SmallTicket => t !== null);
-      
+
       // Only update state if this request wasn't aborted and query still matches
       if (!signal.aborted && currentSearchQueryRef.current === query) {
         setResults(validTickets);
+        if (validTickets.length === 0) {
+          setStatus("No results found");
+        } else {
+          setStatus("");
+        }
+        setLoading(false);
+        if (pendingSubmit.current && validTickets.length > 0) {
+          pendingSubmit.current = false;
+          window.open(`${window.location.origin}/&${validTickets[0].id}`, "_blank");
+        }
       }
     },
     [latestTicketNumber, api],
@@ -264,16 +279,6 @@ function SearchModal({
   // Smart search logic
   const performSearch = React.useCallback(
     async (query: string, signal: AbortSignal) => {
-      if (!query.trim()) {
-        setResults([]);
-        setHasSearched(false);
-        setSearchType("tickets");
-        return;
-      }
-
-      setHasSearched(true);
-      setLoading(true);
-
       try {
         const trimmedQuery = query.trim();
         const phoneDigits = parsePhoneNumber(trimmedQuery);
@@ -287,12 +292,23 @@ function SearchModal({
           // Only update state if this request wasn't aborted and query still matches
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
             setResults(data.customers || []);
+            if (data.customers?.length === 0) {
+              setStatus("No results found");
+            } else {
+              setStatus("");
+            }
+            setLoading(false);
+            if (pendingSubmit.current && data.customers && data.customers.length > 0) {
+              pendingSubmit.current = false;
+              window.open(`${window.location.origin}/$${data.customers[0].id}`, "_blank");
+            }
           }
         }
         // 3-digit ticket number
         else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
           setSearchType("tickets");
           await searchTicketNumber(trimmedQuery, signal);
+          return;
         }
         // Regular ticket number search
         else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
@@ -303,6 +319,16 @@ function SearchModal({
           // Only update state if this request wasn't aborted and query still matches
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
             setResults(data.tickets || []);
+            if (data.tickets?.length === 0) {
+              setStatus("No results found");
+            } else {
+              setStatus("");
+            }
+            setLoading(false);
+            if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
+              pendingSubmit.current = false;
+              window.open(`${window.location.origin}/&${data.tickets[0].id}`, "_blank");
+            }
           }
         }
         // Partial phone number
@@ -319,6 +345,16 @@ function SearchModal({
           // Only update state if this request wasn't aborted and query still matches
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
             setResults(data.customers || []);
+            if (data.customers?.length === 0) {
+              setStatus("No results found");
+            } else {
+              setStatus("");
+            }
+            setLoading(false);
+            if (pendingSubmit.current && data.customers && data.customers.length > 0) {
+              pendingSubmit.current = false;
+              window.open(`${window.location.origin}/$${data.customers[0].id}`, "_blank");
+            }
           }
         }
         // Text queries: search both and pick best
@@ -341,10 +377,25 @@ function SearchModal({
               if (customers.length > 0) {
                 setSearchType("customers");
                 setResults(customers);
+                setStatus("");
+                if (pendingSubmit.current) {
+                  pendingSubmit.current = false;
+                  window.open(`${window.location.origin}/$${customers[0].id}`, "_blank");
+                }
               } else {
                 setSearchType("tickets");
                 setResults(tickets);
+                if (tickets.length === 0) {
+                  setStatus("No results found");
+                } else {
+                  setStatus("");
+                }
+                if (pendingSubmit.current && tickets.length > 0) {
+                  pendingSubmit.current = false;
+                  window.open(`${window.location.origin}/&${tickets[0].id}`, "_blank");
+                }
               }
+              setLoading(false);
             }
           } catch {
             setSearchType("tickets");
@@ -354,6 +405,16 @@ function SearchModal({
             // Only update state if this request wasn't aborted and query still matches
             if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
               setResults(data.tickets || []);
+              if (data.tickets?.length === 0) {
+                setStatus("No results found");
+              } else {
+                setStatus("");
+              }
+              setLoading(false);
+              if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
+                pendingSubmit.current = false;
+                window.open(`${window.location.origin}/&${data.tickets[0].id}`, "_blank");
+              }
             }
           }
         }
@@ -365,10 +426,7 @@ function SearchModal({
         // Only clear results if not aborted
         if (!signal.aborted) {
           setResults([]);
-        }
-      } finally {
-        // Only update loading state if not aborted
-        if (!signal.aborted) {
+          setStatus("No results found");
           setLoading(false);
         }
       }
@@ -456,18 +514,13 @@ function SearchModal({
                 <span className="font-medium">Searching...</span>
               </div>
             )}
-            {!loading && hasSearched && results.length === 0 && (
+            {!loading && status && (
               <div className="flex items-center justify-center p-6 text-md text-outline">
-                No {searchType} found for "{search}"
-              </div>
-            )}
-            {!loading && !hasSearched && (
-              <div className="flex items-center justify-center p-6 text-md text-outline">
-                Start typing to search {searchType}...
+                {status}
               </div>
             )}
             {!loading &&
-              hasSearched &&
+              results.length > 0 &&
               results.map((item) => (
                 <NavigationButton
                   key={item.id}

@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import { signIn } from "aws-amplify/auth";
 import { motion } from "framer-motion";
 import { Mail, Eye, EyeOff } from "lucide-react";
-import { InlineMessage, InlineErrorMessage } from "../ui/AlertSystem";
-import type { AlertType } from "../ui/alertTypes";
+import { InlineErrorMessage } from "../ui/AlertSystem";
 import { ForgotPasswordPage } from "./ForgotPasswordPage";
 import type { AmplifyAuthUser } from "../../types";
 
@@ -27,8 +26,6 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [password, setPassword] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
-  const [message, setMessage] = useState<string>("");
-  const [messageType, setMessageType] = useState<AlertType>("error");
   const [showForgotPassword, setShowForgotPassword] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
@@ -67,7 +64,6 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
       } else {
         setError(parsed.message || "Login failed. Please try again.");
       }
-      setMessage("");
     } finally {
       setLoading(false);
     }
@@ -150,9 +146,6 @@ export function LoginPage({ onLoginSuccess }: LoginPageProps) {
               </div>
 
               {error && <InlineErrorMessage message={error} />}
-              {message && (
-                <InlineMessage message={message} type={messageType} />
-              )}
 
               <div className="flex items-center justify-between">
                 <button

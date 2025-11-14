@@ -12,22 +12,7 @@ import type { AmplifyAuthUser, IdTokenPayload } from "../types";
 
 type AuthUser = AmplifyAuthUser;
 
-/**
- * Helper: parse unknown thrown error into normalized { code, message }.
- * Use `unknown` in catch clauses and call this to read values safely.
- */
-function parseAuthError(err: unknown): { code?: string; message: string } {
-  if (err && typeof err === "object") {
-    // Some Amplify errors expose `.code` and `.message`
-    const maybe = err as { code?: unknown; message?: unknown };
-    const code = typeof maybe.code === "string" ? maybe.code : undefined;
-    const message =
-      typeof maybe.message === "string" ? maybe.message : String(err);
-    return { code, message };
-  }
-  // Fallback
-  return { message: String(err) };
-}
+
 
 /**
  * Helper: Safely extract the id token payload from the session object returned by `fetchAuthSession`.

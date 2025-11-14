@@ -25,7 +25,7 @@ export function InviteUserModal({
     setLoading(true);
 
     try {
-      const result = await apiClient.post("/invite-user", {
+      await apiClient.post("/invite-user", {
         email,
         firstName,
       });
