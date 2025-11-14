@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import checker from "vite-plugin-checker"; // ✅ add type + lint checking
+import checker from "vite-plugin-checker"; // add type + lint checking
 import packageJson from "./package.json";
 
 // https://vite.dev/config/
@@ -10,11 +10,14 @@ export default defineConfig({
   },
   plugins: [
     react({
-      // ✅ Enables React Fast Refresh and proper JSX transform
+      // Enables React Fast Refresh and proper JSX transform
       jsxImportSource: "react",
+      babel: {
+        plugins: ["babel-plugin-react-compiler"],
+      },
     }),
 
-    // ✅ Adds TypeScript checks in dev + build
+    // Adds TypeScript checks in dev + build
     // Temporarily disabled ESLint checks due to version compatibility issues
     checker({
       typescript: true,
@@ -43,7 +46,7 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
-    strictPort: true, // ✅ avoids silent port switching
+    strictPort: true, // avoids silent port switching
   },
 
   optimizeDeps: {

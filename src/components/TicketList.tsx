@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { STATUSES, DEVICES, convertStatus } from "../constants/appConstants.js";
@@ -232,7 +232,7 @@ export function TicketListView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ticketListKeybinds: KeyBind[] = [
+  const ticketListKeybinds = useMemo<KeyBind[]>(() => [
     {
       key: "H",
       description: "Home",
@@ -248,7 +248,7 @@ export function TicketListView({
       description: "New customer",
       category: "Navigation",
     },
-  ];
+  ], []);
 
   useRegisterKeybinds(ticketListKeybinds);
 

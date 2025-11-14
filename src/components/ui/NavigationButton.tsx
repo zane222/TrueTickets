@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React from "react";
 
 interface MiddleClickHandlers {
   onAuxClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -14,19 +14,16 @@ function useMiddleClick(
   onNavigate: () => void,
   targetUrl: string,
 ): MiddleClickHandlers {
-  const handleAuxClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      // Handle middle-click (auxclick event)
-      if (event.button === 1) {
-        event.preventDefault();
-        event.stopPropagation();
+  const handleAuxClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    // Handle middle-click (auxclick event)
+    if (event.button === 1) {
+      event.preventDefault();
+      event.stopPropagation();
 
-        // Open in new tab
-        window.open(targetUrl, "_blank", "noopener,noreferrer");
-      }
-    },
-    [targetUrl],
-  );
+      // Open in new tab
+      window.open(targetUrl, "_blank", "noopener,noreferrer");
+    }
+  };
 
   return {
     onAuxClick: handleAuxClick,

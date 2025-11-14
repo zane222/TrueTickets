@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { useApi } from "../hooks/useApi";
@@ -106,7 +106,7 @@ export default function NewCustomer({
   }, [customerId, loading]);
 
   // Register keybinds for this page
-  const newCustomerKeybinds: KeyBind[] = [
+  const newCustomerKeybinds = useMemo<KeyBind[]>(() => [
     {
       key: "H",
       description: "Home",
@@ -118,11 +118,11 @@ export default function NewCustomer({
       category: "Navigation",
     },
     {
-      key: "C",
-      description: "Cancel",
+      key: "ESC",
+      description: "Clear form",
       category: "Navigation",
     },
-  ];
+  ], []);
 
   useRegisterKeybinds(newCustomerKeybinds);
 

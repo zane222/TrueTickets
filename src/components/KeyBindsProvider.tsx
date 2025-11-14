@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode, useMemo } from 'react';
 import { KeyBindsContext } from '../contexts/KeyBindsContext';
 import type { KeyBind } from './ui/KeyBindsModal';
 
@@ -16,8 +16,10 @@ export function KeyBindsProvider({ children }: { children: ReactNode }) {
     },
   ]);
 
+  const value = useMemo(() => ({ keybinds, setKeybinds }), [keybinds]);
+
   return (
-    <KeyBindsContext.Provider value={{ keybinds, setKeybinds }}>
+    <KeyBindsContext.Provider value={value}>
       {children}
     </KeyBindsContext.Provider>
   );

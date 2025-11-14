@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { DEVICES, ITEMS_LEFT } from "../constants/appConstants.js";
@@ -212,7 +212,7 @@ function TicketEditor({
   }, [ticketId, customerId, loading]);
 
   // Register keybinds for this page
-  const ticketEditorKeybinds: KeyBind[] = [
+  const ticketEditorKeybinds = useMemo<KeyBind[]>(() => [
     {
       key: "H",
       description: "Home",
@@ -228,7 +228,7 @@ function TicketEditor({
       description: "Cancel",
       category: "Navigation",
     },
-  ];
+  ], []);
 
   useRegisterKeybinds(ticketEditorKeybinds);
 

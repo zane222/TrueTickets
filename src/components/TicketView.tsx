@@ -99,7 +99,7 @@ function TicketView({
       category: "Ticket",
     },
     {
-      key: "Ctrl + Tab",
+      key: "Tab + Enter",
       description: "Create comment",
       category: "Ticket",
     },

@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App, { ApiProvider } from "./App";
-import { AuthWrapper } from "./components/Auth";
+import { AuthWrapper } from "./components/AuthProvider";
 import { AlertProvider } from "./components/ui/AlertSystem";
 import "./index.css";
 

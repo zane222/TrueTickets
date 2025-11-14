@@ -48,7 +48,7 @@ function CustomerView({
   } = useChangeDetection(api, `/customers/${id}`);
 
   // Keyboard shortcuts
-  const customerViewKeybinds: KeyBind[] = [
+  const customerViewKeybinds = useMemo(() => [
     {
       key: "H",
       description: "Home",
@@ -69,7 +69,7 @@ function CustomerView({
       description: "New customer",
       category: "Navigation",
     },
-  ];
+  ], []);
 
   useRegisterKeybinds(customerViewKeybinds);
 
