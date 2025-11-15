@@ -454,24 +454,24 @@ function SearchModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
-      <div className="w-full max-w-6xl h-[85vh] sm:h-[80vh] md-card p-4 sm:p-8 space-y-4 sm:space-y-6 flex flex-col">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-2">
-          <div className="text-xl sm:text-2xl font-bold text-primary">
+    <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+      <div className="w-full max-w-6xl h-[80vh] md-card p-8 space-y-6 flex flex-col">
+        <div className="flex flex-row items-center justify-between gap-2">
+          <div className="text-2xl font-bold text-primary">
             Search {searchType === "customers" ? "Customers" : "Tickets"}
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleNewCustomer}
               title="New Customer"
-              className="md-btn-primary elev-1 text-md sm:text-base px-3 py-2 sm:px-4 sm:py-2"
+              className="md-btn-primary elev-1 text-base px-4 py-2"
               tabIndex={-1}
             >
               New Customer
             </button>
             <button
               onClick={onClose}
-              className="md-btn-surface elev-1 inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 p-0 touch-manipulation"
+              className="md-btn-surface elev-1 inline-flex items-center justify-center w-8 h-8 p-0 touch-manipulation"
               tabIndex={-1}
             >
               ×

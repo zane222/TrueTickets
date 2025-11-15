@@ -53,7 +53,7 @@ export function TopBar({
         <NavigationButton
           onClick={onHome}
           targetUrl={`${window.location.origin}/`}
-          className="text-base sm:text-xl font-bold tracking-wide flex-1 text-left cursor-pointer truncate min-w-0"
+          className="text-xl font-bold tracking-wide flex-1 text-left cursor-pointer truncate min-w-0"
           tabIndex={-1}
         >
           <span className="hidden sm:inline">

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { User, Printer, Edit, Loader2, Image, Download, Plus, X } from "lucide-react";
+import { User, Printer, Edit, Loader2, Image, Plus, X } from "lucide-react";
 import html2pdf from "html2pdf.js";
 import {
   getCurrentUser,
@@ -82,20 +82,40 @@ function TicketView({
 
     setUploading(true);
     try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString() || "";
+
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("attachable_type", "Ticket");
-        formData.append("attachable_id", String(id));
+
+        // Convert file to base64
+        const fileContent = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
 
         try {
-          // Post to dummy endpoint for testing
-          await fetch("https://httpbin.org/post", {
+          const response = await fetch("/upload-attachment", {
             method: "POST",
-            body: formData,
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              ticket_id: id,
+              image_data: fileContent,
+              file_name: file.name,
+            }),
           });
-          console.log(`File uploaded: ${file.name}`);
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error(`Error uploading ${file.name}:`, errorData);
+          } else {
+            console.log(`File uploaded: ${file.name}`);
+          }
         } catch (err) {
           console.error("Error uploading file:", err);
         }
@@ -445,95 +465,95 @@ function TicketView({
           <div className="relative mx-auto bg-white rounded-md shadow-lg overflow-hidden h-[150px] w-[520px]">
             <div ref={ticketCardRef} className="absolute inset-0 origin-top-left scale-[1.48]">
               <TicketCard
-                password={getTicketPassword(ticket)}
-                ticketNumber={ticket.number ?? ticket.id}
-                subject={
-                  ticket.subject +
-                  (getTicketDeviceInfo(ticket).estimatedTime
-                    ? " [" + getTicketDeviceInfo(ticket).estimatedTime + "]"
-                    : "")
-                }
-                itemsLeft={formatItemsLeft(
-                  getTicketDeviceInfo(ticket).itemsLeft,
-                )}
-                name={
-                  ticket.customer?.business_and_full_name ||
-                  ticket.customer?.fullname ||
-                  ""
-                }
-                creationDate={fmtDateAndTime(ticket.created_at)}
-                phoneNumber={phone}
+              password={getTicketPassword(ticket)}
+              ticketNumber={ticket.number ?? ticket.id}
+              subject={
+                ticket.subject +
+                (getTicketDeviceInfo(ticket).estimatedTime
+                  ? " [" + getTicketDeviceInfo(ticket).estimatedTime + "]"
+                  : "")
+              }
+              itemsLeft={formatItemsLeft(
+                getTicketDeviceInfo(ticket).itemsLeft,
+              )}
+              name={
+                ticket.customer?.business_and_full_name ||
+                ticket.customer?.fullname ||
+                ""
+              }
+              creationDate={fmtDateAndTime(ticket.created_at)}
+              phoneNumber={phone}
               />
             </div>
           </div>
 
           {/* Status and Attachments side by side */}
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-2 gap-6 items-start">
             {/* Status buttons */}
             <div className="md-card p-4 space-y-3">
-            <p className="text-md font-semibold">Status:</p>
-            <div className="flex flex-col gap-2">
-              {STATUSES.map((status, _index) => {
-                const active = convertStatus(ticket.status) === status;
-                const isUpdating = updatingStatus === status;
-                return (
-                  <motion.button
-                    key={status}
-                    onClick={() => updateTicketStatus(status)}
-                    disabled={isUpdating || active}
-                    className={`${active ? "md-btn-primary" : "md-btn-surface"} text-left relative overflow-hidden py-2 text-base touch-manipulation w-full ${
-                      isUpdating || active ? "cursor-not-allowed" : ""
-                    }`}
-                    style={active ? { borderRadius: "12px" } : {}}
-                    whileTap={{ scale: 0.95 }}
-                    whileHover={
-                      !active && !isUpdating
+              <p className="text-md font-semibold">Status:</p>
+              <div className="flex flex-col gap-2">
+                {STATUSES.map((status, _index) => {
+                  const active = convertStatus(ticket.status) === status;
+                  const isUpdating = updatingStatus === status;
+                  return (
+                    <motion.button
+                      key={status}
+                      onClick={() => updateTicketStatus(status)}
+                      disabled={isUpdating || active}
+                      className={`${active ? "md-btn-primary" : "md-btn-surface"} text-left relative overflow-hidden py-2 text-base touch-manipulation w-full ${
+                        isUpdating || active ? "cursor-not-allowed" : ""
+                        }`}
+                      style={active ? { borderRadius: "12px" } : {}}
+                      whileTap={{ scale: 0.95 }}
+                      whileHover={
+                        !active && !isUpdating
                         ? {
-                            backgroundColor: active
-                              ? "var(--md-sys-color-primary)"
-                              : "#414144",
-                            filter: active ? "brightness(1.05)" : "none",
-                          }
+                          backgroundColor: active
+                          ? "var(--md-sys-color-primary)"
+                          : "#414144",
+                          filter: active ? "brightness(1.05)" : "none",
+                        }
                         : {}
-                    }
-                    animate={
-                      isUpdating
+                      }
+                      animate={
+                        isUpdating
                         ? {
-                            backgroundColor: active
-                              ? "var(--md-sys-color-primary)"
-                              : "var(--md-sys-color-primary-container)",
-                            color: active
-                              ? "var(--md-sys-color-on-primary)"
-                              : "var(--md-sys-color-on-primary-container)",
-                          }
+                          backgroundColor: active
+                          ? "var(--md-sys-color-primary)"
+                          : "var(--md-sys-color-primary-container)",
+                          color: active
+                          ? "var(--md-sys-color-on-primary)"
+                          : "var(--md-sys-color-on-primary-container)",
+                        }
                         : {
-                            backgroundColor: active
-                              ? "var(--md-sys-color-primary)"
-                              : "#2c2c2f",
-                            color: active
-                              ? "var(--md-sys-color-on-primary)"
-                              : "var(--md-sys-color-on-surface)",
-                          }
-                    }
-                    transition={{ duration: 0.15 }}
-                    tabIndex={-1}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span>{status}</span>
+                          backgroundColor: active
+                          ? "var(--md-sys-color-primary)"
+                          : "#2c2c2f",
+                          color: active
+                          ? "var(--md-sys-color-on-primary)"
+                          : "var(--md-sys-color-on-surface)",
+                        }
+                      }
+                      transition={{ duration: 0.15 }}
+                      tabIndex={-1}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{status}</span>
+                        {isUpdating && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0 }}
+                            className="ml-2"
+                          >
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          </motion.div>
+                        )}
+                      </div>
+                      {/* Loading overlay animation */}
                       {isUpdating && (
                         <motion.div
-                          initial={{ opacity: 0, scale: 0 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0 }}
-                          className="ml-2"
-                        >
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        </motion.div>
-                      )}
-                    </div>
-                    {/* Loading overlay animation */}
-                    {isUpdating && (
-                      <motion.div
                         className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
                         initial={{ x: "-100%" }}
                         animate={{ x: "100%" }}
@@ -542,103 +562,83 @@ function TicketView({
                           repeat: Infinity,
                           ease: "linear",
                         }}
-                      />
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
+                        />
+                      )}
+                    </motion.button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Attachments Section */}
-            <div className="md-card p-4 space-y-3">
+            {/* Attachments Section - Full view with attachments */}
+            <div
+              ref={attachmentsRef}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              className={`md-card p-4 space-y-3 rounded-lg border-2 transition-colors min-h-[100px] ${
+                dragActive
+                ? "border-dashed border-primary bg-primary/10 brightness-110"
+                : "border-solid border-gray-300"
+              }`}
+            >
               <div className="flex justify-between items-center">
                 <p className="text-md font-semibold">Attachments</p>
                 <button
                   onClick={handleAddAttachment}
                   disabled={uploading}
-                  className="p-1 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50"
+                  className="p-1 hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
                   title="Add attachment"
                 >
                   {uploading ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
                 </button>
               </div>
 
-              {/* Drag and drop area or attachments grid */}
-              {ticket.attachments && ticket.attachments.length > 0 ? (
-                <div
-                  ref={attachmentsRef}
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                  className={`grid grid-cols-1 gap-4 rounded-lg border-2 transition-colors ${
-                    dragActive
-                      ? "border-dashed border-primary bg-primary/5"
-                      : "border-transparent"
-                  }`}
-                >
-                  {ticket.attachments.map((attachment) => {
-                    const decodedUrl = decodeUrl(attachment.file?.url || "");
-                    return (
-                      <div
-                        key={attachment.id}
-                        className="border border-outline rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow max-h-45"
-                        onClick={() =>
-                          setFullScreenAttachment({
-                            id: attachment.id,
-                            url: decodedUrl,
-                            fileName: attachment.file_name,
-                          })
-                        }
-                      >
-                        {attachment.file?.url && (
-                          <img
-                            src={decodedUrl}
-                            alt={attachment.file_name}
-                            className="w-full h-auto max-h-64 object-cover"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div
-                  ref={attachmentsRef}
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                  className={`p-6 rounded-lg border-2 border-dashed transition-colors text-center ${
-                    dragActive
-                      ? "border-primary bg-primary/5"
-                      : "border-outline/30"
-                  }`}
-                >
-                  <Image className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm text-outline">
-                    {dragActive ? "Upload file" : "Drag and drop files here or click the + button to add attachments"}
-                  </p>
-                </div>
-              )}
+              {/* Attachments grid */}
+              <div className="grid grid-cols-1 gap-4">
+                {ticket.attachments.map((attachment) => {
+                  const decodedUrl = decodeUrl(attachment.file?.url || "");
+                  return (
+                    <div
+                      key={attachment.id}
+                      className="border border-outline rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow max-h-45"
+                      onClick={() =>
+                        setFullScreenAttachment({
+                          id: attachment.id,
+                          url: decodedUrl,
+                          fileName: attachment.file_name,
+                        })
+                      }
+                    >
+                      {attachment.file?.url && (
+                        <img
+                        src={decodedUrl}
+                        alt={attachment.file_name}
+                        className="w-full h-auto max-h-64 object-cover"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
               {/* Hidden file inputs */}
               <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/*,.pdf,.doc,.docx"
-                onChange={(e) => handleFileUpload(e.target.files)}
-                className="hidden"
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.doc,.docx"
+              onChange={(e) => handleFileUpload(e.target.files)}
+              className="hidden"
               />
               <input
-                ref={cameraInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => handleFileUpload(e.target.files)}
-                className="hidden"
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => handleFileUpload(e.target.files)}
+              className="hidden"
               />
             </div>
           </div>
@@ -649,9 +649,9 @@ function TicketView({
           <div className="md-card p-6">
             <div className="text-lg font-semibold mb-4">Comments</div>
             <CommentsBox
-              ticketId={ticket.id}
-              comments={ticket.comments}
-              _goTo={goTo}
+            ticketId={ticket.id}
+            comments={ticket.comments}
+            _goTo={goTo}
             />
           </div>
         </aside>
@@ -683,9 +683,9 @@ function TicketView({
               <X size={24} className="text-white" />
             </button>
             <img
-              src={fullScreenAttachment.url}
-              alt={fullScreenAttachment.fileName}
-              className="max-w-[90vw] max-h-[90vh] object-contain"
+            src={fullScreenAttachment.url}
+            alt={fullScreenAttachment.fileName}
+            className="max-w-[90vw] max-h-[90vh] object-contain"
             />
           </div>
         </div>

@@ -3,9 +3,9 @@ import apiClient from "../api/apiClient";
 import { useAlertMethods } from "../components/ui/AlertSystem";
 
 interface ApiMethods {
-  get: <T = unknown>(path: string) => Promise<T>;
-  post: <T = unknown>(path: string, body?: unknown) => Promise<T>;
-  put: <T = unknown>(path: string, body?: unknown) => Promise<T>;
+  get: <T = unknown>(path: string, headers?: Record<string, string>) => Promise<T>;
+  post: <T = unknown>(path: string, body?: unknown, headers?: Record<string, string>) => Promise<T>;
+  put: <T = unknown>(path: string, body?: unknown, headers?: Record<string, string>) => Promise<T>;
   del: <T = unknown>(path: string) => Promise<T>;
 }
 
@@ -18,9 +18,9 @@ export function useApi(): ApiMethods {
 
   const api = useMemo(
     () => ({
-    get: async <T = unknown>(path: string): Promise<T> => {
+    get: async <T = unknown>(path: string, headers?: Record<string, string>): Promise<T> => {
       try {
-        return await apiClient.get<T>(path);
+        return await apiClient.get<T>(path, headers);
       } catch (err: unknown) {
         console.error("API GET error:", err);
         error(
@@ -31,9 +31,9 @@ export function useApi(): ApiMethods {
         throw err;
       }
     },
-    post: async <T = unknown>(path: string, body?: unknown): Promise<T> => {
+    post: async <T = unknown>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T> => {
       try {
-        return await apiClient.post<T>(path, body);
+        return await apiClient.post<T>(path, body, headers);
       } catch (err: unknown) {
         console.error("API POST error:", err);
         error(
@@ -44,9 +44,9 @@ export function useApi(): ApiMethods {
         throw err;
       }
     },
-    put: async <T = unknown>(path: string, body?: unknown): Promise<T> => {
+    put: async <T = unknown>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T> => {
       try {
-        return await apiClient.put<T>(path, body);
+        return await apiClient.put<T>(path, body, headers);
       } catch (err: unknown) {
         console.error("API PUT error:", err);
         error(

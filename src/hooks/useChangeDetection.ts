@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 interface ApiClient {
-  get: (path: string) => Promise<unknown>;
+  get: (path: string, headers?: Record<string, string>) => Promise<unknown>;
 }
 
 interface UseChangeDetectionReturn {
@@ -13,41 +13,9 @@ interface UseChangeDetectionReturn {
 }
 
 /**
- * Removes pdf_url and attachments from data (both top-level and nested in customer)
- * @param data - The data object to filter
- * @returns Filtered data without pdf_url and attachments fields
- */
-function removePdfUrls(data: unknown): unknown {
-  if (!data || typeof data !== "object") return data;
-
-  // Filter out top-level pdf_url and attachments (rename to _pdf_url and _attachments to avoid unused-var lint)
-  const {
-    pdf_url: _pdf_url,
-    attachments: _attachments,
-    ...filteredData
-  } = data as Record<string, unknown>;
-
-  // Filter out customer.pdf_url and customer.attachments if they exist (rename to _customerPdfUrl and _customerAttachments to avoid unused-var lint)
-  if (
-    filteredData.customer &&
-    typeof filteredData.customer === "object" &&
-    filteredData.customer !== null &&
-    ("pdf_url" in filteredData.customer ||
-      "attachments" in filteredData.customer)
-  ) {
-    const {
-      pdf_url: _customerPdfUrl,
-      attachments: _customerAttachments,
-      ...filteredCustomer
-    } = filteredData.customer as Record<string, unknown>;
-    filteredData.customer = filteredCustomer;
-  }
-
-  return filteredData;
-}
-
-/**
  * Custom hook for change detection polling
+ * The backend (Lambda) handles checking if data was modified via If-Modified-Since header.
+ * Returns 304 if not modified, or 200 with updated data if modified.
  * @param api - API client instance
  * @param endpoint - API endpoint to monitor
  * @param intervalMs - Polling interval in milliseconds (default: 30000)
@@ -59,10 +27,9 @@ export function useChangeDetection(
   intervalMs: number = 30000,
 ): UseChangeDetectionReturn {
   const [hasChanged, setHasChanged] = useState(false);
-  const [_originalData, setOriginalData] = useState<unknown>(null);
   const [isPolling, setIsPolling] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const originalDataRef = useRef<unknown>(null);
+  const updatedAtRef = useRef<string | null>(null);
 
   const startPolling = useCallback(
     (initialData: unknown) => {
@@ -72,39 +39,41 @@ export function useChangeDetection(
         intervalRef.current = null;
       }
 
-      // Remove pdf_url from initial data
-      const filteredData = removePdfUrls(initialData);
+      // Extract and store the updated_at timestamp from initial data
+      const initialUpdatedAt = (initialData as Record<string, unknown>).updated_at ||
+        ((initialData as { ticket?: Record<string, unknown> }).ticket?.updated_at) ||
+        ((initialData as { customer?: Record<string, unknown> }).customer?.updated_at) ||
+        new Date().toISOString();
+      updatedAtRef.current = typeof initialUpdatedAt === 'string' ? initialUpdatedAt : new Date().toISOString();
 
-      setOriginalData(filteredData);
-      originalDataRef.current = filteredData; // Store in ref for stable reference
       setIsPolling(true);
       setHasChanged(false);
 
       intervalRef.current = setInterval(async () => {
         try {
-          const currentData = (await api.get(endpoint)) as Record<
+          // Prepare If-Modified-Since header with the timestamp from initial fetch
+          const headers: Record<string, string> = {};
+          if (updatedAtRef.current) {
+            headers["If-Modified-Since"] = updatedAtRef.current;
+          }
+
+          const currentData = (await api.get(endpoint, headers)) as Record<
             string,
             unknown
           >;
-          const data =
-            (currentData as { ticket?: unknown; customer?: unknown }).ticket ||
-            (currentData as { ticket?: unknown; customer?: unknown })
-              .customer ||
-            currentData;
+          
+          // If response is empty (304 Not Modified), backend confirms no changes
+          if (!currentData || Object.keys(currentData).length === 0) {
+            return;
+          }
 
-          // Remove pdf_url from current data and compare
-          const filteredCurrentData = removePdfUrls(data);
-
-          const originalStr = JSON.stringify(originalDataRef.current);
-          const currentStr = JSON.stringify(filteredCurrentData);
-
-          if (originalDataRef.current && originalStr !== currentStr) {
-            setHasChanged(true);
-            setIsPolling(false);
-            if (intervalRef.current) {
-              clearInterval(intervalRef.current);
-              intervalRef.current = null;
-            }
+          // If we got data back (200 response), it means the backend detected changes
+          // Set hasChanged = true and stop polling
+          setHasChanged(true);
+          setIsPolling(false);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
           }
         } catch (error) {
           console.error("Error checking for changes:", error);
@@ -125,10 +94,14 @@ export function useChangeDetection(
   const resetPolling = useCallback(
     (newData: unknown) => {
       stopPolling();
-      // Remove pdf_url from new data
-      const filteredData = removePdfUrls(newData);
-      setOriginalData(filteredData);
-      originalDataRef.current = filteredData; // Update the ref as well
+      
+      // Update the stored updated_at timestamp
+      const newUpdatedAt = (newData as Record<string, unknown>).updated_at ||
+        ((newData as { ticket?: Record<string, unknown> }).ticket?.updated_at) ||
+        ((newData as { customer?: Record<string, unknown> }).customer?.updated_at) ||
+        updatedAtRef.current;
+      updatedAtRef.current = typeof newUpdatedAt === 'string' ? newUpdatedAt : updatedAtRef.current;
+      
       setHasChanged(false);
     },
     [stopPolling],

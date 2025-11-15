@@ -3,6 +3,7 @@ import { fetchAuthSession, AuthSession } from "aws-amplify/auth";
 interface RequestOptions {
   method?: string;
   body?: unknown;
+  headers?: Record<string, string>;
 }
 
 interface ApiError extends Error {
@@ -19,6 +20,18 @@ class ApiClient {
     this.baseUrl = baseUrl;
     this.cachedSession = null;
     this.sessionExpiry = null;
+  }
+
+  private isNetworkError(error: unknown): error is Error {
+    return error instanceof Error && error.message === "Failed to fetch";
+  }
+
+  private isApiError(error: unknown): error is ApiError {
+    return (
+      error instanceof Error &&
+      "status" in error &&
+      typeof (error as ApiError).status === "number"
+    );
   }
 
   async getAuthHeaders(isMultipart = false): Promise<Record<string, string>> {
@@ -89,11 +102,22 @@ class ApiClient {
     try {
       const headers = await this.getAuthHeaders(isMultipart);
 
+      // Merge custom headers with auth headers
+      const mergedHeaders = {
+        ...headers,
+        ...(options.headers || {}),
+      };
+
       const response = await fetch(url, {
         method,
-        headers,
+        headers: mergedHeaders,
         body: isMultipart ? body : body ? JSON.stringify(body) : undefined,
       });
+
+      // Handle 304 Not Modified - treat it as a successful response with empty body
+      if (response.status === 304) {
+        return {} as T;
+      }
 
       if (!response.ok) {
         // Read the response body exactly once to avoid consuming the body stream multiple times
@@ -117,11 +141,18 @@ class ApiClient {
             this.cachedSession = null;
             this.sessionExpiry = null;
             const newHeaders = await this.getAuthHeaders(isMultipart);
+            const mergedRetryHeaders = {
+              ...newHeaders,
+              ...(options.headers || {}),
+            };
             const retryResponse = await fetch(url, {
               method,
-              headers: newHeaders,
+              headers: mergedRetryHeaders,
               body: isMultipart ? body : body ? JSON.stringify(body) : undefined,
             });
+            if (retryResponse.status === 304) {
+              return {} as T;
+            }
             if (!retryResponse.ok) {
               // Read retry response body once and parse if possible
               let retryParsed: unknown = null;
@@ -148,7 +179,16 @@ class ApiClient {
               throw err;
             }
             return (await retryResponse.json()) as T;
-          } catch {
+          } catch (retryError) {
+            // If this is a network error (not an API error), re-throw it as-is
+            if (this.isNetworkError(retryError)) {
+              throw retryError;
+            }
+            // If it's an ApiError with a status code, re-throw it
+            if (this.isApiError(retryError)) {
+              throw retryError;
+            }
+            // Otherwise it's an auth issue
             throw new Error("Authentication failed. Please log in again.");
           }
         } else {
@@ -172,12 +212,12 @@ class ApiClient {
 
       // Check content type to determine how to parse response
       const contentType = response.headers.get("content-type") || "";
-      
+
       if (contentType.includes("image") || contentType.includes("application/octet-stream")) {
         // For binary/image responses, return blob
         return (await response.blob()) as T;
       }
-      
+
       return (await response.json()) as T;
     } catch (error) {
       console.error("API request failed:", error);
@@ -186,16 +226,16 @@ class ApiClient {
   }
 
   // API methods (generic)
-  async get<T = unknown>(path: string): Promise<T> {
-    return this.request<T>(path, { method: "GET" });
+  async get<T = unknown>(path: string, customHeaders?: Record<string, string>): Promise<T> {
+    return this.request<T>(path, { method: "GET", headers: customHeaders });
   }
 
-  async post<T = unknown>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>(path, { method: "POST", body });
+  async post<T = unknown>(path: string, body?: unknown, customHeaders?: Record<string, string>): Promise<T> {
+    return this.request<T>(path, { method: "POST", body, headers: customHeaders });
   }
 
-  async put<T = unknown>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>(path, { method: "PUT", body });
+  async put<T = unknown>(path: string, body?: unknown, customHeaders?: Record<string, string>): Promise<T> {
+    return this.request<T>(path, { method: "PUT", body, headers: customHeaders });
   }
 
   async del<T = unknown>(path: string): Promise<T> {

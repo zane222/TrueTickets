@@ -16,7 +16,7 @@ fn get_cors_headers() -> Vec<(&'static str, &'static str)> {
         ("Access-Control-Allow-Origin", "*"),
         (
             "Access-Control-Allow-Headers",
-            "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+            "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,If-Modified-Since",
         ),
         ("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS"),
         ("Access-Control-Max-Age", "86400"),
@@ -127,11 +127,11 @@ fn can_manage_users(user_groups: &[String]) -> bool {
 /// Generate a secure temporary password that meets Cognito requirements
 fn generate_temp_password() -> String {
     use rand::Rng;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Generate 6 random digits
     let digits: String = (0..6)
-        .map(|_| rng.gen_range(0..10).to_string())
+        .map(|_| rng.random_range(0..10).to_string())
         .collect();
 
     // Add required special characters to ensure complexity
@@ -145,11 +145,19 @@ async fn handle_repairshopr_proxy(
 ) -> Result<Response<Body>, String> {
     let method = event.method().to_string();
 
+    // Extract If-Modified-Since header if present (used for conditional polling)
+    let if_modified_since = event
+        .headers()
+        .get("if-modified-since")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
     // Extract request body
     let body = match event.body() {
         Body::Empty => None,
         Body::Text(s) => Some(s.clone()),
         Body::Binary(b) => Some(String::from_utf8_lossy(b).to_string()),
+        _ => None,
     };
 
     // Build the full URL with query parameters
@@ -208,6 +216,27 @@ async fn handle_repairshopr_proxy(
                 .text()
                 .await
                 .unwrap_or_else(|_| "{}".to_string());
+
+            // Check If-Modified-Since header for GET requests with polling
+            // If the resource hasn't been modified since the header timestamp, return empty response
+            if method == "GET" && let Some(if_modified_since) = if_modified_since {
+                // Try to parse response and extract updated_at timestamp
+                if let Ok(response_json) = serde_json::from_str::<Value>(&response_body) {
+                    let updated_at = response_json
+                        .get("ticket").and_then(|t| t.get("updated_at"))
+                        .or_else(|| response_json.get("customer").and_then(|c| c.get("updated_at")))
+                        .and_then(|u| u.as_str())
+                        .map(|s| s.to_string());
+
+                    // Compare timestamps (ISO 8601 format strings compare correctly lexicographically)
+                    // If updated_at is not newer than if_modified_since, return empty response
+                    if let Some(updated_at) = updated_at && updated_at <= if_modified_since {
+                        // Resource not modified, return empty response with 304 status
+                        return Ok(success_response(304, "{}".to_string()));
+                    }
+                }
+            }
+
             Ok(success_response(status, response_body))
         }
         Err(e) => {
@@ -238,6 +267,7 @@ async fn handle_user_invitation(event: &Request, cognito_client: &CognitoClient)
                 }
             }
         }
+        _ => "{}",
     };
 
     let body: Value = match serde_json::from_str(body_str) {
@@ -548,7 +578,8 @@ async fn handle_update_user_group(event: &Request, cognito_client: &CognitoClien
                     )
                 }
             }
-        }
+        },
+        _ => "{}",
     };
 
     let body: Value = match serde_json::from_str(body_str) {
@@ -705,6 +736,122 @@ async fn handle_update_user_group(event: &Request, cognito_client: &CognitoClien
     }
 }
 
+/// Handle attachment upload to ticket
+async fn handle_upload_attachment(event: &Request, api_key: &str) -> Response<Body> {
+    let body_str = match event.body() {
+        Body::Empty => "{}",
+        Body::Text(s) => s,
+        Body::Binary(b) => {
+            match std::str::from_utf8(b) {
+                Ok(s) => s,
+                Err(_) => {
+                    return error_response(
+                        400,
+                        "Invalid request body",
+                        "Could not parse request body as UTF-8",
+                        None,
+                    )
+                }
+            }
+        },
+        _ => "{}",
+    };
+
+    let body: Value = match serde_json::from_str(body_str) {
+        Ok(v) => v,
+        Err(_) => {
+            return error_response(
+                400,
+                "Invalid JSON",
+                "Could not parse request body as JSON",
+                None,
+            )
+        }
+    };
+
+    let ticket_id = match body.get("ticket_id").and_then(|v| v.as_i64()) {
+        Some(id) => id,
+        None => {
+            return error_response(
+                400,
+                "Missing parameter",
+                "ticket_id is required and must be an integer",
+                None,
+            )
+        }
+    };
+
+    let image_data = match body.get("image_data").and_then(|v| v.as_str()) {
+        Some(data) => data,
+        None => {
+            return error_response(
+                400,
+                "Missing parameter",
+                "image_data is required (base64 encoded data URL)",
+                None,
+            )
+        }
+    };
+
+    let file_name = body
+        .get("file_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("attachment.png");
+
+    // Extract base64 data from data URL if needed
+    let base64_data = if image_data.starts_with("data:") {
+        // Format: data:image/png;base64,xxxx
+        match image_data.split(',').last() {
+            Some(data) => data,
+            None => {
+                return error_response(
+                    400,
+                    "Invalid data URL",
+                    "Could not extract base64 from data URL",
+                    None,
+                )
+            }
+        }
+    } else {
+        image_data
+    };
+
+    // Send to RepairShopr API as attachment
+    let url = format!("{}/tickets/{}/attachments", TARGET_URL, ticket_id);
+
+    let attachment_body = json!({
+        "attachment": {
+            "data": base64_data,
+            "filename": file_name,
+        }
+    });
+
+    let request_builder = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .body(attachment_body.to_string());
+
+    match request_builder.send().await {
+        Ok(response) => {
+            let status = response.status().as_u16();
+            let response_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "{}".to_string());
+            success_response(status, response_body)
+        }
+        Err(e) => {
+            error_response(
+                502,
+                "Bad Gateway",
+                &format!("Failed to upload attachment: {}", e),
+                Some("Check that the ticket ID is valid and the API key has permission"),
+            )
+        }
+    }
+}
+
 /// Handle the Lambda event
 async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient) -> Result<Response<Body>, String> {
     // Get API key from environment
@@ -743,6 +890,8 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient) -> 
         return Ok(handle_list_users(&event, cognito_client).await);
     } else if path == "/update-user-group" && method == "POST" {
         return Ok(handle_update_user_group(&event, cognito_client).await);
+    } else if path == "/upload-attachment" && method == "POST" {
+        return Ok(handle_upload_attachment(&event, &api_key).await);
     } else if path.starts_with("/api") {
         // Route to RepairShopr proxy for /api/* paths
         let modified_path = path.strip_prefix("/api").unwrap_or("");
