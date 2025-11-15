@@ -52,11 +52,14 @@ function TicketView({
   const [loading, setLoading] = useState(true);
   const ticketCardRef = useRef<HTMLDivElement | null>(null);
   const pdfIntervalRef = useRef<number | null>(null);
+  const parentContainerRef = useRef<HTMLDivElement | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null); // Track which status is being updated
   const [fullScreenAttachment, setFullScreenAttachment] = useState<{ id: number; url: string; fileName?: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [ticketCardScale, setTicketCardScale] = useState<number>(1.48);
+  const [windowWidth, setWindowWidth] = useState<number>(window.innerWidth);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef<HTMLDivElement>(null);
@@ -304,6 +307,28 @@ function TicketView({
     }
   }, [hasChanged, _dataChanged]);
 
+  // Update window width on resize
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Calculate ticket card scale based on container width
+  useEffect(() => {
+    if (parentContainerRef.current) {
+      const width = parentContainerRef.current.offsetWidth;
+      const baseWidth = 520;
+      const baseScale = 1.48;
+      // Only scale on mobile, keep desktop at 1.48
+      const newScale = width >= baseWidth ? 1.48 : Math.max((width / baseWidth) * baseScale, 0.9);
+      setTicketCardScale(newScale);
+    }
+  }, [windowWidth]);
+
   const updateTicketStatus = async (status: string): Promise<void> => {
     if (!ticket || updatingStatus || convertStatus(ticket.status) === status)
       return; // Prevent multiple updates or updating to the same status
@@ -460,10 +485,10 @@ function TicketView({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT SIDE: Ticket + Status + Attachments */}
-        <div className="lg:col-span-6 space-y-20 w-[520px]">
+        <div ref={parentContainerRef} className="lg:col-span-6 space-y-20 w-full lg:w-[520px]">
           {/* Ticket Card - Scaled up */}
-          <div className="relative mx-auto bg-white rounded-md shadow-lg overflow-hidden h-[150px] w-[520px]">
-            <div ref={ticketCardRef} className="absolute inset-0 origin-top-left scale-[1.48]">
+          <div className="relative mx-auto bg-white rounded-md shadow-lg overflow-hidden h-[150px] w-full lg:w-[520px] max-w-[520px]">
+            <div ref={ticketCardRef} className="absolute inset-0 origin-top-left" style={{ transform: `scale(${ticketCardScale})` }}>
               <TicketCard
               password={getTicketPassword(ticket)}
               ticketNumber={ticket.number ?? ticket.id}
