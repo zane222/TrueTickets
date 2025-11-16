@@ -15,7 +15,6 @@ import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Customer, SmallTicket, Phone } from "../types/api";
-import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface CustomerViewProps {
   id: number;
@@ -45,7 +44,7 @@ function CustomerView({
     startPolling,
     stopPolling,
     resetPolling: _resetPolling,
-  } = useChangeDetection(api, `/customers/${id}`);
+  } = useChangeDetection(`/customers/${id}`);
 
   // Keyboard shortcuts
   const customerViewKeybinds = useMemo(() => [

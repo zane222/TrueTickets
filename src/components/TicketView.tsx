@@ -71,7 +71,7 @@ function TicketView({
     startPolling,
     stopPolling,
     resetPolling: _resetPolling,
-  } = useChangeDetection(api, `/tickets/${id}`);
+  } = useChangeDetection(`/tickets/${id}`);
 
   // Helper function to decode \u escape sequences in URLs
   const decodeUrl = useCallback((url: string): string => {
@@ -487,28 +487,30 @@ function TicketView({
         {/* LEFT SIDE: Ticket + Status + Attachments */}
         <div ref={parentContainerRef} className="lg:col-span-6 space-y-20 w-full lg:w-[520px]">
           {/* Ticket Card - Scaled up */}
-          <div className="relative mx-auto bg-white rounded-md shadow-lg overflow-hidden h-[150px] w-full lg:w-[520px] max-w-[520px]">
-            <div ref={ticketCardRef} className="absolute inset-0 origin-top-left" style={{ transform: `scale(${ticketCardScale})` }}>
-              <TicketCard
-              password={getTicketPassword(ticket)}
-              ticketNumber={ticket.number ?? ticket.id}
-              subject={
-                ticket.subject +
-                (getTicketDeviceInfo(ticket).estimatedTime
-                  ? " [" + getTicketDeviceInfo(ticket).estimatedTime + "]"
-                  : "")
-              }
-              itemsLeft={formatItemsLeft(
-                getTicketDeviceInfo(ticket).itemsLeft,
-              )}
-              name={
-                ticket.customer?.business_and_full_name ||
-                ticket.customer?.fullname ||
-                ""
-              }
-              creationDate={fmtDateAndTime(ticket.created_at)}
-              phoneNumber={phone}
-              />
+          <div className="relative mx-auto bg-white rounded-lg shadow-lg overflow-hidden h-[150px] w-full lg:w-[520px] max-w-[520px]">
+            <div className="absolute inset-0 origin-top-left" style={{ transform: `scale(${ticketCardScale})` }}>
+              <div ref={ticketCardRef}> {/* This div can't have any styling on it because HTML2PDF needs to read it */}
+                <TicketCard
+                password={getTicketPassword(ticket)}
+                ticketNumber={ticket.number ?? ticket.id}
+                subject={
+                  ticket.subject +
+                  (getTicketDeviceInfo(ticket).estimatedTime
+                    ? " [" + getTicketDeviceInfo(ticket).estimatedTime + "]"
+                    : "")
+                }
+                itemsLeft={formatItemsLeft(
+                  getTicketDeviceInfo(ticket).itemsLeft,
+                )}
+                name={
+                  ticket.customer?.business_and_full_name ||
+                  ticket.customer?.fullname ||
+                  ""
+                }
+                creationDate={fmtDateAndTime(ticket.created_at)}
+                phoneNumber={phone}
+                />
+              </div>
             </div>
           </div>
 
@@ -530,64 +532,33 @@ function TicketView({
                         isUpdating || active ? "cursor-not-allowed" : ""
                         }`}
                       style={active ? { borderRadius: "12px" } : {}}
-                      whileTap={{ scale: 0.95 }}
-                      whileHover={
-                        !active && !isUpdating
-                        ? {
-                          backgroundColor: active
-                          ? "var(--md-sys-color-primary)"
-                          : "#414144",
-                          filter: active ? "brightness(1.05)" : "none",
-                        }
-                        : {}
-                      }
-                      animate={
-                        isUpdating
-                        ? {
-                          backgroundColor: active
-                          ? "var(--md-sys-color-primary)"
-                          : "var(--md-sys-color-primary-container)",
-                          color: active
-                          ? "var(--md-sys-color-on-primary)"
-                          : "var(--md-sys-color-on-primary-container)",
-                        }
-                        : {
-                          backgroundColor: active
-                          ? "var(--md-sys-color-primary)"
-                          : "#2c2c2f",
-                          color: active
-                          ? "var(--md-sys-color-on-primary)"
-                          : "var(--md-sys-color-on-surface)",
-                        }
-                      }
-                      transition={{ duration: 0.15 }}
                       tabIndex={-1}
+                      initial={{
+                        minHeight: active ? "3.5rem" : "2rem",
+                        paddingTop: active ? "1rem" : "0.5rem",
+                        paddingBottom: active ? "1rem" : "0.5rem",
+                      }}
+                      animate={{
+                        minHeight: active ? "3.5rem" : "2rem",
+                        paddingTop: active ? "1rem" : "0.5rem",
+                        paddingBottom: active ? "1rem" : "0.5rem",
+                      }}
+                      transition={{
+                        duration: 0.2,
+                        ease: "easeInOut",
+                      }}
                     >
                       <div className="flex items-center justify-between">
                         <span>{status}</span>
                         {isUpdating && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0 }}
-                            className="ml-2"
-                          >
+                          <div className="ml-2">
                             <Loader2 className="w-4 h-4 animate-spin" />
-                          </motion.div>
+                          </div>
                         )}
                       </div>
                       {/* Loading overlay animation */}
                       {isUpdating && (
-                        <motion.div
-                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                        initial={{ x: "-100%" }}
-                        animate={{ x: "100%" }}
-                        transition={{
-                          duration: 1.5,
-                          repeat: Infinity,
-                          ease: "linear",
-                        }}
-                        />
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
                       )}
                     </motion.button>
                   );

@@ -3,11 +3,11 @@
 @font-face {
     font-family: "ff2";
     src: url("/ff2.woff") format("woff");
-}  
+}
 
-/* Single Dark Theme - Simplified */
+/* Light and Dark Theme Support */
 :root {
-  /* Primary (Blue accent) */
+  /* Primary (Blue accent) - Dark theme default */
   --md-sys-color-primary: #61a8ff;
   --md-sys-color-on-primary: #19191b;
   --md-sys-color-primary-container: #113b77;
@@ -35,15 +35,52 @@
   --md-elevation-3: 0 4px 8px rgba(0,0,0,.14), 0 1px 3px 1px rgba(0,0,0,.12);
 }
 
+/* Light theme overrides - Warm, cohesive colors matching dark mode aesthetic */
+:root.light {
+  --md-sys-color-primary: #6b7280;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #e5e7eb;
+  --md-sys-color-on-primary-container: #374151;
+
+  --md-sys-color-secondary: #6b7280;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #d5dce6;
+  --md-sys-color-on-secondary-container: #354961;
+
+  --md-sys-color-surface: #f8f9fc;
+  --md-sys-color-on-surface: #1e1e22;
+  --md-sys-color-surface-variant: #e8eef8;
+  --md-sys-color-outline: #6f7690;
+
+  --md-sys-color-error: #b3261e;
+  --md-sys-color-on-error: #ffffff;
+
+  --md-elevation-1: 0 1px 2px rgba(0,0,0,.08), 0 1px 3px 1px rgba(0,0,0,.06);
+  --md-elevation-2: 0 2px 4px rgba(0,0,0,.08), 0 3px 4px 1px rgba(0,0,0,.06);
+  --md-elevation-3: 0 4px 8px rgba(0,0,0,.08), 0 1px 3px 1px rgba(0,0,0,.06);
+}
+
 /* Global application surfaces */
 html, body, #root {
   background: #19191b;
   color: var(--md-sys-color-on-surface, #ffffff);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.light, html.light body, html.light #root {
+  background: #f5f7fa;
+  color: #1a1a1a;
 }
 
 .material-surface {
   background: #19191b;
   color: var(--md-sys-color-on-surface, #ffffff);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.light .material-surface {
+  background: #f5f7fa;
+  color: #1a1a1a;
 }
 
 .material-app-bar {
@@ -51,12 +88,18 @@ html, body, #root {
   color: var(--md-sys-color-on-surface, #ffffff);
   box-shadow: var(--md-elevation-2);
   border-bottom: 1px solid rgba(255,255,255,0.08);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+html.light .material-app-bar {
+  background: #eceff1;
+  color: #1a1a1a;
+  border-bottom-color: rgba(0,0,0,0.08);
 }
 
 
 .elev-1 { box-shadow: var(--md-elevation-1); }
 .elev-2 { box-shadow: var(--md-elevation-2); }
-
 
 /* Material You component utilities */
 .md-card {
@@ -65,6 +108,13 @@ html, body, #root {
   border: 1px solid color-mix(in oklab, var(--md-sys-color-outline, #8f96a3) 35%, transparent);
   border-radius: 16px;
   box-shadow: var(--md-elevation-1);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+html.light .md-card {
+  background: #ffffff;
+  color: #1a1a1a;
+  border-color: rgba(13, 71, 161, 0.12);
 }
 
 .md-input {
@@ -75,7 +125,15 @@ html, body, #root {
   padding: 0.625rem 0.875rem;
   border-radius: 12px;
   outline: none;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
+
+html.light .md-input {
+  background: #ffffff;
+  color: #1a1a1a;
+  border-color: rgba(13, 71, 161, 0.2);
+}
+
 .md-input:focus {
   border-color: color-mix(in oklab, var(--md-sys-color-primary) 50%, transparent);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--md-sys-color-primary) 25%, transparent);
@@ -90,10 +148,18 @@ html, body, #root {
   padding: 0.625rem 0.875rem;
   border-radius: 12px;
   outline: none;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
-.md-textarea:focus { 
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--md-sys-color-primary) 20%, transparent); 
-  border-color: color-mix(in oklab, var(--md-sys-color-primary) 45%, transparent); 
+
+html.light .md-textarea {
+  background: #ffffff;
+  color: #1a1a1a;
+  border-color: rgba(13, 71, 161, 0.2);
+}
+
+.md-textarea:focus {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--md-sys-color-primary) 20%, transparent);
+  border-color: color-mix(in oklab, var(--md-sys-color-primary) 45%, transparent);
 }
 
 .md-chip {
@@ -106,12 +172,38 @@ html, body, #root {
   border: 1px solid rgba(255,255,255,0.08);
   color: var(--md-sys-color-on-surface, #ffffff);
   cursor: pointer;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
+
+html.light .md-chip {
+  background: #e3f2fd;
+  border-color: rgba(21, 101, 192, 0.25);
+  color: #1565c0;
+}
+
 .md-chip--on {
   background: color-mix(in oklab, var(--md-sys-color-primary) 12%, #252529);
   border-color: color-mix(in oklab, var(--md-sys-color-primary) 35%, #404046);
 }
-.md-chip:hover { background: #2b2b2f; }
+
+html.light .md-chip--on {
+  background: #1565c0;
+  color: #ffffff;
+  border-color: #1565c0;
+  font-weight: 600;
+}
+
+.md-chip:hover { background: #2b2b2f; transition: background-color 0.2s ease; }
+
+html.light .md-chip:hover {
+  background: #bbdefb;
+  border-color: rgba(21, 101, 192, 0.35);
+}
+
+html.light .md-chip--on:hover {
+  background: #1044a3;
+  border-color: #1044a3;
+}
 
 .md-row:hover { background: color-mix(in oklab, var(--md-sys-color-on-surface) 6%, transparent); }
 
@@ -121,26 +213,24 @@ html, body, #root {
 }
 
 /* Button styles */
-
-/* Global button cursor */
 button, [role="button"] {
   cursor: pointer;
 }
 
-.md-btn-primary { 
+.md-btn-primary {
   border-radius: 9999px;
   padding: 0.5rem 0.875rem;
-  transition: all .4s ease;
-  background: var(--md-sys-color-primary, #1e88ff); 
-  color: #19191b !important; 
+  background: var(--md-sys-color-primary, #1e88ff);
+  color: var(--md-sys-color-on-primary, #19191b) !important;
   cursor: pointer;
 }
+
 .md-btn-primary:hover { filter: brightness(1.05); }
 
 /* Fix status button text color when selected (using md-btn-primary) */
 .md-btn-primary.text-left,
 .md-btn-primary.text-left * {
-  color: #19191b !important;
+  color: var(--md-sys-color-on-primary, #19191b) !important;
 }
 
 /* Make selected status button taller for better visual prominence */
@@ -149,27 +239,32 @@ button, [role="button"] {
   padding: 1rem 0.875rem; /* More vertical padding */
 }
 
-.md-btn-tonal { 
+.md-btn-tonal {
   border-radius: 9999px;
   padding: 0.5rem 0.875rem;
-  transition: all .4s ease;
-  background: var(--md-sys-color-primary-container, #d6e4ff); 
-  color: var(--md-sys-color-on-primary-container, #001a40); 
+  background: var(--md-sys-color-primary-container, #113b77);
+  color: var(--md-sys-color-on-primary-container, #c5d9f1);
   cursor: pointer;
 }
 
-.md-btn-surface { 
+.md-btn-surface {
   border-radius: 12px;
   padding: 0.5rem 0.875rem;
-  transition: all .4s ease;
-  background: #2c2c2f; 
-  color: var(--md-sys-color-on-surface, #ffffff); 
-  border: 1px solid rgba(255,255,255,0.10); 
+  background: #2c2c2f;
+  color: var(--md-sys-color-on-surface, #ffffff);
+  border: 1px solid rgba(255,255,255,0.10);
   cursor: pointer;
 }
+
+html.light .md-btn-surface {
+  background: #eceff1;
+  color: #263238;
+  border-color: rgba(13, 71, 161, 0.12);
+}
+
 .md-btn-surface:hover { background: color-mix(in oklab, #2c2c2f 90%, white); }
 
-/* Removed conflicting CSS hover effects - using Framer Motion instead */
+html.light .md-btn-surface:hover { background: #cfd8dc; }
 
 /* Mobile-specific improvements */
 @media (max-width: 640px) {
@@ -177,53 +272,53 @@ button, [role="button"] {
     font-size: 16px; /* Prevents zoom on iOS */
     padding: 0.75rem 0.875rem;
   }
-  
+
   .md-textarea {
     font-size: 16px; /* Prevents zoom on iOS */
     padding: 0.75rem 0.875rem;
   }
-  
+
   .md-chip {
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
   }
-  
+
   /* Ensure touch targets are at least 44px */
   button, .md-btn-primary, .md-btn-surface, .md-btn-tonal {
     min-height: 44px;
     min-width: 44px;
   }
-  
+
   /* Improve text readability on mobile */
   body {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
-  
+
   /* Better mobile button spacing */
   .md-btn-primary, .md-btn-surface, .md-btn-tonal {
     padding: 0.75rem 1rem;
     font-size: 0.9rem;
     line-height: 1.2;
   }
-  
+
   /* Improve mobile card spacing */
   .md-card {
     margin-bottom: 0.75rem;
   }
-  
+
   /* Better mobile form layout */
   .space-y-4 > * + * {
     margin-top: 1rem;
   }
-  
+
   /* Improve mobile ticket card readability */
   .md-row-box {
     margin-bottom: 0.5rem;
   }
-  
+
   /* Better mobile navigation */
-  .flex.flex-col.sm\\:flex-row {
+  .flex.flex-col.sm\:flex-row {
     gap: 0.5rem;
   }
 }
@@ -235,14 +330,30 @@ button, [role="button"] {
   border-radius: 14px;
   box-shadow: 0 1px 0 rgba(0,0,0,.25);
   overflow-wrap: break-word;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
+
+html.light .md-row-box {
+  background: #ffffff;
+  border-color: rgba(13, 71, 161, 0.12);
+  box-shadow: 0 1px 0 rgba(13, 71, 161, 0.06);
+}
+
 .md-row-box:hover {
   background: color-mix(in oklab, #2c2c2f 90%, white);
+}
+
+html.light .md-row-box:hover {
+  background: #f5f7fa;
 }
 
 /* Disable hover effect for comment boxes */
 .space-y-3 .md-row-box:hover {
   background: #2c2c2f; /* Keep original background, no hover effect */
+}
+
+html.light .space-y-3 .md-row-box:hover {
+  background: #ffffff;
 }
 
 /* Only break long URLs, not normal words in the comment box */
@@ -251,11 +362,20 @@ button, [role="button"] {
   overflow-wrap: break-word;
   color: #60a5fa; /* Light blue */
   text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+html.light .md-row-box a {
+  color: #0d47a1;
 }
 
 .md-row-box a:hover {
   color: #93c5fd; /* Lighter blue on hover */
   text-decoration: underline;
+}
+
+html.light .md-row-box a:hover {
+  color: #1565c0;
 }
 
 /* Utility classes for text colors with fallbacks */
@@ -265,14 +385,45 @@ button, [role="button"] {
 .text-outline { color: var(--md-sys-color-outline, #8f96a3); }
 .text-on-primary-container { color: var(--md-sys-color-on-primary-container, #001a40); }
 
+/* Utility classes for backgrounds with theme support */
+.bg-primary {
+  background-color: var(--md-sys-color-primary);
+}
+
+html.light .bg-primary {
+  background-color: #1565c0;
+}
+
+/* Radio button indicator dot color - matches chip text color */
+.bg-indicator-dot {
+  background-color: var(--md-sys-color-on-surface);
+}
+
+html.light .bg-indicator-dot {
+  background-color: #ffffff;
+}
+
 /* Force text to be visible on dark backgrounds */
 .force-light-text { color: #ffffff !important; }
 .force-white-text { color: #ffffff !important; }
+
+html.light .force-light-text,
+html.light .force-white-text {
+  color: #1a1a1a !important;
+}
 
 /* Form elements styling */
 input, textarea, select {
   color: var(--md-sys-color-on-surface, #ffffff);
   background-color: var(--md-sys-color-surface, #202024);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.light input,
+html.light textarea,
+html.light select {
+  color: #1a1a1a;
+  background-color: #ffffff;
 }
 
 /* Specific fixes for common problematic elements */
@@ -280,8 +431,16 @@ input, textarea, select {
   color: #8f96a3 !important; /* Override Tailwind gray with our outline color */
 }
 
+html.light .text-gray-500 {
+  color: #78909c !important;
+}
+
 .text-gray-700 {
   color: #b8c0cc !important; /* Override Tailwind gray with our secondary color */
+}
+
+html.light .text-gray-700 {
+  color: #546e7a !important;
 }
 
 /* Ensure ticket card text stays black - override all other rules */

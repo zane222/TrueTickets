@@ -1,8 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-
-interface ApiClient {
-  get: (path: string, headers?: Record<string, string>) => Promise<unknown>;
-}
+import apiClient from "../api/apiClient";
 
 interface UseChangeDetectionReturn {
   hasChanged: boolean;
@@ -16,13 +13,13 @@ interface UseChangeDetectionReturn {
  * Custom hook for change detection polling
  * The backend (Lambda) handles checking if data was modified via If-Modified-Since header.
  * Returns 304 if not modified, or 200 with updated data if modified.
- * @param api - API client instance
+ * Any other status code (404, 500, etc.) is ignored silently.
+ * Uses apiClient directly to avoid triggering error alerts for ignored responses.
  * @param endpoint - API endpoint to monitor
  * @param intervalMs - Polling interval in milliseconds (default: 30000)
  * @returns Change detection state and methods
  */
 export function useChangeDetection(
-  api: ApiClient,
   endpoint: string,
   intervalMs: number = 30000,
 ): UseChangeDetectionReturn {
@@ -57,7 +54,7 @@ export function useChangeDetection(
             headers["If-Modified-Since"] = updatedAtRef.current;
           }
 
-          const currentData = (await api.get(endpoint, headers)) as Record<
+          const currentData = (await apiClient.get(endpoint, headers)) as Record<
             string,
             unknown
           >;
@@ -75,12 +72,14 @@ export function useChangeDetection(
             clearInterval(intervalRef.current);
             intervalRef.current = null;
           }
-        } catch (error) {
-          console.error("Error checking for changes:", error);
+        } catch (_error) {
+          // Ignore any errors (404, 500, network errors, etc.) and continue polling
+          // Only a successful 200 response with data triggers change detection
+          return;
         }
       }, intervalMs);
     },
-    [api, endpoint, intervalMs],
+    [endpoint, intervalMs],
   );
 
   const stopPolling = useCallback(() => {

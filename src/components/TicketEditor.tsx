@@ -50,7 +50,6 @@ function TicketEditor({
 
   // Change detection
   const { hasChanged, startPolling, stopPolling } = useChangeDetection(
-    api,
     `/tickets/${ticketId}`,
   );
 
@@ -603,7 +602,7 @@ function TicketEditor({
                     >
                       <span
                         aria-hidden
-                        className={`w-2.5 h-2.5 rounded-full ${active ? "bg-white" : "border"}`}
+                        className={`w-2.5 h-2.5 rounded-full ${active ? "bg-indicator-dot" : "border border-outline"}`}
                       />
                       <span>{device || "Other"}</span>
                     </button>

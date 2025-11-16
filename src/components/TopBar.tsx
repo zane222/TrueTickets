@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Search, UserPlus, User, LogOut } from "lucide-react";
 import NavigationButton from "./ui/NavigationButton";
 
+
 interface TopBarProps {
   onHome: () => void;
   onSearchClick: () => void;

@@ -64,7 +64,7 @@ export default function NewCustomer({
     startPolling,
     stopPolling,
     resetPolling: _resetPolling,
-  } = useChangeDetection(api, customerId ? `/customers/${customerId}` : "");
+  } = useChangeDetection(customerId ? `/customers/${customerId}` : "");
 
   useEffect(() => {
     try {

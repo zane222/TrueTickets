@@ -281,30 +281,28 @@ export function TicketListView({
               <ChevronLeft className="w-4 h-4" />
             )}
           </button>
-          <AnimatePresence>
-            {!statusFilterCollapsed && (
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2, ease: "easeInOut" }}
-                className="flex flex-wrap gap-1.5 sm:gap-2"
-              >
-                {STATUSES.map((status, _index) => (
-                  <button
-                    key={status}
-                    onClick={() => toggleStatus(status)}
-                    className={cx(
-                      "md-chip text-md sm:text-md px-2 py-1 sm:px-3 sm:py-1.5",
-                      statusHidden.has(status) ? "" : "md-chip--on",
-                    )}
-                  >
-                    {status}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <div
+            className="overflow-hidden transition-all duration-200 ease-in-out"
+            style={{
+              maxHeight: statusFilterCollapsed ? "0px" : "200px",
+              opacity: statusFilterCollapsed ? 0 : 1,
+            }}
+          >
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 pt-2">
+              {STATUSES.map((status, _index) => (
+                <button
+                  key={status}
+                  onClick={() => toggleStatus(status)}
+                  className={cx(
+                    "md-chip text-md sm:text-md px-2 py-1 sm:px-3 sm:py-1.5",
+                    statusHidden.has(status) ? "" : "md-chip--on",
+                  )}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

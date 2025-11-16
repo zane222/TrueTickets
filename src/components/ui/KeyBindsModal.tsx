@@ -71,7 +71,7 @@ export function KeyBindsModal({ keybinds }: KeyBindsModalProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-lg flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 keybind-modal-overlay flex items-center justify-center p-4"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.90, y: -30 }}
@@ -79,45 +79,45 @@ export function KeyBindsModal({ keybinds }: KeyBindsModalProps) {
             exit={{ opacity: 0, scale: 0.90, y: -30 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
-            className="md-card w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl"
+            className="keybind-modal w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl"
           >
             {/* Header */}
-            <div className="sticky top-0 z-10 bg-surface px-8 py-6 border-b border-outline/20 flex items-center justify-between gap-4">
+            <div className="keybind-modal-header sticky top-0 z-10 px-8 py-6 flex items-center justify-between gap-4">
               <div className="flex-1">
-                <h2 className="text-3xl font-bold text-on-surface">Keyboard Shortcuts</h2>
+                <h2>Keyboard Shortcuts</h2>
               </div>
               <button
                 onClick={() => setIsOpen(false)}
-                className="flex-shrink-0 p-2 rounded-lg hover:bg-surface-dim active:bg-surface-dim/80 transition-colors duration-200 text-outline hover:text-on-surface"
-                title="Close"
+                className="keybind-modal-close-btn flex-shrink-0 p-2 rounded-lg hover:bg-opacity-10 hover:bg-current active:bg-opacity-15 active:bg-current transition-colors duration-200"
+                title="Close (Esc)"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="p-8 space-y-10 bg-surface">
+            <div className="keybind-modal-content p-8 space-y-10">
               {sortedCategories.map((category) => {
                 const binds = groupedBinds[category];
                 const isGeneral = category === 'General';
                 
                 return (
-                  <div key={category} className={isGeneral ? 'mb-8 pb-8 border-b border-outline/20' : ''}>
-                    <h3 className="text-xs font-bold text-primary uppercase tracking-widest mb-5 opacity-80">
+                  <div key={category} className={isGeneral ? 'mb-8 pb-8 keybind-category-divider' : ''}>
+                    <h3 className="keybind-category-header mb-5">
                       {category}
                     </h3>
-                    <div className="grid gap-3 grid-cols-2">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                       {binds.map((bind, idx) => (
                         <div
                           key={idx}
-                          className="group flex items-center gap-4 p-4 rounded-xl hover:bg-surface-dim/60 active:bg-surface-dim transition-all duration-150 cursor-default"
+                          className="keybind-row group flex items-center gap-4 p-4 rounded-xl transition-all duration-150 cursor-default"
                         >
                           <div className="flex-shrink-0">
-                            <kbd className="px-3.5 py-2 rounded-lg bg-white/5 text-white text-sm font-mono font-bold tracking-tight whitespace-nowrap shadow-sm">
+                            <kbd className="keybind-key">
                               {bind.key}
                             </kbd>
                           </div>
-                          <span className="text-sm text-on-surface font-medium group-hover:text-primary/90 flex-1 min-w-0 transition-colors duration-150">
+                          <span className="keybind-description flex-1 min-w-0 group-hover:text-primary/90">
                             {bind.description}
                           </span>
                         </div>

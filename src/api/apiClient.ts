@@ -220,6 +220,12 @@ class ApiClient {
 
       return (await response.json()) as T;
     } catch (error) {
+      // Network errors (Failed to fetch) are expected when offline and will be handled silently by callers like useChangeDetection
+      // Only log unexpected errors
+      if (error instanceof Error && error.message === "Failed to fetch") {
+        throw error;
+      }
+      // Log other unexpected errors for debugging
       console.error("API request failed:", error);
       throw error;
     }

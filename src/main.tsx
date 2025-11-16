@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App, { ApiProvider } from "./App";
 import { AuthWrapper } from "./components/AuthProvider";
 import { AlertProvider } from "./components/ui/AlertSystem";
+import { ThemeProvider } from "./contexts/ThemeContext";
 import "./index.css";
 
 // Enhanced fallback mechanism to ensure text colors are always visible
@@ -88,11 +89,13 @@ if (document.readyState === "loading") {
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AlertProvider>
-      <AuthWrapper>
-        <ApiProvider>
-          <App />
-        </ApiProvider>
-      </AuthWrapper>
+      <ThemeProvider>
+        <AuthWrapper>
+          <ApiProvider>
+            <App />
+          </ApiProvider>
+        </AuthWrapper>
+      </ThemeProvider>
     </AlertProvider>
   </React.StrictMode>,
 );
