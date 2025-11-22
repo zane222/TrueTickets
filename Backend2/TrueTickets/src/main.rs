@@ -7,6 +7,8 @@ use serde_json::{json, Value};
 use aws_config::BehaviorVersion;
 use aws_sdk_cognitoidentityprovider::Client as CognitoClient;
 use aws_sdk_cognitoidentityprovider::types::AttributeType;
+use aws_sdk_s3::Client as S3Client;
+use aws_sdk_s3::primitives::ByteStream;
 
 const TARGET_URL: &str = "https://Cacell.repairshopr.com/api/v1";
 
@@ -250,63 +252,11 @@ async fn handle_repairshopr_proxy(
 }
 
 /// Handle user invitation
-async fn handle_user_invitation(event: &Request, cognito_client: &CognitoClient) -> Response<Body> {
-    let body_str = match event.body() {
-        Body::Empty => "{}",
-        Body::Text(s) => s,
-        Body::Binary(b) => {
-            match std::str::from_utf8(b) {
-                Ok(s) => s,
-                Err(_) => {
-                    return error_response(
-                        400,
-                        "Invalid request body",
-                        "Could not parse request body as UTF-8",
-                        None,
-                    )
-                }
-            }
-        }
-        _ => "{}",
-    };
-
-    let body: Value = match serde_json::from_str(body_str) {
-        Ok(v) => v,
-        Err(_) => {
-            return error_response(
-                400,
-                "Invalid JSON",
-                "Could not parse request body as JSON",
-                None,
-            )
-        }
-    };
-
-    let email = match body.get("email").and_then(|v| v.as_str()) {
-        Some(e) => e,
-        None => {
-            return error_response(
-                400,
-                "Missing parameter",
-                "Email is required",
-                None,
-            )
-        }
-    };
-
-    let first_name = body.get("firstName").and_then(|v| v.as_str()).unwrap_or("");
-
-    // Check user permissions
-    let user_groups = get_user_groups_from_event(event);
-    if !can_invite_users(&user_groups) {
-        return error_response(
-            403,
-            "Insufficient permissions",
-            "You do not have permission to invite users",
-            Some("Only ApplicationAdmin, Owner, and Manager can invite users"),
-        );
-    }
-
+async fn handle_user_invitation(
+    email: &str,
+    first_name: &str,
+    cognito_client: &CognitoClient,
+) -> Response<Body> {
     let user_pool_id = match std::env::var("USER_POOL_ID") {
         Ok(id) => id,
         Err(_) => {
@@ -551,72 +501,11 @@ async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) -> R
 }
 
 /// Handle updating user group
-async fn handle_update_user_group(event: &Request, cognito_client: &CognitoClient) -> Response<Body> {
-    // Check user permissions
-    let user_groups = get_user_groups_from_event(event);
-    if !can_manage_users(&user_groups) {
-        return error_response(
-            403,
-            "Insufficient permissions",
-            "You do not have permission to manage users",
-            Some("Only ApplicationAdmin and Owner can manage users"),
-        );
-    }
-
-    let body_str = match event.body() {
-        Body::Empty => "{}",
-        Body::Text(s) => s,
-        Body::Binary(b) => {
-            match std::str::from_utf8(b) {
-                Ok(s) => s,
-                Err(_) => {
-                    return error_response(
-                        400,
-                        "Invalid request body",
-                        "Could not parse request body as UTF-8",
-                        None,
-                    )
-                }
-            }
-        },
-        _ => "{}",
-    };
-
-    let body: Value = match serde_json::from_str(body_str) {
-        Ok(v) => v,
-        Err(_) => {
-            return error_response(
-                400,
-                "Invalid JSON",
-                "Could not parse request body as JSON",
-                None,
-            )
-        }
-    };
-
-    let username = match body.get("username").and_then(|v| v.as_str()) {
-        Some(u) => u,
-        None => {
-            return error_response(
-                400,
-                "Missing parameter",
-                "Username is required",
-                None,
-            )
-        }
-    };
-
-    let new_group = match body.get("group").and_then(|v| v.as_str()) {
-        Some(g) => g,
-        None => {
-            return error_response(
-                400,
-                "Missing parameter",
-                "Group is required",
-                None,
-            )
-        }
-    };
+async fn handle_update_user_group(
+    username: &str,
+    new_group: &str,
+    cognito_client: &CognitoClient,
+) -> Response<Body> {
 
     let user_pool_id = match std::env::var("USER_POOL_ID") {
         Ok(id) => id,
@@ -737,123 +626,111 @@ async fn handle_update_user_group(event: &Request, cognito_client: &CognitoClien
 }
 
 /// Handle attachment upload to ticket
-async fn handle_upload_attachment(event: &Request, api_key: &str) -> Response<Body> {
-    let body_str = match event.body() {
-        Body::Empty => "{}",
-        Body::Text(s) => s,
-        Body::Binary(b) => {
-            match std::str::from_utf8(b) {
-                Ok(s) => s,
-                Err(_) => {
-                    return error_response(
-                        400,
-                        "Invalid request body",
-                        "Could not parse request body as UTF-8",
-                        None,
+async fn handle_upload_attachment(
+    ticket_id: i64,
+    base64_data: &str,
+    file_name: &str,
+    api_key: &str,
+    s3_client: &S3Client,
+) -> Response<Body> {
+    // Decode base64 data to bytes
+    use base64::Engine;
+    let file_bytes = match base64::engine::general_purpose::STANDARD.decode(base64_data) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return error_response(
+                400,
+                "Invalid base64 data",
+                &format!("Could not decode base64 data: {}", e),
+                None,
+            )
+        }
+    };
+
+    // Get S3 bucket name from environment
+    let bucket_name = match std::env::var("S3_BUCKET_NAME") {
+        Ok(name) => name,
+        Err(_) => {
+            return error_response(
+                500,
+                "Configuration error",
+                "S3_BUCKET_NAME environment variable not set",
+                None,
+            )
+        }
+    };
+
+    // Generate unique S3 key for the file
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_secs();
+    let s3_key = format!("attachments/{}/{}_{}", ticket_id, timestamp, file_name);
+
+    // Upload file to S3
+    let byte_stream = ByteStream::from(file_bytes);
+    match s3_client
+        .put_object()
+        .bucket(&bucket_name)
+        .key(&s3_key)
+        .body(byte_stream)
+        .send()
+        .await
+    {
+        Ok(_) => {
+            // Get the public URL of the uploaded file
+            let s3_url = format!("https://{}.s3.amazonaws.com/{}", bucket_name, s3_key);
+
+            // Call RepairShopr attach_file_url endpoint
+            let url = format!("{}/tickets/{}/attach_file_url", TARGET_URL, ticket_id);
+
+            let attach_body = json!({
+                "files": [
+                    {
+                        "url": s3_url,
+                        "filename": file_name
+                    }
+                ]
+            });
+
+            let request_builder = reqwest::Client::new()
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Content-Type", "application/json")
+                .body(attach_body.to_string());
+
+            match request_builder.send().await {
+                Ok(response) => {
+                    let status = response.status().as_u16();
+                    let response_body = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "{}".to_string());
+                    success_response(status, response_body)
+                }
+                Err(e) => {
+                    error_response(
+                        502,
+                        "Bad Gateway",
+                        &format!("Failed to attach file to ticket: {}", e),
+                        Some("Check that the ticket ID is valid and the API key has permission"),
                     )
                 }
             }
-        },
-        _ => "{}",
-    };
-
-    let body: Value = match serde_json::from_str(body_str) {
-        Ok(v) => v,
-        Err(_) => {
-            return error_response(
-                400,
-                "Invalid JSON",
-                "Could not parse request body as JSON",
-                None,
-            )
-        }
-    };
-
-    let ticket_id = match body.get("ticket_id").and_then(|v| v.as_i64()) {
-        Some(id) => id,
-        None => {
-            return error_response(
-                400,
-                "Missing parameter",
-                "ticket_id is required and must be an integer",
-                None,
-            )
-        }
-    };
-
-    let image_data = match body.get("image_data").and_then(|v| v.as_str()) {
-        Some(data) => data,
-        None => {
-            return error_response(
-                400,
-                "Missing parameter",
-                "image_data is required (base64 encoded data URL)",
-                None,
-            )
-        }
-    };
-
-    let file_name = body
-        .get("file_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("attachment.png");
-
-    // Extract base64 data from data URL if needed
-    let base64_data = if image_data.starts_with("data:") {
-        // Format: data:image/png;base64,xxxx
-        match image_data.split(',').last() {
-            Some(data) => data,
-            None => {
-                return error_response(
-                    400,
-                    "Invalid data URL",
-                    "Could not extract base64 from data URL",
-                    None,
-                )
-            }
-        }
-    } else {
-        image_data
-    };
-
-    // Send to RepairShopr API as attachment
-    let url = format!("{}/tickets/{}/attachments", TARGET_URL, ticket_id);
-
-    let attachment_body = json!({
-        "attachment": {
-            "data": base64_data,
-            "filename": file_name,
-        }
-    });
-
-    let request_builder = reqwest::Client::new()
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .body(attachment_body.to_string());
-
-    match request_builder.send().await {
-        Ok(response) => {
-            let status = response.status().as_u16();
-            let response_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "{}".to_string());
-            success_response(status, response_body)
         }
         Err(e) => {
             error_response(
-                502,
-                "Bad Gateway",
-                &format!("Failed to upload attachment: {}", e),
-                Some("Check that the ticket ID is valid and the API key has permission"),
+                500,
+                "S3 upload failed",
+                &format!("Failed to upload file to S3: {}", e),
+                Some("Check that the Lambda has S3 permissions and the bucket exists"),
             )
         }
     }
 }
 
 /// Handle the Lambda event
-async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient) -> Result<Response<Body>, String> {
+async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_client: &S3Client) -> Result<Response<Body>, String> {
     // Get API key from environment
     let api_key = std::env::var("REPAIRSHOPR_API_KEY")
         .map_err(|_| "REPAIRSHOPR_API_KEY environment variable not set".to_string())?;
@@ -885,13 +762,216 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient) -> 
 
     // Route to user management endpoints
     if path == "/invite-user" && method == "POST" {
-        return Ok(handle_user_invitation(&event, cognito_client).await);
+        // Extract and validate invitation data from request
+        let body_str = match event.body() {
+            Body::Empty => "{}",
+            Body::Text(s) => s,
+            Body::Binary(b) => {
+                match std::str::from_utf8(b) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        return Ok(error_response(
+                            400,
+                            "Invalid request body",
+                            "Could not parse request body as UTF-8",
+                            None,
+                        ))
+                    }
+                }
+            }
+            _ => "{}",
+        };
+
+        let body: Value = match serde_json::from_str(body_str) {
+            Ok(v) => v,
+            Err(_) => {
+                return Ok(error_response(
+                    400,
+                    "Invalid JSON",
+                    "Could not parse request body as JSON",
+                    None,
+                ))
+            }
+        };
+
+        let email = match body.get("email").and_then(|v| v.as_str()) {
+            Some(e) => e,
+            None => {
+                return Ok(error_response(
+                    400,
+                    "Missing parameter",
+                    "Email is required",
+                    None,
+                ))
+            }
+        };
+
+        let first_name = body.get("firstName").and_then(|v| v.as_str()).unwrap_or("");
+
+        // Check user permissions
+        let user_groups = get_user_groups_from_event(&event);
+        if !can_invite_users(&user_groups) {
+            return Ok(error_response(
+                403,
+                "Insufficient permissions",
+                "You do not have permission to invite users",
+                Some("Only ApplicationAdmin, Owner, and Manager can invite users"),
+            ));
+        }
+
+        return Ok(handle_user_invitation(email, first_name, cognito_client).await);
     } else if path == "/users" && method == "GET" {
         return Ok(handle_list_users(&event, cognito_client).await);
     } else if path == "/update-user-group" && method == "POST" {
-        return Ok(handle_update_user_group(&event, cognito_client).await);
+        // Extract and validate user group update data from request
+        let body_str = match event.body() {
+            Body::Empty => "{}",
+            Body::Text(s) => s,
+            Body::Binary(b) => {
+                match std::str::from_utf8(b) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        return Ok(error_response(
+                            400,
+                            "Invalid request body",
+                            "Could not parse request body as UTF-8",
+                            None,
+                        ))
+                    }
+                }
+            },
+            _ => "{}",
+        };
+
+        let body: Value = match serde_json::from_str(body_str) {
+            Ok(v) => v,
+            Err(_) => {
+                return Ok(error_response(
+                    400,
+                    "Invalid JSON",
+                    "Could not parse request body as JSON",
+                    None,
+                ))
+            }
+        };
+
+        let username = match body.get("username").and_then(|v| v.as_str()) {
+            Some(u) => u,
+            None => {
+                return Ok(error_response(
+                    400,
+                    "Missing parameter",
+                    "Username is required",
+                    None,
+                ))
+            }
+        };
+
+        let new_group = match body.get("group").and_then(|v| v.as_str()) {
+            Some(g) => g,
+            None => {
+                return Ok(error_response(
+                    400,
+                    "Missing parameter",
+                    "Group is required",
+                    None,
+                ))
+            }
+        };
+
+        // Check user permissions
+        let user_groups = get_user_groups_from_event(&event);
+        if !can_manage_users(&user_groups) {
+            return Ok(error_response(
+                403,
+                "Insufficient permissions",
+                "You do not have permission to manage users",
+                Some("Only ApplicationAdmin and Owner can manage users"),
+            ));
+        }
+
+        return Ok(handle_update_user_group(username, new_group, cognito_client).await);
     } else if path == "/upload-attachment" && method == "POST" {
-        return Ok(handle_upload_attachment(&event, &api_key).await);
+        // Extract and validate attachment data from request
+        let body_str = match event.body() {
+            Body::Empty => "{}",
+            Body::Text(s) => s,
+            Body::Binary(b) => {
+                match std::str::from_utf8(b) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        return Ok(error_response(
+                            400,
+                            "Invalid request body",
+                            "Could not parse request body as UTF-8",
+                            None,
+                        ))
+                    }
+                }
+            },
+            _ => "{}",
+        };
+
+        let body: Value = match serde_json::from_str(body_str) {
+            Ok(v) => v,
+            Err(_) => {
+                return Ok(error_response(
+                    400,
+                    "Invalid JSON",
+                    "Could not parse request body as JSON",
+                    None,
+                ))
+            }
+        };
+
+        let ticket_id = match body.get("ticket_id").and_then(|v| v.as_i64()) {
+            Some(id) => id,
+            None => {
+                return Ok(error_response(
+                    400,
+                    "Missing parameter",
+                    "ticket_id is required and must be an integer",
+                    None,
+                ))
+            }
+        };
+
+        let image_data = match body.get("image_data").and_then(|v| v.as_str()) {
+            Some(data) => data,
+            None => {
+                return Ok(error_response(
+                    400,
+                    "Missing parameter",
+                    "image_data is required (base64 encoded data URL)",
+                    None,
+                ))
+            }
+        };
+
+        let file_name = body
+            .get("file_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("attachment.png");
+
+        // Extract base64 data from data URL if needed
+        let base64_data = if image_data.starts_with("data:") {
+            // Format: data:image/png;base64,xxxx
+            match image_data.split(',').last() {
+                Some(data) => data,
+                None => {
+                    return Ok(error_response(
+                        400,
+                        "Invalid data URL",
+                        "Could not extract base64 from data URL",
+                        None,
+                    ))
+                }
+            }
+        } else {
+            image_data
+        };
+
+        return Ok(handle_upload_attachment(ticket_id, base64_data, file_name, &api_key, s3_client).await);
     } else if path.starts_with("/api") {
         // Route to RepairShopr proxy for /api/* paths
         let modified_path = path.strip_prefix("/api").unwrap_or("");
@@ -917,11 +997,12 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient) -> 
 
 /// Main Lambda handler function
 async fn function_handler(event: Request) -> Result<Response<Body>, lambda_http::Error> {
-    // Initialize AWS config and Cognito client
+    // Initialize AWS config and clients
     let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
     let cognito_client = CognitoClient::new(&config);
+    let s3_client = S3Client::new(&config);
 
-    match handle_lambda_event(event, &cognito_client).await {
+    match handle_lambda_event(event, &cognito_client, &s3_client).await {
         Ok(response) => Ok(response),
         Err(e) => {
             eprintln!("ERROR: Internal server error (rt): {}", e);

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { User, Printer, Edit, Loader2, Image, Plus, X } from "lucide-react";
+import { User, Printer, Edit, Loader2, Plus, X } from "lucide-react";
 import html2pdf from "html2pdf.js";
 import {
   getCurrentUser,
@@ -84,10 +84,8 @@ function TicketView({
     if (!files || files.length === 0) return;
 
     setUploading(true);
+    let uploadedCount = 0;
     try {
-      const session = await fetchAuthSession();
-      const token = session.tokens?.idToken?.toString() || "";
-
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
 
@@ -100,33 +98,28 @@ function TicketView({
         });
 
         try {
-          const response = await fetch("/upload-attachment", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              ticket_id: id,
-              image_data: fileContent,
-              file_name: file.name,
-            }),
+          await api.post("/upload-attachment", {
+            ticket_id: id,
+            image_data: fileContent,
+            file_name: file.name,
           });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            console.error(`Error uploading ${file.name}:`, errorData);
-          } else {
-            console.log(`File uploaded: ${file.name}`);
-          }
+          console.log(`File uploaded: ${file.name}`);
+          uploadedCount++;
         } catch (err) {
-          console.error("Error uploading file:", err);
+          console.error(`Error uploading ${file.name}:`, err);
         }
       }
     } finally {
       setUploading(false);
+      // Refresh ticket data after a 1-second delay if any files were uploaded successfully
+      // This gives the server time to process the attachments
+      if (uploadedCount > 0) {
+        setTimeout(() => {
+          setRefreshKey((prev) => prev + 1);
+        }, 1000);
+      }
     }
-  }, [id]);
+  }, [id, api]);
 
   const handleAddAttachment = () => {
     // Check if device has camera capability
@@ -491,24 +484,24 @@ function TicketView({
             <div className="absolute inset-0 origin-top-left" style={{ transform: `scale(${ticketCardScale})` }}>
               <div ref={ticketCardRef}> {/* This div can't have any styling on it because HTML2PDF needs to read it */}
                 <TicketCard
-                password={getTicketPassword(ticket)}
-                ticketNumber={ticket.number ?? ticket.id}
-                subject={
-                  ticket.subject +
-                  (getTicketDeviceInfo(ticket).estimatedTime
-                    ? " [" + getTicketDeviceInfo(ticket).estimatedTime + "]"
-                    : "")
-                }
-                itemsLeft={formatItemsLeft(
-                  getTicketDeviceInfo(ticket).itemsLeft,
-                )}
-                name={
-                  ticket.customer?.business_and_full_name ||
-                  ticket.customer?.fullname ||
-                  ""
-                }
-                creationDate={fmtDateAndTime(ticket.created_at)}
-                phoneNumber={phone}
+                  password={getTicketPassword(ticket)}
+                  ticketNumber={ticket.number ?? ticket.id}
+                  subject={
+                    ticket.subject +
+                    (getTicketDeviceInfo(ticket).estimatedTime
+                      ? " [" + getTicketDeviceInfo(ticket).estimatedTime + "]"
+                      : "")
+                  }
+                  itemsLeft={formatItemsLeft(
+                    getTicketDeviceInfo(ticket).itemsLeft,
+                  )}
+                  name={
+                    ticket.customer?.business_and_full_name ||
+                    ticket.customer?.fullname ||
+                    ""
+                  }
+                  creationDate={fmtDateAndTime(ticket.created_at)}
+                  phoneNumber={phone}
                 />
               </div>
             </div>
@@ -528,8 +521,7 @@ function TicketView({
                       key={status}
                       onClick={() => updateTicketStatus(status)}
                       disabled={isUpdating || active}
-                      className={`${active ? "md-btn-primary" : "md-btn-surface"} text-left relative overflow-hidden py-2 text-base touch-manipulation w-full ${
-                        isUpdating || active ? "cursor-not-allowed" : ""
+                      className={`${active ? "md-btn-primary" : "md-btn-surface"} text-left relative overflow-hidden py-2 text-base touch-manipulation w-full ${isUpdating || active ? "cursor-not-allowed" : ""
                         }`}
                       style={active ? { borderRadius: "12px" } : {}}
                       tabIndex={-1}
@@ -573,11 +565,10 @@ function TicketView({
               onDragLeave={handleDrag}
               onDragOver={handleDrag}
               onDrop={handleDrop}
-              className={`md-card p-4 space-y-3 rounded-lg border-2 transition-colors min-h-[100px] ${
-                dragActive
+              className={`md-card p-4 space-y-3 rounded-lg border-2 transition-colors min-h-[100px] ${dragActive
                 ? "border-dashed border-primary bg-primary/10 brightness-110"
                 : "border-solid border-gray-300"
-              }`}
+                }`}
             >
               <div className="flex justify-between items-center">
                 <p className="text-md font-semibold">Attachments</p>
@@ -609,9 +600,9 @@ function TicketView({
                     >
                       {attachment.file?.url && (
                         <img
-                        src={decodedUrl}
-                        alt={attachment.file_name}
-                        className="w-full h-auto max-h-64 object-cover"
+                          src={decodedUrl}
+                          alt={attachment.file_name}
+                          className="w-full h-auto max-h-64 object-cover"
                         />
                       )}
                     </div>
@@ -621,20 +612,20 @@ function TicketView({
 
               {/* Hidden file inputs */}
               <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,.pdf,.doc,.docx"
-              onChange={(e) => handleFileUpload(e.target.files)}
-              className="hidden"
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx"
+                onChange={(e) => handleFileUpload(e.target.files)}
+                className="hidden"
               />
               <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(e) => handleFileUpload(e.target.files)}
-              className="hidden"
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => handleFileUpload(e.target.files)}
+                className="hidden"
               />
             </div>
           </div>
@@ -645,9 +636,9 @@ function TicketView({
           <div className="md-card p-6">
             <div className="text-lg font-semibold mb-4">Comments</div>
             <CommentsBox
-            ticketId={ticket.id}
-            comments={ticket.comments}
-            _goTo={goTo}
+              ticketId={ticket.id}
+              comments={ticket.comments}
+              _goTo={goTo}
             />
           </div>
         </aside>
@@ -679,9 +670,9 @@ function TicketView({
               <X size={24} className="text-white" />
             </button>
             <img
-            src={fullScreenAttachment.url}
-            alt={fullScreenAttachment.fileName}
-            className="max-w-[90vw] max-h-[90vh] object-contain"
+              src={fullScreenAttachment.url}
+              alt={fullScreenAttachment.fileName}
+              className="max-w-[90vw] max-h-[90vh] object-contain"
             />
           </div>
         </div>
@@ -862,7 +853,7 @@ function CommentsBox({
                   <span>{fmtDateAndTime(comment.created_at)}</span>
                 </div>
                 {typeof comment.hidden === "boolean" &&
-                comment.hidden === false ? (
+                  comment.hidden === false ? (
                   <span>Probably SMS</span>
                 ) : (
                   <span />

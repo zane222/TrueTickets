@@ -13,4 +13,12 @@ url = "2.5"
 urlencoding = "2.1"
 aws-config = "1.8"
 aws-sdk-cognitoidentityprovider = "1.103"
+aws-sdk-s3 = "1.68"
+base64 = "0.22"
 rand = "0.9"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1

@@ -82,7 +82,7 @@ class ApiClient {
       "/invite-user",
       "/users",
       "/update-user-group",
-      "/image-proxy",
+      "/upload-attachment",
     ];
 
     // Add /api prefix only for RepairShopr API calls, not for user management
@@ -168,11 +168,11 @@ class ApiClient {
               }
               const err: ApiError = new Error(
                 (retryParsed &&
-                typeof retryParsed === "object" &&
-                "error" in retryParsed
+                  typeof retryParsed === "object" &&
+                  "error" in retryParsed
                   ? (retryParsed as { error?: string }).error
                   : null) ||
-                  `${retryResponse.status} ${retryResponse.statusText}`,
+                `${retryResponse.status} ${retryResponse.statusText}`,
               );
               err.status = retryResponse.status;
               err.body = retryParsed;
