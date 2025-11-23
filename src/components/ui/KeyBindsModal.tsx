@@ -71,7 +71,7 @@ export function KeyBindsModal({ keybinds }: KeyBindsModalProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-50 keybind-modal-overlay flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 keybind-modal-overlay flex items-center justify-center p-4 bg-black/60"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.90, y: -30 }}
@@ -79,12 +79,12 @@ export function KeyBindsModal({ keybinds }: KeyBindsModalProps) {
             exit={{ opacity: 0, scale: 0.90, y: -30 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
-            className="keybind-modal w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl"
+            className="keybind-modal md-card w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl"
           >
             {/* Header */}
-            <div className="keybind-modal-header sticky top-0 z-10 px-8 py-6 flex items-center justify-between gap-4">
+            <div className="keybind-modal-header sticky top-4 z-10 px-8 font-bold py-1 flex items-center justify-between gap-4">
               <div className="flex-1">
-                <h2>Keyboard Shortcuts</h2>
+                <h1>Keyboard Shortcuts</h1>
               </div>
               <button
                 onClick={() => setIsOpen(false)}
@@ -100,13 +100,13 @@ export function KeyBindsModal({ keybinds }: KeyBindsModalProps) {
               {sortedCategories.map((category) => {
                 const binds = groupedBinds[category];
                 const isGeneral = category === 'General';
-                
+
                 return (
                   <div key={category} className={isGeneral ? 'mb-8 pb-8 keybind-category-divider' : ''}>
                     <h3 className="keybind-category-header mb-5">
                       {category}
                     </h3>
-                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+                    <div className="grid gap-0 grid-cols-1 sm:grid-cols-2">
                       {binds.map((bind, idx) => (
                         <div
                           key={idx}

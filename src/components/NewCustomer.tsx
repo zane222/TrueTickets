@@ -118,8 +118,8 @@ export default function NewCustomer({
       category: "Navigation",
     },
     {
-      key: "ESC",
-      description: "Clear form",
+      key: "C",
+      description: "Cancel",
       category: "Navigation",
     },
   ], []);

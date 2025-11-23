@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @font-face {
-    font-family: "ff2";
-    src: url("/ff2.woff") format("woff");
+  font-family: "ff2";
+  src: url("/ff2.woff") format("woff");
 }
 
 /* Light and Dark Theme Support */
@@ -30,9 +30,9 @@
   --md-sys-color-on-error: #ffffff;
 
   /* Elevation (Material 3) */
-  --md-elevation-1: 0 1px 2px rgba(0,0,0,.14), 0 1px 3px 1px rgba(0,0,0,.12);
-  --md-elevation-2: 0 2px 4px rgba(0,0,0,.14), 0 3px 4px 1px rgba(0,0,0,.12);
-  --md-elevation-3: 0 4px 8px rgba(0,0,0,.14), 0 1px 3px 1px rgba(0,0,0,.12);
+  --md-elevation-1: 0 1px 2px rgba(0, 0, 0, .14), 0 1px 3px 1px rgba(0, 0, 0, .12);
+  --md-elevation-2: 0 2px 4px rgba(0, 0, 0, .14), 0 3px 4px 1px rgba(0, 0, 0, .12);
+  --md-elevation-3: 0 4px 8px rgba(0, 0, 0, .14), 0 1px 3px 1px rgba(0, 0, 0, .12);
 }
 
 /* Light theme overrides - Warm, cohesive colors matching dark mode aesthetic */
@@ -55,19 +55,23 @@
   --md-sys-color-error: #b3261e;
   --md-sys-color-on-error: #ffffff;
 
-  --md-elevation-1: 0 1px 2px rgba(0,0,0,.08), 0 1px 3px 1px rgba(0,0,0,.06);
-  --md-elevation-2: 0 2px 4px rgba(0,0,0,.08), 0 3px 4px 1px rgba(0,0,0,.06);
-  --md-elevation-3: 0 4px 8px rgba(0,0,0,.08), 0 1px 3px 1px rgba(0,0,0,.06);
+  --md-elevation-1: 0 1px 2px rgba(0, 0, 0, .08), 0 1px 3px 1px rgba(0, 0, 0, .06);
+  --md-elevation-2: 0 2px 4px rgba(0, 0, 0, .08), 0 3px 4px 1px rgba(0, 0, 0, .06);
+  --md-elevation-3: 0 4px 8px rgba(0, 0, 0, .08), 0 1px 3px 1px rgba(0, 0, 0, .06);
 }
 
 /* Global application surfaces */
-html, body, #root {
+html,
+body,
+#root {
   background: #19191b;
   color: var(--md-sys-color-on-surface, #ffffff);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-html.light, html.light body, html.light #root {
+html.light,
+html.light body,
+html.light #root {
   background: #f5f7fa;
   color: #1a1a1a;
 }
@@ -87,19 +91,24 @@ html.light .material-surface {
   background: #202024;
   color: var(--md-sys-color-on-surface, #ffffff);
   box-shadow: var(--md-elevation-2);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 html.light .material-app-bar {
   background: #eceff1;
   color: #1a1a1a;
-  border-bottom-color: rgba(0,0,0,0.08);
+  border-bottom-color: rgba(0, 0, 0, 0.08);
 }
 
 
-.elev-1 { box-shadow: var(--md-elevation-1); }
-.elev-2 { box-shadow: var(--md-elevation-2); }
+.elev-1 {
+  box-shadow: var(--md-elevation-1);
+}
+
+.elev-2 {
+  box-shadow: var(--md-elevation-2);
+}
 
 /* Material You component utilities */
 .md-card {
@@ -120,7 +129,7 @@ html.light .md-card {
 .md-input {
   background: #202024;
   color: var(--md-sys-color-on-surface, #ffffff);
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   width: 100%;
   padding: 0.625rem 0.875rem;
   border-radius: 12px;
@@ -142,7 +151,7 @@ html.light .md-input {
 .md-textarea {
   background: #202024;
   color: var(--md-sys-color-on-surface, #ffffff);
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   width: 100%;
   min-height: 6rem;
   padding: 0.625rem 0.875rem;
@@ -169,7 +178,7 @@ html.light .md-textarea {
   padding: 0.3rem 0.6rem;
   border-radius: 9999px;
   background: #252529;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--md-sys-color-on-surface, #ffffff);
   cursor: pointer;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
@@ -193,7 +202,10 @@ html.light .md-chip--on {
   font-weight: 600;
 }
 
-.md-chip:hover { background: #2b2b2f; transition: background-color 0.2s ease; }
+.md-chip:hover {
+  background: #2b2b2f;
+  transition: background-color 0.2s ease;
+}
 
 html.light .md-chip:hover {
   background: #bbdefb;
@@ -205,15 +217,19 @@ html.light .md-chip--on:hover {
   border-color: #1044a3;
 }
 
-.md-row:hover { background: color-mix(in oklab, var(--md-sys-color-on-surface) 6%, transparent); }
+.md-row:hover {
+  background: color-mix(in oklab, var(--md-sys-color-on-surface) 6%, transparent);
+}
 
 /* Clickable elements */
-[data-row], .clickable {
+[data-row],
+.clickable {
   cursor: pointer;
 }
 
 /* Button styles */
-button, [role="button"] {
+button,
+[role="button"] {
   cursor: pointer;
 }
 
@@ -225,7 +241,9 @@ button, [role="button"] {
   cursor: pointer;
 }
 
-.md-btn-primary:hover { filter: brightness(1.05); }
+.md-btn-primary:hover {
+  filter: brightness(1.05);
+}
 
 /* Fix status button text color when selected (using md-btn-primary) */
 .md-btn-primary.text-left,
@@ -235,8 +253,10 @@ button, [role="button"] {
 
 /* Make selected status button taller for better visual prominence */
 .md-btn-primary.text-left {
-  min-height: 3.5rem; /* 56px - taller than default */
-  padding: 1rem 0.875rem; /* More vertical padding */
+  min-height: 3.5rem;
+  /* 56px - taller than default */
+  padding: 1rem 0.875rem;
+  /* More vertical padding */
 }
 
 .md-btn-tonal {
@@ -252,7 +272,7 @@ button, [role="button"] {
   padding: 0.5rem 0.875rem;
   background: #2c2c2f;
   color: var(--md-sys-color-on-surface, #ffffff);
-  border: 1px solid rgba(255,255,255,0.10);
+  border: 1px solid rgba(255, 255, 255, 0.10);
   cursor: pointer;
 }
 
@@ -262,19 +282,25 @@ html.light .md-btn-surface {
   border-color: rgba(13, 71, 161, 0.12);
 }
 
-.md-btn-surface:hover { background: color-mix(in oklab, #2c2c2f 90%, white); }
+.md-btn-surface:hover {
+  background: color-mix(in oklab, #2c2c2f 90%, white);
+}
 
-html.light .md-btn-surface:hover { background: #cfd8dc; }
+html.light .md-btn-surface:hover {
+  background: #cfd8dc;
+}
 
 /* Mobile-specific improvements */
 @media (max-width: 640px) {
   .md-input {
-    font-size: 16px; /* Prevents zoom on iOS */
+    font-size: 16px;
+    /* Prevents zoom on iOS */
     padding: 0.75rem 0.875rem;
   }
 
   .md-textarea {
-    font-size: 16px; /* Prevents zoom on iOS */
+    font-size: 16px;
+    /* Prevents zoom on iOS */
     padding: 0.75rem 0.875rem;
   }
 
@@ -284,7 +310,10 @@ html.light .md-btn-surface:hover { background: #cfd8dc; }
   }
 
   /* Ensure touch targets are at least 44px */
-  button, .md-btn-primary, .md-btn-surface, .md-btn-tonal {
+  button,
+  .md-btn-primary,
+  .md-btn-surface,
+  .md-btn-tonal {
     min-height: 44px;
     min-width: 44px;
   }
@@ -296,7 +325,9 @@ html.light .md-btn-surface:hover { background: #cfd8dc; }
   }
 
   /* Better mobile button spacing */
-  .md-btn-primary, .md-btn-surface, .md-btn-tonal {
+  .md-btn-primary,
+  .md-btn-surface,
+  .md-btn-tonal {
     padding: 0.75rem 1rem;
     font-size: 0.9rem;
     line-height: 1.2;
@@ -308,7 +339,7 @@ html.light .md-btn-surface:hover { background: #cfd8dc; }
   }
 
   /* Better mobile form layout */
-  .space-y-4 > * + * {
+  .space-y-4>*+* {
     margin-top: 1rem;
   }
 
@@ -328,7 +359,7 @@ html.light .md-btn-surface:hover { background: #cfd8dc; }
   background: #2c2c2f;
   border: 1px solid color-mix(in oklab, var(--md-sys-color-on-surface) 8%, transparent);
   border-radius: 14px;
-  box-shadow: 0 1px 0 rgba(0,0,0,.25);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .25);
   overflow-wrap: break-word;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
@@ -349,7 +380,8 @@ html.light .md-row-box:hover {
 
 /* Disable hover effect for comment boxes */
 .space-y-3 .md-row-box:hover {
-  background: #2c2c2f; /* Keep original background, no hover effect */
+  background: #2c2c2f;
+  /* Keep original background, no hover effect */
 }
 
 html.light .space-y-3 .md-row-box:hover {
@@ -360,7 +392,8 @@ html.light .space-y-3 .md-row-box:hover {
 .md-row-box a {
   word-break: break-all;
   overflow-wrap: break-word;
-  color: #60a5fa; /* Light blue */
+  color: #60a5fa;
+  /* Light blue */
   text-decoration: underline;
   transition: color 0.2s ease;
 }
@@ -370,7 +403,8 @@ html.light .md-row-box a {
 }
 
 .md-row-box a:hover {
-  color: #93c5fd; /* Lighter blue on hover */
+  color: #93c5fd;
+  /* Lighter blue on hover */
   text-decoration: underline;
 }
 
@@ -379,11 +413,25 @@ html.light .md-row-box a:hover {
 }
 
 /* Utility classes for text colors with fallbacks */
-.text-primary { color: var(--md-sys-color-primary, #1e88ff); }
-.text-on-surface { color: var(--md-sys-color-on-surface, #ffffff); }
-.text-on-primary { color: var(--md-sys-color-on-primary, #19191b); }
-.text-outline { color: var(--md-sys-color-outline, #8f96a3); }
-.text-on-primary-container { color: var(--md-sys-color-on-primary-container, #001a40); }
+.text-primary {
+  color: var(--md-sys-color-primary, #1e88ff);
+}
+
+.text-on-surface {
+  color: var(--md-sys-color-on-surface, #ffffff);
+}
+
+.text-on-primary {
+  color: var(--md-sys-color-on-primary, #19191b);
+}
+
+.text-outline {
+  color: var(--md-sys-color-outline, #8f96a3);
+}
+
+.text-on-primary-container {
+  color: var(--md-sys-color-on-primary-container, #001a40);
+}
 
 /* Utility classes for backgrounds with theme support */
 .bg-primary {
@@ -404,8 +452,13 @@ html.light .bg-indicator-dot {
 }
 
 /* Force text to be visible on dark backgrounds */
-.force-light-text { color: #ffffff !important; }
-.force-white-text { color: #ffffff !important; }
+.force-light-text {
+  color: #ffffff !important;
+}
+
+.force-white-text {
+  color: #ffffff !important;
+}
 
 html.light .force-light-text,
 html.light .force-white-text {
@@ -413,7 +466,9 @@ html.light .force-white-text {
 }
 
 /* Form elements styling */
-input, textarea, select {
+input,
+textarea,
+select {
   color: var(--md-sys-color-on-surface, #ffffff);
   background-color: var(--md-sys-color-surface, #202024);
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -428,7 +483,8 @@ html.light select {
 
 /* Specific fixes for common problematic elements */
 .text-gray-500 {
-  color: #8f96a3 !important; /* Override Tailwind gray with our outline color */
+  color: #8f96a3 !important;
+  /* Override Tailwind gray with our outline color */
 }
 
 html.light .text-gray-500 {
@@ -436,7 +492,8 @@ html.light .text-gray-500 {
 }
 
 .text-gray-700 {
-  color: #b8c0cc !important; /* Override Tailwind gray with our secondary color */
+  color: #b8c0cc !important;
+  /* Override Tailwind gray with our secondary color */
 }
 
 html.light .text-gray-700 {
@@ -449,4 +506,26 @@ html.light .text-gray-700 {
 #result p,
 #result div {
   color: black !important;
+}
+
+/* Keybind modal key badges */
+.keybind-key {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: #2c2c2f;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface, #ffffff);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+html.light .keybind-key {
+  background: #e8eef8;
+  border-color: rgba(13, 71, 161, 0.2);
+  color: #1a1a1a;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }

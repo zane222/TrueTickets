@@ -609,6 +609,7 @@ function TicketView({
                   disabled={uploading}
                   className="p-1 hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
                   title="Add attachment"
+                  tabIndex={-1}
                 >
                   {uploading ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
                 </button>
