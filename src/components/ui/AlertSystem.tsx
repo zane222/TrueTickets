@@ -5,6 +5,7 @@ import React, {
   useContext,
   useMemo,
   useState,
+  useEffect,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react";
@@ -130,6 +131,37 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [alerts, setAlerts] = useState<AlertTypeShape[]>([]);
+
+  // Listen for API errors from apiClient
+  useEffect(() => {
+    const handleApiError = (event: Event) => {
+      const customEvent = event as CustomEvent<{ message: string }>;
+      const message = customEvent.detail?.message || "An unexpected error occurred";
+
+      // Use the internal addAlert to avoid dependency cycles or closure staleness
+      setAlerts((prev) => {
+        const id = Math.floor(Date.now() + Math.random() * 1000000);
+        const newAlert: AlertTypeShape = {
+          id,
+          type: ALERT_TYPES.ERROR,
+          title: "API Error",
+          message,
+          duration: 5000,
+          persistent: false,
+        };
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+          setAlerts((current) => current.filter((a) => a.id !== id));
+        }, 5000);
+
+        return [...prev, newAlert];
+      });
+    };
+
+    window.addEventListener("api-error", handleApiError);
+    return () => window.removeEventListener("api-error", handleApiError);
+  }, []);
 
   const removeAlert = useCallback((id: number) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
@@ -319,7 +351,7 @@ export const InlineMessage: React.FC<{
     duration: 0,
   };
   // onClose is a noop for inline messages
-  return <AlertRenderer alert={fakeAlert} onClose={() => {}} inline />;
+  return <AlertRenderer alert={fakeAlert} onClose={() => { }} inline />;
 };
 
 export const InlineSuccessMessage: React.FC<{ message?: string }> = ({

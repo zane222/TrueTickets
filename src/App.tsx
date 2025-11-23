@@ -111,23 +111,29 @@ const useApi = () => {
 export function ApiProvider({ children }: { children: React.ReactNode }) {
   const [lambdaUrl, setLambdaUrl] = useState(
     import.meta.env.VITE_API_GATEWAY_URL ||
-      "https://your-api-gateway-url.amazonaws.com/prod",
+    "https://your-api-gateway-url.amazonaws.com/prod",
   );
-  const client = useMemo(() => {
-    // Update the apiClient base URL if needed
+  // Sync the global apiClient with the local state
+  useEffect(() => {
     if (apiClient.baseUrl !== lambdaUrl) {
       apiClient.baseUrl = lambdaUrl;
     }
+  }, [lambdaUrl]);
 
+  const client = useMemo(() => {
     // Expose typed/generic wrappers so callers can request a typed response:
-    const get = <T = unknown,>(path: string): Promise<T> =>
-      apiClient.get<T>(path);
-    const post = <T = unknown,>(path: string, body?: unknown): Promise<T> =>
-      apiClient.post<T>(path, body);
-    const put = <T = unknown,>(path: string, body?: unknown): Promise<T> =>
-      apiClient.put<T>(path, body);
-    const del = <T = unknown,>(path: string): Promise<T> =>
-      apiClient.del<T>(path);
+    function get<T = unknown>(path: string): Promise<T> {
+      return apiClient.get<T>(path);
+    }
+    function post<T = unknown>(path: string, body?: unknown): Promise<T> {
+      return apiClient.post<T>(path, body);
+    }
+    function put<T = unknown>(path: string, body?: unknown): Promise<T> {
+      return apiClient.put<T>(path, body);
+    }
+    function del<T = unknown>(path: string): Promise<T> {
+      return apiClient.del<T>(path);
+    }
 
     return {
       lambdaUrl,
@@ -235,73 +241,71 @@ function App() {
   const { keybinds } = useKeyBindsContext();
 
   return (
-    <ApiProvider>
-      <div className="min-h-screen material-surface">
-        <TopBar
-          onHome={() => navigate("/")}
-          onSearchClick={() => setShowSearch(true)}
-          onNewCustomer={() => navigate("/newcustomer")}
-          showUserMenu={showUserMenu}
-          setShowUserMenu={setShowUserMenu}
-          canInviteUsers={canInviteUsers}
-          canManageUsers={canManageUsers}
-          onInviteUser={handleInviteUserClick}
-          onManageUsers={handleManageUsersClick}
-          onLogout={handleLogout}
-          userName={userName}
-        />
-        
-        <KeyBindsModal keybinds={keybinds} />
+    <div className="min-h-screen material-surface">
+      <TopBar
+        onHome={() => navigate("/")}
+        onSearchClick={() => setShowSearch(true)}
+        onNewCustomer={() => navigate("/newcustomer")}
+        showUserMenu={showUserMenu}
+        setShowUserMenu={setShowUserMenu}
+        canInviteUsers={canInviteUsers}
+        canManageUsers={canManageUsers}
+        onInviteUser={handleInviteUserClick}
+        onManageUsers={handleManageUsersClick}
+        onLogout={handleLogout}
+        userName={userName}
+      />
 
-        {route.view === "home" && (
-          <TicketListView goTo={navigate} showSearch={showSearch} api={api} />
-        )}
-        {route.view === "customer" && (
-          <CustomerView id={route.id} goTo={navigate} showSearch={showSearch} />
-        )}
-        {route.view === "newcustomer" && (
-          <NewCustomer
-            goTo={navigate}
-            showSearch={showSearch}
-            customerId={undefined}
-          />
-        )}
-        {route.view === "customer-edit" && (
-          <NewCustomer
-            goTo={navigate}
-            customerId={route.id}
-            showSearch={showSearch}
-          />
-        )}
-        {route.view === "ticket" && (
-          <TicketView id={route.id} goTo={navigate} showSearch={showSearch} />
-        )}
-        {route.view === "ticket-editor" && (
-          <TicketEditor
-            ticketId={route.ticketId}
-            customerId={route.customerId}
-            goTo={navigate}
-            showSearch={showSearch}
-          />
-        )}
+      <KeyBindsModal keybinds={keybinds} />
 
-        <SearchModal
-          open={showSearch}
-          onClose={() => setShowSearch(false)}
+      {route.view === "home" && (
+        <TicketListView goTo={navigate} showSearch={showSearch} api={api} />
+      )}
+      {route.view === "customer" && (
+        <CustomerView id={route.id} goTo={navigate} showSearch={showSearch} />
+      )}
+      {route.view === "newcustomer" && (
+        <NewCustomer
           goTo={navigate}
+          showSearch={showSearch}
+          customerId={undefined}
         />
+      )}
+      {route.view === "customer-edit" && (
+        <NewCustomer
+          goTo={navigate}
+          customerId={route.id}
+          showSearch={showSearch}
+        />
+      )}
+      {route.view === "ticket" && (
+        <TicketView id={route.id} goTo={navigate} showSearch={showSearch} />
+      )}
+      {route.view === "ticket-editor" && (
+        <TicketEditor
+          ticketId={route.ticketId}
+          customerId={route.customerId}
+          goTo={navigate}
+          showSearch={showSearch}
+        />
+      )}
 
-        {/* User Management Modals */}
-        <InviteUserModal
-          isOpen={showInviteUser}
-          onClose={() => setShowInviteUser(false)}
-        />
-        <ManageUsersModal
-          isOpen={showUserManagement}
-          onClose={() => setShowUserManagement(false)}
-        />
-      </div>
-    </ApiProvider>
+      <SearchModal
+        open={showSearch}
+        onClose={() => setShowSearch(false)}
+        goTo={navigate}
+      />
+
+      {/* User Management Modals */}
+      <InviteUserModal
+        isOpen={showInviteUser}
+        onClose={() => setShowInviteUser(false)}
+      />
+      <ManageUsersModal
+        isOpen={showUserManagement}
+        onClose={() => setShowUserManagement(false)}
+      />
+    </div>
   );
 }
 

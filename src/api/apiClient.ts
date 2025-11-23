@@ -198,7 +198,12 @@ class ApiClient {
           } | null;
           const errorMessage = errorBody?.details || errorBody?.message;
           if (errorMessage) {
-            alert(`API Error: ${errorMessage}`);
+            // Dispatch a custom event for the UI to handle
+            window.dispatchEvent(
+              new CustomEvent("api-error", {
+                detail: { message: errorMessage },
+              }),
+            );
           }
           // Throw an ApiError so callers can handle non-OK responses consistently.
           const err: ApiError = new Error(
