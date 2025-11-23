@@ -7,7 +7,7 @@ import awsconfig from "./aws-exports";
 import { signOut } from "aws-amplify/auth";
 import { useRoute } from "./hooks/useRoute";
 import { KeyBindsModal } from "./components/ui/KeyBindsModal";
-import type { KeyBind } from "./components/ui/KeyBindsModal";
+
 import { KeyBindsProvider } from "./components/KeyBindsProvider";
 import { TopBar } from "./components/TopBar";
 import { useKeyBindsContext } from "./hooks/useKeyBindsContext";

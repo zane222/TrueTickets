@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState, useRef, useMemo } from "react"
 import { motion } from "framer-motion";
 import { User, Printer, Edit, Loader2, Plus, X } from "lucide-react";
 import html2pdf from "html2pdf.js";
+
 import {
   getCurrentUser,
   fetchAuthSession,
@@ -19,6 +20,7 @@ import {
   formatItemsLeft,
   fmtDateAndTime,
   formatCommentWithLinks,
+  compressImage,
 } from "../utils/appUtils.jsx";
 import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
@@ -28,6 +30,7 @@ import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
 import { TicketCard } from "./TicketCard";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
+import { InlineErrorMessage } from "./ui/InlineErrorMessage";
 import type { LargeTicket, Comment } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
@@ -88,14 +91,43 @@ function TicketView({
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        let fileContent: string;
 
-        // Convert file to base64
-        const fileContent = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(file);
-        });
+        // Check if image
+        if (file.type.startsWith("image/")) {
+          const MAX_FILE_SIZE = 10 * 1024 * 1024;
+          if (file.size > MAX_FILE_SIZE) {
+            try {
+              // Compress if > 10MB
+              fileContent = await compressImage(file);
+            } catch (e) {
+              console.error("Compression failed", e);
+              _error("File Too Large", `"${file.name}" exceeds 10MB and could not be compressed.`);
+              continue;
+            }
+          } else {
+            // Normal read
+            fileContent = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(file);
+            });
+          }
+        } else {
+          // Not image
+          const MAX_FILE_SIZE = 10 * 1024 * 1024;
+          if (file.size > MAX_FILE_SIZE) {
+            _error("File Too Large", `"${file.name}" exceeds the 10MB limit.`);
+            continue;
+          }
+          fileContent = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          });
+        }
 
         try {
           await api.post("/upload-attachment", {
@@ -867,20 +899,6 @@ function CommentsBox({
             </div>
           ))}
       </div>
-    </div>
-  );
-}
-
-function InlineErrorMessage({
-  message,
-  className,
-}: {
-  message: string;
-  className?: string;
-}): React.ReactElement {
-  return (
-    <div className={className}>
-      <div className="text-red-500 font-medium">{message}</div>
     </div>
   );
 }

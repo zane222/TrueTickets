@@ -27,6 +27,14 @@ export function useChangeDetection(
   const [isPolling, setIsPolling] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const updatedAtRef = useRef<string | null>(null);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const startPolling = useCallback(
     (initialData: unknown) => {
@@ -47,6 +55,8 @@ export function useChangeDetection(
       setHasChanged(false);
 
       intervalRef.current = setInterval(async () => {
+        if (!isMounted.current) return;
+
         try {
           // Prepare If-Modified-Since header with the timestamp from initial fetch
           const headers: Record<string, string> = {};
@@ -58,7 +68,9 @@ export function useChangeDetection(
             string,
             unknown
           >;
-          
+
+          if (!isMounted.current) return;
+
           // If response is empty (304 Not Modified), backend confirms no changes
           if (!currentData || Object.keys(currentData).length === 0) {
             return;
@@ -93,14 +105,14 @@ export function useChangeDetection(
   const resetPolling = useCallback(
     (newData: unknown) => {
       stopPolling();
-      
+
       // Update the stored updated_at timestamp
       const newUpdatedAt = (newData as Record<string, unknown>).updated_at ||
         ((newData as { ticket?: Record<string, unknown> }).ticket?.updated_at) ||
         ((newData as { customer?: Record<string, unknown> }).customer?.updated_at) ||
         updatedAtRef.current;
       updatedAtRef.current = typeof newUpdatedAt === 'string' ? newUpdatedAt : updatedAtRef.current;
-      
+
       setHasChanged(false);
     },
     [stopPolling],

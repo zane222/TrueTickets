@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { getCurrentUser } from "aws-amplify/auth";
 import apiClient from "../../api/apiClient";
@@ -203,11 +203,10 @@ export function ManageUsersModal({
                         setShowUserEdit(true);
                       }}
                       disabled={currentUser?.username === user.username}
-                      className={`md-btn-surface text-md px-3 py-1 ${
-                        currentUser?.username === user.username
+                      className={`md-btn-surface text-md px-3 py-1 ${currentUser?.username === user.username
                           ? "opacity-50 cursor-not-allowed"
                           : ""
-                      }`}
+                        }`}
                     >
                       Edit
                     </button>
@@ -220,11 +219,10 @@ export function ManageUsersModal({
                         setShowUserEdit(true);
                       }}
                       disabled={currentUser?.username === user.username}
-                      className={`md-btn-surface text-md px-3 py-1 ${
-                        currentUser?.username === user.username
+                      className={`md-btn-surface text-md px-3 py-1 ${currentUser?.username === user.username
                           ? "opacity-50 cursor-not-allowed"
                           : ""
-                      }`}
+                        }`}
                       style={{
                         backgroundColor:
                           currentUser?.username === user.username
@@ -312,11 +310,10 @@ export function ManageUsersModal({
                       selectedUser.groups[0]
                     )
                   }
-                  className={`elev-1 ${
-                    selectedUser.groups[0] === "delete"
+                  className={`elev-1 ${selectedUser.groups[0] === "delete"
                       ? "md-btn-error"
                       : "md-btn-primary"
-                  }`}
+                    }`}
                 >
                   {selectedUser.groups[0] === "delete"
                     ? "Delete User"

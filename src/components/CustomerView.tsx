@@ -16,6 +16,8 @@ import NavigationButton from "./ui/NavigationButton";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Customer, SmallTicket, Phone } from "../types/api";
 
+import { InlineErrorMessage } from "./ui/InlineErrorMessage";
+
 interface CustomerViewProps {
   id: number;
   goTo: (to: string) => void;
@@ -218,7 +220,8 @@ function CustomerView({
         let allTickets: SmallTicket[] = [];
         let hasMore = true;
 
-        while (hasMore) {
+        const MAX_PAGES = 50;
+        while (hasMore && page <= MAX_PAGES) {
           const data = await api.get<{ tickets: SmallTicket[] }>(
             `/tickets?customer_id=${encodeURIComponent(id)}&page=${page}`,
           );
@@ -423,20 +426,6 @@ function CustomerView({
                     </div> */}
         </div>
       </div>
-    </div>
-  );
-}
-
-function InlineErrorMessage({
-  message,
-  className,
-}: {
-  message: string;
-  className?: string;
-}): React.ReactElement {
-  return (
-    <div className={className}>
-      <div className="text-red-500 font-medium">{message}</div>
     </div>
   );
 }

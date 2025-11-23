@@ -183,14 +183,10 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({
       setAlerts((prev) => [...prev, newAlert]);
 
       if ((newAlert.duration ?? 0) > 0) {
-        // Use window.setTimeout -> returns number in browser
         const timer = window.setTimeout(() => {
           removeAlert(id);
         }, newAlert.duration);
-        // Note: we intentionally do not clear this timeout here because removal is idempotent
-        // and clear on unmount will be handled by React automatically.
-        // (If stricter control is desired, track timers and clear on unmount.)
-        void timer;
+        // timer is implicitly handled by closure/React state updates
       }
 
       return id;
