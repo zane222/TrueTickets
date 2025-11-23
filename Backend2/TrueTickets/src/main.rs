@@ -12,8 +12,13 @@ use aws_sdk_s3::primitives::ByteStream;
 
 const TARGET_URL: &str = "https://Cacell.repairshopr.com/api/v1";
 
-/// Standard CORS headers for all responses
-fn get_cors_headers() -> Vec<(&'static str, &'static str)> {
+/// CORS origin header for all responses
+fn get_cors_origin_header() -> (&'static str, &'static str) {
+    ("Access-Control-Allow-Origin", "*")
+}
+
+/// Full CORS headers for OPTIONS preflight responses only
+fn get_cors_preflight_headers() -> Vec<(&'static str, &'static str)> {
     vec![
         ("Access-Control-Allow-Origin", "*"),
         (
@@ -41,13 +46,10 @@ fn error_response(
         body["suggestion"] = json!(suggestion);
     }
 
-    let mut response = Response::builder().status(status);
-
-    for (key, value) in get_cors_headers() {
-        response = response.header(key, value);
-    }
-
-    response
+    let (key, value) = get_cors_origin_header();
+    Response::builder()
+        .status(status)
+        .header(key, value)
         .header("Content-Type", "application/json")
         .body(body.to_string().into())
         .expect("Couldn't create error response")
@@ -55,13 +57,10 @@ fn error_response(
 
 /// Build a successful response with CORS headers
 fn success_response(status: u16, body: String) -> Response<Body> {
-    let mut response = Response::builder().status(status);
-
-    for (key, value) in get_cors_headers() {
-        response = response.header(key, value);
-    }
-
-    response
+    let (key, value) = get_cors_origin_header();
+    Response::builder()
+        .status(status)
+        .header(key, value)
         .header("Content-Type", "application/json")
         .body(body.into())
         .expect("Couldn't create success response")
@@ -71,7 +70,7 @@ fn success_response(status: u16, body: String) -> Response<Body> {
 fn handle_options() -> Response<Body> {
     let mut response = Response::builder().status(200);
 
-    for (key, value) in get_cors_headers() {
+    for (key, value) in get_cors_preflight_headers() {
         response = response.header(key, value);
     }
 
@@ -85,22 +84,21 @@ fn handle_options() -> Response<Body> {
 fn get_user_groups_from_event(event: &Request) -> Vec<String> {
     // Get user groups from the request context (populated by Cognito authorizer)
     let request_context = event.request_context();
-    if let Some(authorizer) = request_context.authorizer() {
-        if let Some(claims) = authorizer.fields.get("claims") {
-            if let Some(groups) = claims.get("cognito:groups") {
-                if let Some(groups_str) = groups.as_str() {
-                    return groups_str
-                        .split(',')
-                        .map(|g| g.trim().to_string())
-                        .filter(|g| !g.is_empty())
-                        .collect();
-                } else if let Some(groups_array) = groups.as_array() {
-                    return groups_array
-                        .iter()
-                        .filter_map(|g| g.as_str().map(|s| s.to_string()))
-                        .collect();
-                }
-            }
+    if let Some(authorizer) = request_context.authorizer()
+        && let Some(claims) = authorizer.fields.get("claims")
+        && let Some(groups) = claims.get("cognito:groups")
+    {
+        if let Some(groups_str) = groups.as_str() {
+            return groups_str
+                .split(',')
+                .map(|g| g.trim().to_string())
+                .filter(|g| !g.is_empty())
+                .collect();
+        } else if let Some(groups_array) = groups.as_array() {
+            return groups_array
+                .iter()
+                .filter_map(|g| g.as_str().map(|s| s.to_string()))
+                .collect();
         }
     }
     vec![]
@@ -760,238 +758,245 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         ));
     }
 
-    // Route to user management endpoints
-    if path == "/invite-user" && method == "POST" {
-        // Extract and validate invitation data from request
-        let body_str = match event.body() {
-            Body::Empty => "{}",
-            Body::Text(s) => s,
-            Body::Binary(b) => {
-                match std::str::from_utf8(b) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        return Ok(error_response(
-                            400,
-                            "Invalid request body",
-                            "Could not parse request body as UTF-8",
-                            None,
-                        ))
+    // Route based on path and method
+    match (path, method.as_str()) {
+        ("/invite-user", "POST") => {
+            // Extract and validate invitation data from request
+            let body_str = match event.body() {
+                Body::Empty => "{}",
+                Body::Text(s) => s,
+                Body::Binary(b) => {
+                    match std::str::from_utf8(b) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            return Ok(error_response(
+                                400,
+                                "Invalid request body",
+                                "Could not parse request body as UTF-8",
+                                None,
+                            ))
+                        }
                     }
                 }
-            }
-            _ => "{}",
-        };
+                _ => "{}",
+            };
 
-        let body: Value = match serde_json::from_str(body_str) {
-            Ok(v) => v,
-            Err(_) => {
+            let body: Value = match serde_json::from_str(body_str) {
+                Ok(v) => v,
+                Err(_) => {
+                    return Ok(error_response(
+                        400,
+                        "Invalid JSON",
+                        "Could not parse request body as JSON",
+                        None,
+                    ))
+                }
+            };
+
+            let email = match body.get("email").and_then(|v| v.as_str()) {
+                Some(e) => e,
+                None => {
+                    return Ok(error_response(
+                        400,
+                        "Missing parameter",
+                        "Email is required",
+                        None,
+                    ))
+                }
+            };
+
+            let first_name = body.get("firstName").and_then(|v| v.as_str()).unwrap_or("");
+
+            // Check user permissions
+            let user_groups = get_user_groups_from_event(&event);
+            if !can_invite_users(&user_groups) {
                 return Ok(error_response(
-                    400,
-                    "Invalid JSON",
-                    "Could not parse request body as JSON",
-                    None,
-                ))
+                    403,
+                    "Insufficient permissions",
+                    "You do not have permission to invite users",
+                    Some("Only ApplicationAdmin, Owner, and Manager can invite users"),
+                ));
             }
-        };
 
-        let email = match body.get("email").and_then(|v| v.as_str()) {
-            Some(e) => e,
-            None => {
-                return Ok(error_response(
-                    400,
-                    "Missing parameter",
-                    "Email is required",
-                    None,
-                ))
-            }
-        };
-
-        let first_name = body.get("firstName").and_then(|v| v.as_str()).unwrap_or("");
-
-        // Check user permissions
-        let user_groups = get_user_groups_from_event(&event);
-        if !can_invite_users(&user_groups) {
-            return Ok(error_response(
-                403,
-                "Insufficient permissions",
-                "You do not have permission to invite users",
-                Some("Only ApplicationAdmin, Owner, and Manager can invite users"),
-            ));
+            Ok(handle_user_invitation(email, first_name, cognito_client).await)
         }
-
-        return Ok(handle_user_invitation(email, first_name, cognito_client).await);
-    } else if path == "/users" && method == "GET" {
-        return Ok(handle_list_users(&event, cognito_client).await);
-    } else if path == "/update-user-group" && method == "POST" {
-        // Extract and validate user group update data from request
-        let body_str = match event.body() {
-            Body::Empty => "{}",
-            Body::Text(s) => s,
-            Body::Binary(b) => {
-                match std::str::from_utf8(b) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        return Ok(error_response(
-                            400,
-                            "Invalid request body",
-                            "Could not parse request body as UTF-8",
-                            None,
-                        ))
-                    }
-                }
-            },
-            _ => "{}",
-        };
-
-        let body: Value = match serde_json::from_str(body_str) {
-            Ok(v) => v,
-            Err(_) => {
-                return Ok(error_response(
-                    400,
-                    "Invalid JSON",
-                    "Could not parse request body as JSON",
-                    None,
-                ))
-            }
-        };
-
-        let username = match body.get("username").and_then(|v| v.as_str()) {
-            Some(u) => u,
-            None => {
-                return Ok(error_response(
-                    400,
-                    "Missing parameter",
-                    "Username is required",
-                    None,
-                ))
-            }
-        };
-
-        let new_group = match body.get("group").and_then(|v| v.as_str()) {
-            Some(g) => g,
-            None => {
-                return Ok(error_response(
-                    400,
-                    "Missing parameter",
-                    "Group is required",
-                    None,
-                ))
-            }
-        };
-
-        // Check user permissions
-        let user_groups = get_user_groups_from_event(&event);
-        if !can_manage_users(&user_groups) {
-            return Ok(error_response(
-                403,
-                "Insufficient permissions",
-                "You do not have permission to manage users",
-                Some("Only ApplicationAdmin and Owner can manage users"),
-            ));
+        ("/users", "GET") => {
+            Ok(handle_list_users(&event, cognito_client).await)
         }
-
-        return Ok(handle_update_user_group(username, new_group, cognito_client).await);
-    } else if path == "/upload-attachment" && method == "POST" {
-        // Extract and validate attachment data from request
-        let body_str = match event.body() {
-            Body::Empty => "{}",
-            Body::Text(s) => s,
-            Body::Binary(b) => {
-                match std::str::from_utf8(b) {
-                    Ok(s) => s,
-                    Err(_) => {
-                        return Ok(error_response(
-                            400,
-                            "Invalid request body",
-                            "Could not parse request body as UTF-8",
-                            None,
-                        ))
+        ("/update-user-group", "POST") => {
+            // Extract and validate user group update data from request
+            let body_str = match event.body() {
+                Body::Empty => "{}",
+                Body::Text(s) => s,
+                Body::Binary(b) => {
+                    match std::str::from_utf8(b) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            return Ok(error_response(
+                                400,
+                                "Invalid request body",
+                                "Could not parse request body as UTF-8",
+                                None,
+                            ))
+                        }
                     }
+                },
+                _ => "{}",
+            };
+
+            let body: Value = match serde_json::from_str(body_str) {
+                Ok(v) => v,
+                Err(_) => {
+                    return Ok(error_response(
+                        400,
+                        "Invalid JSON",
+                        "Could not parse request body as JSON",
+                        None,
+                    ))
                 }
-            },
-            _ => "{}",
-        };
+            };
 
-        let body: Value = match serde_json::from_str(body_str) {
-            Ok(v) => v,
-            Err(_) => {
+            let username = match body.get("username").and_then(|v| v.as_str()) {
+                Some(u) => u,
+                None => {
+                    return Ok(error_response(
+                        400,
+                        "Missing parameter",
+                        "Username is required",
+                        None,
+                    ))
+                }
+            };
+
+            let new_group = match body.get("group").and_then(|v| v.as_str()) {
+                Some(g) => g,
+                None => {
+                    return Ok(error_response(
+                        400,
+                        "Missing parameter",
+                        "Group is required",
+                        None,
+                    ))
+                }
+            };
+
+            // Check user permissions
+            let user_groups = get_user_groups_from_event(&event);
+            if !can_manage_users(&user_groups) {
                 return Ok(error_response(
-                    400,
-                    "Invalid JSON",
-                    "Could not parse request body as JSON",
-                    None,
-                ))
+                    403,
+                    "Insufficient permissions",
+                    "You do not have permission to manage users",
+                    Some("Only ApplicationAdmin and Owner can manage users"),
+                ));
             }
-        };
 
-        let ticket_id = match body.get("ticket_id").and_then(|v| v.as_i64()) {
-            Some(id) => id,
-            None => {
-                return Ok(error_response(
-                    400,
-                    "Missing parameter",
-                    "ticket_id is required and must be an integer",
-                    None,
-                ))
-            }
-        };
+            Ok(handle_update_user_group(username, new_group, cognito_client).await)
+        }
+        ("/upload-attachment", "POST") => {
+            // Extract and validate attachment data from request
+            let body_str = match event.body() {
+                Body::Empty => "{}",
+                Body::Text(s) => s,
+                Body::Binary(b) => {
+                    match std::str::from_utf8(b) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            return Ok(error_response(
+                                400,
+                                "Invalid request body",
+                                "Could not parse request body as UTF-8",
+                                None,
+                            ))
+                        }
+                    }
+                },
+                _ => "{}",
+            };
 
-        let image_data = match body.get("image_data").and_then(|v| v.as_str()) {
-            Some(data) => data,
-            None => {
-                return Ok(error_response(
-                    400,
-                    "Missing parameter",
-                    "image_data is required (base64 encoded data URL)",
-                    None,
-                ))
-            }
-        };
+            let body: Value = match serde_json::from_str(body_str) {
+                Ok(v) => v,
+                Err(_) => {
+                    return Ok(error_response(
+                        400,
+                        "Invalid JSON",
+                        "Could not parse request body as JSON",
+                        None,
+                    ))
+                }
+            };
 
-        let file_name = body
-            .get("file_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("attachment.png");
+            let ticket_id = match body.get("ticket_id").and_then(|v| v.as_i64()) {
+                Some(id) => id,
+                None => {
+                    return Ok(error_response(
+                        400,
+                        "Missing parameter",
+                        "ticket_id is required and must be an integer",
+                        None,
+                    ))
+                }
+            };
 
-        // Extract base64 data from data URL if needed
-        let base64_data = if image_data.starts_with("data:") {
-            // Format: data:image/png;base64,xxxx
-            match image_data.split(',').last() {
+            let image_data = match body.get("image_data").and_then(|v| v.as_str()) {
                 Some(data) => data,
                 None => {
                     return Ok(error_response(
                         400,
-                        "Invalid data URL",
-                        "Could not extract base64 from data URL",
+                        "Missing parameter",
+                        "image_data is required (base64 encoded data URL)",
                         None,
                     ))
                 }
-            }
-        } else {
-            image_data
-        };
+            };
 
-        return Ok(handle_upload_attachment(ticket_id, base64_data, file_name, &api_key, s3_client).await);
-    } else if path.starts_with("/api") {
-        // Route to RepairShopr proxy for /api/* paths
-        let modified_path = path.strip_prefix("/api").unwrap_or("");
-        match handle_repairshopr_proxy(&event, modified_path, &api_key).await {
-            Ok(response) => Ok(response),
-            Err(e) => Ok(error_response(
-                502,
-                "Bad Gateway (rs)",
-                &e,
-                Some("A network error occurred when trying to reach RepairShopr."),
-            )),
+            let file_name = body
+                .get("file_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("attachment.png");
+
+            // Extract base64 data from data URL if needed
+            let base64_data = if image_data.starts_with("data:") {
+                // Format: data:image/png;base64,xxxx
+                match image_data.split(',').next_back() {
+                    Some(data) => data,
+                    None => {
+                        return Ok(error_response(
+                            400,
+                            "Invalid data URL",
+                            "Could not extract base64 from data URL",
+                            None,
+                        ))
+                    }
+                }
+            } else {
+                image_data
+            };
+
+            Ok(handle_upload_attachment(ticket_id, base64_data, file_name, &api_key, s3_client).await)
         }
-    } else {
-        // Method not allowed for other paths
-        Ok(error_response(
-            405,
-            "Method not allowed",
-            path,
-            Some("You're sending a request that doesn't exist."),
-        ))
+        (p, _) if p.starts_with("/api") => {
+            // Route to RepairShopr proxy for /api/* paths
+            let modified_path = path.strip_prefix("/api").unwrap_or("");
+            match handle_repairshopr_proxy(&event, modified_path, &api_key).await {
+                Ok(response) => Ok(response),
+                Err(e) => Ok(error_response(
+                    502,
+                    "Bad Gateway (rs)",
+                    &e,
+                    Some("A network error occurred when trying to reach RepairShopr."),
+                )),
+            }
+        }
+        _ => {
+            // Method not allowed for other paths
+            Ok(error_response(
+                405,
+                "Method not allowed",
+                path,
+                Some("You're sending a request that doesn't exist."),
+            ))
+        }
     }
 }
 
@@ -1028,7 +1033,7 @@ mod tests {
 
     #[test]
     fn test_cors_headers() {
-        let headers = get_cors_headers();
+        let headers = get_cors_preflight_headers();
         assert_eq!(headers.len(), 4);
         assert!(headers.iter().any(|(k, _)| *k == "Access-Control-Allow-Origin"));
     }

@@ -67,7 +67,7 @@ export function TicketCard({
   return (
     <div
       id="result"
-      className="text-black pl-[20px] w-[323px] pt-[6px] pb-[7px] origin-top"
+      className="text-black pl-[20px] w-[323px] pt-[5px] pb-[4px] origin-top"
       style={{
         fontFamily: "ff2, Arial, sans-serif",
         fontStyle: "normal",
