@@ -443,10 +443,9 @@ function TicketView({
           filename: "ticket.pdf",
           html2canvas: { scale: 8 },
           jsPDF: {
-            orientation: "l",
+            orientation: "landscape",
             unit: "in",
             format: [3.5, 1.12],
-            setTitle: "ticket",
           },
         })
         .from(ticketCardRef.current)

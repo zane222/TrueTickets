@@ -14,33 +14,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   const [theme, setThemeState] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);
 
-  // Initialize theme from system preference
-  useEffect(() => {
-    const prefersDark = window.matchMedia(
-      "(prefers-color-scheme: dark)"
-    ).matches;
-    const systemTheme = prefersDark ? "dark" : "light";
-    setThemeState(systemTheme);
-    applyTheme(systemTheme);
-
-    setMounted(true);
-  }, []);
-
-  // Listen for system theme changes
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const handleChange = (e: MediaQueryListEvent) => {
-      const newTheme = e.matches ? "dark" : "light";
-      setThemeState(newTheme);
-      applyTheme(newTheme);
-    };
-
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, []);
-
-  const applyTheme = (themeToApply: Theme) => {
+  const applyTheme = React.useCallback((themeToApply: Theme) => {
     const root = document.documentElement;
 
     if (themeToApply === "light") {
@@ -94,7 +68,33 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
       document.body.style.background = "#19191b";
       document.body.style.color = "#e5e8ee";
     }
-  };
+  }, []);
+
+  // Initialize theme from system preference
+  useEffect(() => {
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)"
+    ).matches;
+    const systemTheme = prefersDark ? "dark" : "light";
+    setThemeState(systemTheme);
+    applyTheme(systemTheme);
+
+    setMounted(true);
+  }, [applyTheme]);
+
+  // Listen for system theme changes
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const handleChange = (e: MediaQueryListEvent) => {
+      const newTheme = e.matches ? "dark" : "light";
+      setThemeState(newTheme);
+      applyTheme(newTheme);
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [applyTheme]);
 
   // Prevent hydration mismatch
   if (!mounted) {

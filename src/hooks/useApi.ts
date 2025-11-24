@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import apiClient from "../api/apiClient";
-import { useAlertMethods } from "../components/ui/AlertSystem";
 
 interface ApiMethods {
   get: <T = unknown>(path: string, headers?: Record<string, string>) => Promise<T>;
@@ -14,8 +13,6 @@ interface ApiMethods {
  * @returns API methods with error handling
  */
 export function useApi(): ApiMethods {
-  const { error } = useAlertMethods();
-
   const api = useMemo(
     () => ({
       get: async <T = unknown>(path: string, headers?: Record<string, string>): Promise<T> => {
@@ -31,7 +28,7 @@ export function useApi(): ApiMethods {
         return await apiClient.del<T>(path);
       },
     }),
-    [error],
+    [],
   );
 
   return api;
