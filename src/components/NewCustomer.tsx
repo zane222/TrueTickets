@@ -274,7 +274,7 @@ export default function NewCustomer({
       phones.map((phone) => {
         const phoneId = phone.id ?? phone.phone_id;
         if (!phoneId) return Promise.resolve();
-        return api.del(`/customers/${id}/phones/${phoneId}`).catch(() => {});
+        return api.del(`/customers/${id}/phones/${phoneId}`).catch(() => { });
       }),
     );
   }
@@ -285,7 +285,7 @@ export default function NewCustomer({
     const phonePromises = numbers.map((number) =>
       api
         .post(`/customers/${id}/phones`, { number: number, primary: true })
-        .catch((err: unknown) => {
+        .catch((err: unknown): null => {
           console.error(`Failed to create phone ${number}:`, err);
           return null;
         }),
@@ -319,21 +319,21 @@ export default function NewCustomer({
       const targetId = phones[targetIndex].id ?? phones[targetIndex].phone_id;
 
       if (oldFirstId) {
-        await api.del(`/customers/${id}/phones/${oldFirstId}`).catch(() => {});
+        await api.del(`/customers/${id}/phones/${oldFirstId}`).catch(() => { });
       }
       if (targetId) {
-        await api.del(`/customers/${id}/phones/${targetId}`).catch(() => {});
+        await api.del(`/customers/${id}/phones/${targetId}`).catch(() => { });
       }
 
       await api
         .post(`/customers/${id}/phones`, { number: selected, primary: true })
-        .catch(() => {});
+        .catch(() => { });
       await api
         .post(`/customers/${id}/phones`, {
           number: first.number ?? "",
           primary: true,
         })
-        .catch(() => {});
+        .catch(() => { });
 
       // Recurse until correct order is achieved (server is flaky)
       return makeCorrectPhoneBeFirst(id, selected);
@@ -505,13 +505,13 @@ export default function NewCustomer({
               animate={
                 saving
                   ? {
-                      backgroundColor: "var(--md-sys-color-primary-container)",
-                      color: "var(--md-sys-color-on-primary-container)",
-                    }
+                    backgroundColor: "var(--md-sys-color-primary-container)",
+                    color: "var(--md-sys-color-on-primary-container)",
+                  }
                   : {
-                      backgroundColor: "var(--md-sys-color-primary)",
-                      color: "var(--md-sys-color-on-primary)",
-                    }
+                    backgroundColor: "var(--md-sys-color-primary)",
+                    color: "var(--md-sys-color-on-primary)",
+                  }
               }
               transition={{ duration: 0.15 }}
               tabIndex={5}

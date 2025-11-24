@@ -84,7 +84,7 @@ export function useChangeDetection(
             clearInterval(intervalRef.current);
             intervalRef.current = null;
           }
-        } catch (_error) {
+        } catch {
           // Ignore any errors (404, 500, network errors, etc.) and continue polling
           // Only a successful 200 response with data triggers change detection
           return;

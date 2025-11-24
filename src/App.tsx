@@ -3,7 +3,7 @@ import { Amplify } from "aws-amplify";
 import { useUserGroups } from "./components/UserGroupsContext";
 import { useAlertMethods } from "./components/ui/AlertSystem";
 import apiClient from "./api/apiClient";
-import awsconfig from "./aws-exports";
+import awsconfig from "./aws-exports.ts";
 import { signOut } from "aws-amplify/auth";
 import { useRoute } from "./hooks/useRoute";
 import { KeyBindsModal } from "./components/ui/KeyBindsModal";
@@ -262,7 +262,7 @@ function App() {
         <TicketListView goTo={navigate} showSearch={showSearch} api={api} />
       )}
       {route.view === "customer" && (
-        <CustomerView id={route.id} goTo={navigate} showSearch={showSearch} />
+        <CustomerView id={route.id!} goTo={navigate} showSearch={showSearch} />
       )}
       {route.view === "newcustomer" && (
         <NewCustomer
@@ -274,12 +274,12 @@ function App() {
       {route.view === "customer-edit" && (
         <NewCustomer
           goTo={navigate}
-          customerId={route.id}
+          customerId={route.id!}
           showSearch={showSearch}
         />
       )}
       {route.view === "ticket" && (
-        <TicketView id={route.id} goTo={navigate} showSearch={showSearch} />
+        <TicketView id={route.id!} goTo={navigate} showSearch={showSearch} />
       )}
       {route.view === "ticket-editor" && (
         <TicketEditor

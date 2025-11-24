@@ -38,13 +38,13 @@ function TicketListItem({
           </div>
           <div className="col-span-5 truncate">{ticket.subject}</div>
           <div className="col-span-2 truncate">
-            {convertStatus(ticket.status)}
+            {convertStatus(ticket.status || "")}
           </div>
           <div className="col-span-1 truncate">
             {getTicketDeviceInfo(ticket).device}
           </div>
           <div className="col-span-1 truncate">
-            {fmtDate(ticket.created_at)}
+            {fmtDate(ticket.created_at || "")}
           </div>
           <div className="col-span-2 truncate">
             {ticket.customer_business_then_name ??
@@ -59,7 +59,7 @@ function TicketListItem({
               #{ticket.number ?? ticket.id}
             </div>
             <div className="text-md truncate ml-2 text-outline">
-              {fmtDate(ticket.created_at)}
+              {fmtDate(ticket.created_at || "")}
             </div>
           </div>
           <div className="text-md truncate text-on-surface">
@@ -67,7 +67,7 @@ function TicketListItem({
           </div>
           <div className="flex justify-between items-center">
             <div className="text-md truncate text-outline">
-              {convertStatus(ticket.status)}
+              {convertStatus(ticket.status || "")}
             </div>
             <div className="text-md truncate ml-2 text-outline">
               {getTicketDeviceInfo(ticket).device}
@@ -321,8 +321,8 @@ export function TicketListView({
             {(items || [])
               .filter(
                 (ticket) =>
-                  !convertStatus(ticket.status) ||
-                  !statusHidden.has(convertStatus(ticket.status)),
+                  !convertStatus(ticket.status || "") ||
+                  !statusHidden.has(convertStatus(ticket.status || "")),
               ) // filter out devices with a status that isn't selected
               /*.filter((ticket) => { // TODO Needs to get the device type correctly from the model. If it's not there it needs to see
                                       // if doing getDeviceTypeFromSubject(ticket.subject) will get a device type

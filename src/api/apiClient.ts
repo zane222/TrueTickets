@@ -42,7 +42,10 @@ class ApiClient {
         this.sessionExpiry &&
         Date.now() < this.sessionExpiry
       ) {
-        const token = this.cachedSession.tokens.idToken.toString();
+        const token = this.cachedSession.tokens?.idToken?.toString();
+        if (!token) {
+          throw new Error("No authentication token available");
+        }
         return {
           ...(isMultipart ? {} : { "Content-Type": "application/json" }),
           Authorization: `Bearer ${token}`,

@@ -11,7 +11,7 @@ interface MiddleClickHandlers {
  * @returns Event handlers for mouse events
  */
 function useMiddleClick(
-  onNavigate: () => void,
+  _onNavigate: () => void,
   targetUrl: string,
 ): MiddleClickHandlers {
   const handleAuxClick = (event: React.MouseEvent<HTMLButtonElement>) => {

@@ -1,6 +1,6 @@
 // Component-specific type definitions
 
-import { LargeTicket, SmallTicket, Customer } from "./api";
+
 
 // ============================================================================
 // Route Types

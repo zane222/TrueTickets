@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   getCurrentUser,
-  signOut,
   fetchAuthSession,
 } from "aws-amplify/auth";
 import { LoadingSpinner } from "./ui/LoadingSpinner";
@@ -11,8 +10,6 @@ import { LoginPage } from "./auth/LoginPage";
 import type { AmplifyAuthUser, IdTokenPayload } from "../types";
 
 type AuthUser = AmplifyAuthUser;
-
-
 
 /**
  * Helper: Safely extract the id token payload from the session object returned by `fetchAuthSession`.
@@ -169,17 +166,6 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
     };
 
     void fetchUserGroups();
-  };
-
-  const _handleLogout = async (): Promise<void> => {
-    try {
-      await signOut();
-      setUser(null);
-      setUserGroups([]);
-      setUserName(null);
-    } catch (err) {
-      console.error("Logout error:", err);
-    }
   };
 
   if (loading) {

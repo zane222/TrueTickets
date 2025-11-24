@@ -204,8 +204,8 @@ export function ManageUsersModal({
                       }}
                       disabled={currentUser?.username === user.username}
                       className={`md-btn-surface text-md px-3 py-1 ${currentUser?.username === user.username
-                          ? "opacity-50 cursor-not-allowed"
-                          : ""
+                        ? "opacity-50 cursor-not-allowed"
+                        : ""
                         }`}
                     >
                       Edit
@@ -220,8 +220,8 @@ export function ManageUsersModal({
                       }}
                       disabled={currentUser?.username === user.username}
                       className={`md-btn-surface text-md px-3 py-1 ${currentUser?.username === user.username
-                          ? "opacity-50 cursor-not-allowed"
-                          : ""
+                        ? "opacity-50 cursor-not-allowed"
+                        : ""
                         }`}
                       style={{
                         backgroundColor:
@@ -306,13 +306,13 @@ export function ManageUsersModal({
                 <button
                   onClick={() =>
                     updateUserGroup(
-                      selectedUser.username,
-                      selectedUser.groups[0]
+                      selectedUser.username || "",
+                      selectedUser.groups[0] || ""
                     )
                   }
                   className={`elev-1 ${selectedUser.groups[0] === "delete"
-                      ? "md-btn-error"
-                      : "md-btn-primary"
+                    ? "md-btn-error"
+                    : "md-btn-primary"
                     }`}
                 >
                   {selectedUser.groups[0] === "delete"

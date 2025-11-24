@@ -78,7 +78,7 @@ function TicketView({
 
   // Helper function to decode \u escape sequences in URLs
   const decodeUrl = useCallback((url: string): string => {
-    return url.replace(/\\u([0-9a-fA-F]{4})/g, (match, code) => {
+    return url.replace(/\\u([0-9a-fA-F]{4})/g, (_match, code) => {
       return String.fromCharCode(parseInt(code, 16));
     });
   }, []);
@@ -355,7 +355,7 @@ function TicketView({
   }, [windowWidth]);
 
   const updateTicketStatus = async (status: string): Promise<void> => {
-    if (!ticket || updatingStatus || convertStatus(ticket.status) === status)
+    if (!ticket || updatingStatus || convertStatus(ticket.status || "") === status)
       return; // Prevent multiple updates or updating to the same status
     setUpdatingStatus(status);
     try {
@@ -452,17 +452,22 @@ function TicketView({
         .output("bloburl")
         .then(function (pdf) {
           const pdfWindow = window.open(pdf);
-          pdfWindow.onload = function () {
-            pdfWindow.print();
-          };
-          const interval = window.setInterval(function () {
-            if (pdfWindow.closed) {
-              window.clearInterval(interval);
-              pdfIntervalRef.current = null;
-              URL.revokeObjectURL(pdf);
-            }
-          }, 1000);
-          pdfIntervalRef.current = interval;
+          if (pdfWindow) {
+            pdfWindow.onload = function () {
+              pdfWindow.print();
+            };
+            const interval = window.setInterval(function () {
+              if (pdfWindow.closed) {
+                window.clearInterval(interval);
+                pdfIntervalRef.current = null;
+                URL.revokeObjectURL(pdf);
+              }
+            }, 1000);
+            pdfIntervalRef.current = interval;
+          } else {
+            console.error("Failed to open PDF window");
+            _error("Popup Blocked", "Please allow popups to print tickets.");
+          }
         });
     } catch (err: unknown) {
       console.error("Error generating PDF:", err);
@@ -531,7 +536,7 @@ function TicketView({
                     ticket.customer?.fullname ||
                     ""
                   }
-                  creationDate={fmtDateAndTime(ticket.created_at)}
+                  creationDate={fmtDateAndTime(ticket.created_at || "")}
                   phoneNumber={phone}
                 />
               </div>
@@ -545,7 +550,7 @@ function TicketView({
               <p className="text-md font-semibold">Status:</p>
               <div className="flex flex-col gap-2">
                 {STATUSES.map((status, _index) => {
-                  const active = convertStatus(ticket.status) === status;
+                  const active = convertStatus(ticket.status || "") === status;
                   const isUpdating = updatingStatus === status;
                   return (
                     <motion.button
@@ -616,7 +621,7 @@ function TicketView({
 
               {/* Attachments grid */}
               <div className="grid grid-cols-1 gap-4">
-                {ticket.attachments.map((attachment) => {
+                {(ticket.attachments || []).map((attachment) => {
                   const decodedUrl = decodeUrl(attachment.file?.url || "");
                   return (
                     <div
@@ -670,7 +675,6 @@ function TicketView({
             <CommentsBox
               ticketId={ticket.id}
               comments={ticket.comments}
-              _goTo={goTo}
             />
           </div>
         </aside>
@@ -716,12 +720,10 @@ function TicketView({
 interface CommentsBoxProps {
   ticketId: number;
   comments?: Comment[];
-  _goTo: (to: string) => void;
 }
 function CommentsBox({
   ticketId,
   comments = [],
-  _goTo,
 }: CommentsBoxProps): React.ReactElement {
   const api = useApi();
   const [text, setText] = useState<string>("");
@@ -882,7 +884,7 @@ function CommentsBox({
               <div className="absolute inset-x-3 top-2 flex items-center justify-between text-md text-outline">
                 <div className="flex items-center gap-3">
                   {comment.tech ? <span>{comment.tech}</span> : null}
-                  <span>{fmtDateAndTime(comment.created_at)}</span>
+                  <span>{fmtDateAndTime(comment.created_at || "")}</span>
                 </div>
                 {typeof comment.hidden === "boolean" &&
                   comment.hidden === false ? (

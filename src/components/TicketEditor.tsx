@@ -77,7 +77,7 @@ function TicketEditor({
         // Start change detection polling
         startPolling(ticket);
         setSubject(ticket.subject || "");
-        
+
         // Set customer name if available
         if (ticket.customer_business_then_name) {
           setCustomerName(ticket.customer_business_then_name);
@@ -294,7 +294,7 @@ function TicketEditor({
           {
             const everWet =
               typeof properties?.EverBeenWet === "string" ||
-              Array.isArray(properties?.EverBeenWet)
+                Array.isArray(properties?.EverBeenWet)
                 ? properties.EverBeenWet
                 : "Unknown";
             model["Ever been Wet: "] = everWet;
@@ -327,7 +327,7 @@ function TicketEditor({
           {
             const everWet =
               typeof properties?.EverBeenWet === "string" ||
-              Array.isArray(properties?.EverBeenWet)
+                Array.isArray(properties?.EverBeenWet)
                 ? properties.EverBeenWet
                 : "Unknown";
             model["Ever been Wet: "] = everWet;
@@ -364,7 +364,7 @@ function TicketEditor({
 
         model = {
           ...model,
-          device: DEVICES[deviceIdx] || "Other",
+          device: (deviceIdx !== null && DEVICES[deviceIdx]) || "Other",
           itemsLeft: itemsLeft,
           estimatedTime: timeEstimate,
         };
@@ -399,7 +399,7 @@ function TicketEditor({
               "vT" +
               JSON.stringify(
                 {
-                  device: DEVICES[deviceIdx] || "Other",
+                  device: (deviceIdx !== null && DEVICES[deviceIdx]) || "Other",
                   itemsLeft: itemsLeft,
                   estimatedTime: timeEstimate,
                 },
@@ -467,13 +467,13 @@ function TicketEditor({
               animate={
                 saving
                   ? {
-                      backgroundColor: "var(--md-sys-color-primary-container)",
-                      color: "var(--md-sys-color-on-primary-container)",
-                    }
+                    backgroundColor: "var(--md-sys-color-primary-container)",
+                    color: "var(--md-sys-color-on-primary-container)",
+                  }
                   : {
-                      backgroundColor: "var(--md-sys-color-primary)",
-                      color: "var(--md-sys-color-on-primary)",
-                    }
+                    backgroundColor: "var(--md-sys-color-primary)",
+                    color: "var(--md-sys-color-on-primary)",
+                  }
               }
               transition={{ duration: 0.15 }}
               tabIndex={4}

@@ -360,13 +360,13 @@ function CustomerView({
                     </div>
                     <div className="col-span-4 truncate">{ticket.subject}</div>
                     <div className="col-span-2 truncate">
-                      {convertStatus(ticket.status)}
+                      {convertStatus(ticket.status || "")}
                     </div>
                     <div className="col-span-2 truncate">
                       {getTicketDeviceInfo(ticket).device}
                     </div>
                     <div className="col-span-2 truncate">
-                      {fmtDate(ticket.created_at)}
+                      {fmtDate(ticket.created_at || "")}
                     </div>
                   </div>
                   {/* Mobile card layout */}
@@ -376,12 +376,12 @@ function CustomerView({
                         #{ticket.number ?? ticket.id}
                       </div>
                       <div className="text-md text-outline">
-                        {fmtDate(ticket.created_at)}
+                        {fmtDate(ticket.created_at || "")}
                       </div>
                     </div>
                     <div className="font-medium">{ticket.subject}</div>
                     <div className="flex justify-between items-center text-md">
-                      <span>{convertStatus(ticket.status)}</span>
+                      <span>{convertStatus(ticket.status || "")}</span>
                       <span className="text-outline">
                         {getTicketDeviceInfo(ticket).device}
                       </span>

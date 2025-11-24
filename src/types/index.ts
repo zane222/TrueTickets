@@ -139,7 +139,7 @@ export type StringOrNumber = string | number;
 export type Awaitable<T> = T | Promise<T>;
 
 // Helper type for React component props with children
-export interface PropsWithChildren<P = Record<string, unknown>> {
+export interface PropsWithChildren<_P = Record<string, unknown>> {
   children?: React.ReactNode;
 }
 

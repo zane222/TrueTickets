@@ -252,7 +252,7 @@ function SearchModal({
               const tickets = d.tickets || [];
               return tickets.length > 0 ? tickets[0] : null;
             })
-            .catch(() => null),
+            .catch((): null => null),
         );
       }
 
@@ -443,11 +443,11 @@ function SearchModal({
   );
 
   // Type guard functions
-  const isCustomer = (item: SmallTicket | Customer): item is Customer => {
+  const isCustomer = (_item: SmallTicket | Customer): _item is Customer => {
     return searchType === "customers";
   };
 
-  const isTicket = (item: SmallTicket | Customer): item is SmallTicket => {
+  const isTicket = (_item: SmallTicket | Customer): _item is SmallTicket => {
     return searchType === "tickets";
   };
 
@@ -593,7 +593,7 @@ function SearchModal({
                           {item.subject}
                         </div>
                         <div className="col-span-2 truncate">
-                          {convertStatus(item.status)}
+                          {convertStatus(item.status || "")}
                         </div>
                         <div className="col-span-2 truncate">
                           {item.customer_business_then_name ??
@@ -615,7 +615,7 @@ function SearchModal({
                               color: "var(--md-sys-color-on-surface-variant)",
                             }}
                           >
-                            {convertStatus(item.status)}
+                            {convertStatus(item.status || "")}
                           </div>
                         </div>
                         <div className="text-md truncate">{item.subject}</div>

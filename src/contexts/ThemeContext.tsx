@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, startTransition } from "react";
 
 type Theme = "light" | "dark";
 
@@ -76,10 +76,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
       "(prefers-color-scheme: dark)"
     ).matches;
     const systemTheme = prefersDark ? "dark" : "light";
-    setThemeState(systemTheme);
-    applyTheme(systemTheme);
-
-    setMounted(true);
+    startTransition(() => {
+      setThemeState(systemTheme);
+      applyTheme(systemTheme);
+      setMounted(true);
+    });
   }, [applyTheme]);
 
   // Listen for system theme changes
@@ -108,6 +109,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useTheme = () => {
   const context = useContext(ThemeContext);
   if (!context) {
