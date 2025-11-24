@@ -5,6 +5,7 @@ import packageJson from "./package.json";
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "/",
   define: {
     __APP_VERSION__: JSON.stringify(packageJson.version),
   },
