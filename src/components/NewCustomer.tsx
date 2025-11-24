@@ -15,7 +15,7 @@ import type { KeyBind } from "./ui/KeyBindsModal";
  */
 interface NewCustomerProps {
   goTo: (to: string) => void;
-  customerId?: number;
+  customerId?: number | undefined;
   showSearch: boolean;
 }
 
@@ -272,7 +272,7 @@ export default function NewCustomer({
     if (!phones || phones.length === 0) return;
     await Promise.all(
       phones.map((phone) => {
-        const phoneId = phone.id ?? phone.phone_id;
+        const phoneId = phone.id;
         if (!phoneId) return Promise.resolve();
         return api.del(`/customers/${id}/phones/${phoneId}`).catch(() => { });
       }),
@@ -315,8 +315,8 @@ export default function NewCustomer({
       );
       if (targetIndex === -1) return;
 
-      const oldFirstId = first.id ?? first.phone_id;
-      const targetId = phones[targetIndex].id ?? phones[targetIndex].phone_id;
+      const oldFirstId = first.id;
+      const targetId = phones[targetIndex].id;
 
       if (oldFirstId) {
         await api.del(`/customers/${id}/phones/${oldFirstId}`).catch(() => { });

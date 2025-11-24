@@ -268,7 +268,7 @@ function App() {
         <NewCustomer
           goTo={navigate}
           showSearch={showSearch}
-          customerId={undefined}
+
         />
       )}
       {route.view === "customer-edit" && (

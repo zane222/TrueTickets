@@ -15,7 +15,7 @@ function parseAuthError(err: unknown): { code?: string; message: string } {
     const code = typeof maybe.code === "string" ? maybe.code : undefined;
     const message =
       typeof maybe.message === "string" ? maybe.message : String(err);
-    return { code, message };
+    return { ...(code ? { code } : {}), message };
   }
   return { message: String(err) };
 }

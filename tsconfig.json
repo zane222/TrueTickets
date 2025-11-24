@@ -17,7 +17,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     /* Linting */
-    "strict": false,
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": false,
@@ -36,7 +36,9 @@
     "noImplicitThis": true,
     "strictFunctionTypes": true,
     "strictBindCallApply": true,
-    "strictPropertyInitialization": true
+    "strictPropertyInitialization": true,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false
   },
   "include": [
     "src"

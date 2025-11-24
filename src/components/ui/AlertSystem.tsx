@@ -85,7 +85,7 @@ const AlertRenderer: React.FC<{
         {
           backgroundColor: styles.backgroundColor,
           color: styles.color,
-        } as React.CSSProperties
+        } as any
       }
     >
       <IconComponent className="w-5 h-5 mt-0.5 flex-shrink-0" />

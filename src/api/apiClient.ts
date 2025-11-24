@@ -1,4 +1,4 @@
-import { fetchAuthSession, AuthSession } from "aws-amplify/auth";
+import { fetchAuthSession } from "aws-amplify/auth";
 
 interface RequestOptions {
   method?: string;
@@ -13,51 +13,34 @@ interface ApiError extends Error {
 
 class ApiClient {
   public baseUrl: string;
-  private cachedSession: AuthSession | null;
-  private sessionExpiry: number | null;
+  // private cachedSession: AuthSession | null;
+  // private sessionExpiry: number | null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
-    this.cachedSession = null;
-    this.sessionExpiry = null;
+    // this.cachedSession = null;
+    // this.sessionExpiry = null;
   }
 
-  private isNetworkError(error: unknown): error is Error {
-    return error instanceof Error && error.message === "Failed to fetch";
-  }
 
-  private isApiError(error: unknown): error is ApiError {
-    return (
-      error instanceof Error &&
-      "status" in error &&
-      typeof (error as ApiError).status === "number"
-    );
-  }
 
-  async getAuthHeaders(isMultipart = false): Promise<Record<string, string>> {
+  async getAuthHeaders(isMultipart = false, forceRefresh = false): Promise<Record<string, string>> {
     try {
-      // Check if we have a cached session that's still valid
-      if (
-        this.cachedSession &&
-        this.sessionExpiry &&
-        Date.now() < this.sessionExpiry
-      ) {
-        const token = this.cachedSession.tokens?.idToken?.toString();
-        if (!token) {
-          throw new Error("No authentication token available");
+      let session = await fetchAuthSession({ forceRefresh });
+
+      if (!forceRefresh) {
+        // Check if token is expired or about to expire (within 5 minutes)
+        const idToken = session.tokens?.idToken;
+        if (idToken?.payload?.exp) {
+          const expTime = idToken.payload.exp * 1000; // Convert to ms
+          const fiveMinutes = 5 * 60 * 1000;
+
+          if (Date.now() + fiveMinutes >= expTime) {
+            // Token is expiring soon, force refresh
+            session = await fetchAuthSession({ forceRefresh: true });
+          }
         }
-        return {
-          ...(isMultipart ? {} : { "Content-Type": "application/json" }),
-          Authorization: `Bearer ${token}`,
-        };
       }
-
-      // Fetch new session and cache it
-      const session = await fetchAuthSession();
-      this.cachedSession = session;
-
-      // Cache for 5 minutes (tokens typically last 1 hour, but we refresh every 5 min to be safe)
-      this.sessionExpiry = Date.now() + 5 * 60 * 1000;
 
       const token = session.tokens?.idToken?.toString();
       if (!token) {
@@ -71,6 +54,63 @@ class ApiClient {
       console.error("Error getting auth token:", error);
       throw new Error("Authentication required");
     }
+  }
+
+  private async retryWithFreshToken<T>(
+    url: string,
+    method: string,
+    body: unknown,
+    options: RequestOptions,
+    isMultipart: boolean,
+  ): Promise<T> {
+    const newHeaders = await this.getAuthHeaders(isMultipart, true);
+    const mergedRetryHeaders = {
+      ...newHeaders,
+      ...(options.headers || {}),
+    };
+    const retryResponse = await fetch(url, {
+      method,
+      headers: mergedRetryHeaders,
+      body: isMultipart ? (body as BodyInit) : body ? JSON.stringify(body) : null,
+    });
+
+    if (retryResponse.status === 304) {
+      return {} as T;
+    }
+
+    if (!retryResponse.ok) {
+      // Read retry response body once and parse if possible
+      let retryParsed: unknown = null;
+      try {
+        const t = await retryResponse.text();
+        try {
+          retryParsed = t ? JSON.parse(t) : null;
+        } catch {
+          retryParsed = t ? t : null;
+        }
+      } catch {
+        retryParsed = null;
+      }
+      const err: ApiError = new Error(
+        (retryParsed &&
+          typeof retryParsed === "object" &&
+          "error" in retryParsed
+          ? (retryParsed as { error?: string }).error
+          : null) ||
+        `${retryResponse.status} ${retryResponse.statusText}`,
+      );
+      err.status = retryResponse.status;
+      err.body = retryParsed;
+      throw err;
+    }
+
+    // Check content type to determine how to parse response
+    const contentType = retryResponse.headers.get("content-type") || "";
+    if (contentType.includes("image") || contentType.includes("application/octet-stream")) {
+      return (await retryResponse.blob()) as T;
+    }
+
+    return (await retryResponse.json()) as T;
   }
 
   async request<T = unknown>(
@@ -114,7 +154,7 @@ class ApiClient {
       const response = await fetch(url, {
         method,
         headers: mergedHeaders,
-        body: isMultipart ? body : body ? JSON.stringify(body) : undefined,
+        body: isMultipart ? body : body ? JSON.stringify(body) : null,
       });
 
       // Handle 304 Not Modified - treat it as a successful response with empty body
@@ -139,61 +179,7 @@ class ApiClient {
         }
 
         if (response.status === 401) {
-          // Token might be expired, clear cache and try to refresh
-          try {
-            this.cachedSession = null;
-            this.sessionExpiry = null;
-            const newHeaders = await this.getAuthHeaders(isMultipart);
-            const mergedRetryHeaders = {
-              ...newHeaders,
-              ...(options.headers || {}),
-            };
-            const retryResponse = await fetch(url, {
-              method,
-              headers: mergedRetryHeaders,
-              body: isMultipart ? body : body ? JSON.stringify(body) : undefined,
-            });
-            if (retryResponse.status === 304) {
-              return {} as T;
-            }
-            if (!retryResponse.ok) {
-              // Read retry response body once and parse if possible
-              let retryParsed: unknown = null;
-              try {
-                const t = await retryResponse.text();
-                try {
-                  retryParsed = t ? JSON.parse(t) : null;
-                } catch {
-                  retryParsed = t ? t : null;
-                }
-              } catch {
-                retryParsed = null;
-              }
-              const err: ApiError = new Error(
-                (retryParsed &&
-                  typeof retryParsed === "object" &&
-                  "error" in retryParsed
-                  ? (retryParsed as { error?: string }).error
-                  : null) ||
-                `${retryResponse.status} ${retryResponse.statusText}`,
-              );
-              err.status = retryResponse.status;
-              err.body = retryParsed;
-              throw err;
-            }
-            return (await retryResponse.json()) as T;
-          } catch (retryError) {
-            // If this is a network error (not an API error), re-throw it as-is
-            if (this.isNetworkError(retryError)) {
-              throw retryError;
-            }
-            // If it's an ApiError with a status code, re-throw it
-            if (this.isApiError(retryError)) {
-              throw retryError;
-            }
-            // Otherwise it's an auth issue
-            throw new Error("Authentication failed. Please log in again.");
-          }
+          throw new Error("Unauthorized");
         } else {
           const errorBody = parsedErrorBody as {
             details?: string;
@@ -230,8 +216,24 @@ class ApiClient {
     } catch (error) {
       // Network errors (Failed to fetch) are expected when offline and will be handled silently by callers like useChangeDetection
       // Only log unexpected errors
-      if (error instanceof Error && error.message === "Failed to fetch") {
-        throw error;
+      if (error instanceof Error && (error.message === "Failed to fetch" || error.message === "Unauthorized")) {
+        // If we haven't retried yet, assume it might be a CORS error due to expired token
+        // and try to refresh the session once.
+        console.warn(
+          "Authentication or network error detected. Attempting to refresh session and retry request...",
+        );
+        try {
+          return await this.retryWithFreshToken<T>(
+            url,
+            method,
+            body,
+            options,
+            isMultipart,
+          );
+        } catch (retryError) {
+          // If the retry also fails, throw the retry error (likely the same network error)
+          throw retryError;
+        }
       }
       // Log other unexpected errors for debugging
       console.error("API request failed:", error);
@@ -240,15 +242,15 @@ class ApiClient {
   }
 
   // API methods (generic)
-  async get<T = unknown>(path: string, customHeaders?: Record<string, string>): Promise<T> {
+  async get<T = unknown>(path: string, customHeaders: Record<string, string> = {}): Promise<T> {
     return this.request<T>(path, { method: "GET", headers: customHeaders });
   }
 
-  async post<T = unknown>(path: string, body?: unknown, customHeaders?: Record<string, string>): Promise<T> {
+  async post<T = unknown>(path: string, body?: unknown, customHeaders: Record<string, string> = {}): Promise<T> {
     return this.request<T>(path, { method: "POST", body, headers: customHeaders });
   }
 
-  async put<T = unknown>(path: string, body?: unknown, customHeaders?: Record<string, string>): Promise<T> {
+  async put<T = unknown>(path: string, body?: unknown, customHeaders: Record<string, string> = {}): Promise<T> {
     return this.request<T>(path, { method: "PUT", body, headers: customHeaders });
   }
 

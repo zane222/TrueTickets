@@ -596,8 +596,7 @@ function SearchModal({
                           {convertStatus(item.status || "")}
                         </div>
                         <div className="col-span-2 truncate">
-                          {item.customer_business_then_name ??
-                            item.customer?.business_and_full_name}
+                          {item.customer_business_then_name}
                         </div>
                       </div>
 
@@ -620,8 +619,7 @@ function SearchModal({
                         </div>
                         <div className="text-md truncate">{item.subject}</div>
                         <div className="text-md truncate text-on-surface">
-                          {item.customer_business_then_name ??
-                            item.customer?.business_and_full_name}
+                          {item.customer_business_then_name}
                         </div>
                       </div>
                     </>

@@ -16,8 +16,8 @@ import type { LargeTicket, TicketProperties } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketEditorProps {
-  ticketId?: number;
-  customerId?: number;
+  ticketId?: number | undefined;
+  customerId?: number | undefined;
   goTo: (to: string) => void;
   showSearch: boolean;
 }
@@ -42,7 +42,7 @@ function TicketEditor({
   const [itemsLeft, setItemsLeft] = useState<string[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
   const [existingProperties, setExistingProperties] =
-    useState<TicketProperties>({});
+    useState<TicketProperties>({} as TicketProperties);
   const [customerName, setCustomerName] = useState<string>("");
 
   // Ref for subject input to manage focus
@@ -88,12 +88,7 @@ function TicketEditor({
         setExistingProperties(properties);
 
         // Set password from existing data (guard unknown types)
-        const pw =
-          typeof properties.Password === "string"
-            ? properties.Password
-            : typeof properties.password === "string"
-              ? properties.password
-              : "";
+        const pw = properties.Password || "";
         setPassword(pw);
 
         // Set charger status from existing data (do not rely on previousTicket state inside this effect)
@@ -283,36 +278,37 @@ function TicketEditor({
         // Implement ChangeTicketTypeIdToComputer logic to preserve fields
         const currentTicketTypeId =
           previousTicket?.ticket_type_id ||
+          previousTicket?.ticket_type?.id ||
           previousTicket?.ticket_fields?.[0]?.ticket_type_id;
 
         // Build legacy options based on current ticket type
         if (currentTicketTypeId === 9836) {
           if (properties?.Model && properties.Model !== "")
             model["Model: "] = properties.Model;
-          if (properties?.imeiOrSn && properties.imeiOrSn !== "")
-            model["IMEI or S/N: "] = properties.imeiOrSn;
+          if (properties?.["IMEI or S/N"] && properties["IMEI or S/N"] !== "")
+            model["IMEI or S/N: "] = properties["IMEI or S/N"];
           {
             const everWet =
-              typeof properties?.EverBeenWet === "string" ||
-                Array.isArray(properties?.EverBeenWet)
-                ? properties.EverBeenWet
+              typeof properties?.["Ever Been Wet"] === "string" ||
+                Array.isArray(properties?.["Ever Been Wet"])
+                ? properties["Ever Been Wet"]
                 : "Unknown";
             model["Ever been Wet: "] = everWet;
           }
           if (
-            properties?.previousDamageOrIssues &&
-            properties.previousDamageOrIssues !== ""
+            properties?.["Previous Damage or Issues"] &&
+            properties["Previous Damage or Issues"] !== ""
           )
             model["Previous Damage or Issues: "] =
-              properties?.previousDamageOrIssues;
+              properties?.["Previous Damage or Issues"];
           if (
-            properties?.techNotes &&
-            properties.techNotes !== "" &&
-            !properties.techNotes.includes("{")
+            properties?.["Tech Notes"] &&
+            properties["Tech Notes"] !== "" &&
+            !properties["Tech Notes"].includes("{")
           )
-            model["Tech notes: "] = properties?.techNotes;
-          if (properties?.currentIssue && properties.currentIssue !== "")
-            model["Current issue: "] = properties?.currentIssue;
+            model["Tech notes: "] = properties?.["Tech Notes"];
+          if (properties?.["Current Issue:"] && properties["Current Issue:"] !== "")
+            model["Current issue: "] = properties?.["Current Issue:"];
           if (properties?.Size && properties.Size !== "")
             model["Size: "] = properties?.Size;
         }
@@ -320,43 +316,43 @@ function TicketEditor({
           if (properties?.Model && properties.Model !== "")
             model["Model: "] = properties.Model;
           if (
-            properties?.imeiOrSnForPhone &&
-            properties.imeiOrSnForPhone !== ""
+            properties?.["IMEI/Serial"] &&
+            properties["IMEI/Serial"] !== ""
           )
-            model["IMEI or S/N: "] = properties?.imeiOrSnForPhone;
+            model["IMEI or S/N: "] = properties?.["IMEI/Serial"];
           {
             const everWet =
-              typeof properties?.EverBeenWet === "string" ||
-                Array.isArray(properties?.EverBeenWet)
-                ? properties.EverBeenWet
+              typeof properties?.["Ever Been Wet"] === "string" ||
+                Array.isArray(properties?.["Ever Been Wet"])
+                ? properties["Ever Been Wet"]
                 : "Unknown";
             model["Ever been Wet: "] = everWet;
           }
           if (
-            properties?.previousDamageOrIssues &&
-            properties.previousDamageOrIssues !== ""
+            properties?.["Previous Damage or Issues"] &&
+            properties["Previous Damage or Issues"] !== ""
           )
             model["Previous Damage or Issues: "] =
-              properties?.previousDamageOrIssues;
+              properties?.["Previous Damage or Issues"];
           if (
-            properties?.techNotes &&
-            properties.techNotes !== "" &&
-            !properties.techNotes.includes("{")
+            properties?.["Tech Notes"] &&
+            properties["Tech Notes"] !== "" &&
+            !properties["Tech Notes"].includes("{")
           )
-            model["Tech notes: "] = properties?.techNotes;
-          if (properties?.currentIssue && properties.currentIssue !== "")
-            model["Current issue: "] = properties?.currentIssue;
-          properties.Password = properties?.passwordForPhone || "";
+            model["Tech notes: "] = properties?.["Tech Notes"];
+          if (properties?.["Current Issue:"] && properties["Current Issue:"] !== "")
+            model["Current issue: "] = properties?.["Current Issue:"];
+          properties.Password = properties?.['Password (type "none" if no password)'] || "";
         }
         if (currentTicketTypeId === 23246) {
           if (properties?.Model && properties.Model !== "")
             model["Model: "] = properties.Model;
           if (
-            properties?.techNotes &&
-            properties.techNotes !== "" &&
-            !properties.techNotes.includes("{")
+            properties?.["Tech Notes"] &&
+            properties["Tech Notes"] !== "" &&
+            !properties["Tech Notes"].includes("{")
           )
-            model["Tech notes: "] = properties?.techNotes;
+            model["Tech notes: "] = properties?.["Tech Notes"];
         }
 
         // Set password and preserve legacy options in Model

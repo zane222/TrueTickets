@@ -30,20 +30,20 @@ export interface Alert {
   id: number;
   type: AlertType;
   title: string;
-  message?: string;
+  message?: string | undefined;
   /**
    * Duration in milliseconds. A value of 0 indicates "never auto-dismiss".
    */
-  duration?: number;
+  duration?: number | undefined;
   /**
    * If true, this alert is considered persistent and will not be cleared
    * by blanket "clear" operations (used for things like data-changed warnings).
    */
-  persistent?: boolean;
+  persistent?: boolean | undefined;
   /**
    * Optional position hint for layout purposes.
    */
-  position?: AlertPosition;
+  position?: AlertPosition | undefined;
 }
 
 /**
@@ -101,9 +101,9 @@ export interface AlertContextType {
  * Small constant map of alert types to avoid repeating string literals.
  */
 export const ALERT_TYPES: { SUCCESS: AlertType; ERROR: AlertType; WARNING: AlertType; INFO: AlertType } =
-  {
-    SUCCESS: "success",
-    ERROR: "error",
-    WARNING: "warning",
-    INFO: "info",
-  };
+{
+  SUCCESS: "success",
+  ERROR: "error",
+  WARNING: "warning",
+  INFO: "info",
+};

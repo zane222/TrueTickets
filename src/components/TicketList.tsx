@@ -47,8 +47,7 @@ function TicketListItem({
             {fmtDate(ticket.created_at || "")}
           </div>
           <div className="col-span-2 truncate">
-            {ticket.customer_business_then_name ??
-              ticket.customer?.business_and_full_name}
+            {ticket.customer_business_then_name}
           </div>
         </div>
 
@@ -74,8 +73,7 @@ function TicketListItem({
             </div>
           </div>
           <div className="text-md truncate text-on-surface">
-            {ticket.customer_business_then_name ??
-              ticket.customer?.business_and_full_name}
+            {ticket.customer_business_then_name}
           </div>
         </div>
       </NavigationButton>
