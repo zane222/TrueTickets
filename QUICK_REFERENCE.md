@@ -1,4 +1,4 @@
-# TypeScript API Types - Quick Reference Card
+# TypeScript API Types - Quick Reference Card (React 19 / Vite 7)
 
 ## 🚀 Import Types
 

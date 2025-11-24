@@ -1,10 +1,11 @@
+
 # True Tickets - React Application with AWS Cognito
 
 A full-stack ticket management system built with React, TypeScript, and AWS services, designed to interface with the RepairShopr API.
 
 ## 🏗️ Architecture
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS (Material Design)
+- **Frontend**: React 19 + TypeScript + Vite 7 + Tailwind CSS 4 (Material Design)
 - **Authentication**: AWS Cognito User Pool with group-based permissions
 - **Backend**: AWS Lambda (Python) acting as API proxy
 - **API Gateway**: REST API with Cognito authorization
@@ -14,7 +15,7 @@ A full-stack ticket management system built with React, TypeScript, and AWS serv
 
 - AWS Account with appropriate permissions
 - RepairShopr API key
-- Node.js 18+ and npm installed
+- Node.js 20+ and npm installed
 - Domain name (for production deployment)
 
 ---
