@@ -75,40 +75,45 @@ export interface Customer {
   lastname: string;
   fullname: string;
   business_name: string;
-  email: string;
+  email: string | null;
   phone: string;
   mobile: string | null;
   created_at: string;
   updated_at: string | null;
   pdf_url: string | null;
-  address: string;
-  address_2: string;
-  city: string;
-  state: string;
-  zip: string;
-  latitude: any;
-  longitude: any;
-  notes: string;
+  address: string | null;
+  address_2: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  notes: string | null;
   get_sms: boolean | null;
   opt_out: boolean | null;
   disabled: boolean | null;
   no_email: boolean | null;
-  location_id: any;
-  location_name: any;
+  location_id: number | null;
+  location_name: string | null;
   properties: CustomerProperties;
-  online_profile_url: string;
-  tax_rate_id: any;
-  notification_email: string;
-  invoice_cc_emails: string;
-  invoice_term_id: any;
-  referred_by: string;
-  ref_customer_id: any;
+  online_profile_url: string | null;
+  tax_rate_id: number | null;
+  notification_email: string | null;
+  invoice_cc_emails: string | null;
+  invoice_term_id: number | null;
+  referred_by: string | null;
+  ref_customer_id: number | null;
   business_and_full_name: string;
   business_then_name: string;
-  contacts: any[];
-  phones: Phone[];
-  ticket_links: TicketLink[];
-  invoice_links: InvoiceLink[];
+  contacts: unknown[];
+  tag_list: string[];
+  phones?: Phone[];
+  ticket_links?: TicketLink[];
+  invoice_links?: InvoiceLink[];
+}
+
+export interface CustomerAutocompleteResponse {
+  customers: Customer[];
 }
 
 export interface TicketLink {
@@ -192,7 +197,7 @@ export interface Attachment {
   content_type: string;
   file_size: number | null;
   md5: string;
-  name: any;
+  name: string;
 }
 
 // ============================================================================
@@ -246,10 +251,10 @@ export interface TicketTimer {
   updated_at: string | null;
   billable: boolean | null;
   notes: string;
-  toggl_id: any;
-  product_id: any;
-  comment_id: any;
-  ticket_line_item_id: any;
+  toggl_id: number | null;
+  product_id: number | null;
+  comment_id: number | null;
+  ticket_line_item_id: number | null;
   active_duration: number | null;
 }
 
@@ -263,9 +268,9 @@ export interface TicketType {
   created_at: string;
   updated_at: string | null;
   disabled: boolean | null;
-  intake_terms: any;
+  intake_terms: string | null;
   skip_intake: boolean | null;
-  outtake_terms: any;
+  outtake_terms: string | null;
   skip_outtake: boolean | null;
   id: number | null;
   ticket_fields: TicketField[];
@@ -319,31 +324,31 @@ export interface RmmStore {
   general: General;
   created_at: string;
   updated_at: string | null;
-  override_alert_agent_offline_mins: any;
-  override_alert_agent_rearm_after_mins: any;
-  override_low_hd_threshold: any;
-  override_autoresolve_offline_alert: any;
-  override_low_hd_thresholds: any;
+  override_alert_agent_offline_mins: number | null;
+  override_alert_agent_rearm_after_mins: number | null;
+  override_low_hd_threshold: number | null;
+  override_autoresolve_offline_alert: boolean | null;
+  override_low_hd_thresholds: unknown;
 }
 
 export interface Asset {
   id: number;
   name: string;
   customer_id: number;
-  contact_id: any;
+  contact_id: number | null;
   created_at: string;
   updated_at: string | null;
   properties: AssetProperties;
   asset_type: string;
   asset_serial: string;
-  external_rmm_link: any;
+  external_rmm_link: string | null;
   customer: Customer;
-  rmm_links: any[];
+  rmm_links: unknown[];
   has_live_chat: boolean | null;
-  snmp_enabled: any;
+  snmp_enabled: boolean | null;
   device_info: AssetDeviceInfo;
   rmm_store: RmmStore;
-  address: any;
+  address: string | null;
 }
 
 // ============================================================================
@@ -385,16 +390,39 @@ export interface Ticket {
   start_at: string | null;
   end_at: string | null;
   location_id: number | null;
+  location_name: string | null;
   problem_type: string;
   status: string;
   ticket_type_id: number | null;
+  ticket_type_name: string | null;
   properties: TicketProperties;
   user_id: number | null;
   updated_at: string | null;
-  pdf_url: string;
+  pdf_url: string | null;
   priority: string;
+  billing_status: string;
+  tag_list: string[];
+  sla_name: string | null;
+  creator_name_or_email: string;
+  contact_fullname: string | null;
+  contract_name: string | null;
+  address_id: number | null;
+  parent: boolean;
+  child: boolean;
+  recurring: boolean;
+  customer_reply: boolean;
+  total_formatted_billable_time: string;
+  contact_id: number | null;
+  sla_breached: boolean;
+  sla_breaching_soon: boolean;
+  contract_id: number | null;
+  sla_id: number | null;
+  customer_tag_list: string[];
+  resolution_time: number | null;
+  response_time: number | null;
+  customer_icons: unknown[];
   comments: Comment[];
-  user: User;
+  user: User | null;
 }
 
 export interface LargeTicket {
@@ -413,28 +441,28 @@ export interface LargeTicket {
   properties: TicketProperties;
   user_id: number | null;
   updated_at: string | null;
-  pdf_url: any;
+  pdf_url: string | null;
   intake_form_html: string;
-  signature_name: any;
-  signature_date: any;
+  signature_name: string | null;
+  signature_date: string | null;
   asset_ids: (number | null)[];
   priority: string | null;
   resolved_at: string | null;
-  outtake_form_name: any;
-  outtake_form_date: any;
-  outtake_form_html: any;
-  address: any;
+  outtake_form_name: string | null;
+  outtake_form_date: string | null;
+  outtake_form_html: string | null;
+  address: string | null;
   comments: Comment[];
   attachments: Attachment[];
   ticket_timers: TicketTimer[];
-  line_items: any[];
-  worksheet_results: any[];
+  line_items: unknown[];
+  worksheet_results: unknown[];
   assets: Asset[];
-  appointments: any[];
+  appointments: unknown[];
   ticket_fields: TicketField[];
   ticket_answers: TicketAnswer[];
   customer: Customer;
-  contact: any;
+  contact: unknown;
   user: User | null;
   ticket_type: TicketType;
   ticket_type_id: number | null;
@@ -490,9 +518,9 @@ export interface Result {
 }
 
 export interface SearchResult {
-  quick_result: any;
+  quick_result: unknown;
   results: Result[];
-  error: any;
+  error: unknown;
 }
 
 // ============================================================================

@@ -81,12 +81,10 @@ const AlertRenderer: React.FC<{
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.98 }}
       className="rounded-md p-4 mb-3 flex items-start gap-3"
-      style={
-        {
-          backgroundColor: styles.backgroundColor,
-          color: styles.color,
-        } as any
-      }
+      style={{
+        backgroundColor: styles.backgroundColor,
+        color: styles.color,
+      }}
     >
       <IconComponent className="w-5 h-5 mt-0.5 flex-shrink-0" />
       <div className="flex-1">
