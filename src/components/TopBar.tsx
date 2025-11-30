@@ -113,7 +113,7 @@ export function TopBar({
                 {canInviteUsers && (
                   <motion.button
                     onClick={onInviteUser}
-                    className="flex items-center w-full px-4 py-2 text-md rounded-md transition-colors duration-10 text-on-surface"
+                    className="flex items-center w-full px-4 py-2 text-md rounded-md transition-colors duration-100 text-on-surface"
                     whileHover={{
                       backgroundColor: "rgba(255, 255, 255, 0.08)",
                     }}

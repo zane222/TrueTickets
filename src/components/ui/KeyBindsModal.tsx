@@ -71,7 +71,7 @@ export function KeyBindsModal({ keybinds }: KeyBindsModalProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-50 keybind-modal-overlay flex items-center justify-center p-4 bg-black/60"
+          className="fixed inset-0 z-50 keybind-modal-overlay flex items-center justify-center p-4 bg-black/50"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.90, y: -30 }}

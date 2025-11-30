@@ -454,7 +454,7 @@ function SearchModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+    <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6">
       <div className="w-full max-w-6xl h-[80vh] md-card p-8 space-y-6 flex flex-col">
         <div className="flex flex-row items-center justify-between gap-2">
           <div className="text-2xl font-bold text-primary">
