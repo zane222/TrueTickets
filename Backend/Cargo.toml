@@ -1,3 +1,11 @@
+[lints.clippy]
+unwrap_used = "deny"
+panic = "deny"
+enum_glob_use = "deny"
+
+[lints.rust]
+unused_must_use = "deny"
+
 [package]
 name = "TrueTickets"
 version = "0.1.0"
