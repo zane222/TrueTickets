@@ -441,7 +441,7 @@ function TicketView({
         .set({
           margin: [0, 0, 0, 0],
           filename: "ticket.pdf",
-          html2canvas: { scale: 8 },
+          html2canvas: { scale: 6 },
           jsPDF: {
             orientation: "landscape",
             unit: "in",
@@ -451,23 +451,24 @@ function TicketView({
         .from(ticketCardRef.current)
         .output("bloburl")
         .then(function (pdf) {
-          const pdfWindow = window.open(pdf);
-          if (pdfWindow) {
-            pdfWindow.onload = function () {
-              pdfWindow.print();
-            };
-            const interval = window.setInterval(function () {
-              if (pdfWindow.closed) {
-                window.clearInterval(interval);
-                pdfIntervalRef.current = null;
-                URL.revokeObjectURL(pdf);
+          const iframe = document.createElement("iframe");
+          iframe.style.position = "fixed";
+          iframe.style.width = "0";
+          iframe.style.height = "0";
+          iframe.style.border = "none";
+          iframe.src = pdf;
+          document.body.appendChild(iframe);
+
+          iframe.onload = function () {
+            iframe.contentWindow?.print();
+            // Cleanup after 1 minute to allow time for printing
+            setTimeout(() => {
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
               }
-            }, 1000);
-            pdfIntervalRef.current = interval;
-          } else {
-            console.error("Failed to open PDF window");
-            _error("Popup Blocked", "Please allow popups to print tickets.");
-          }
+              URL.revokeObjectURL(pdf);
+            }, 60000);
+          };
         });
     } catch (err: unknown) {
       console.error("Error generating PDF:", err);
