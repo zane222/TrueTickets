@@ -3,7 +3,7 @@
 
 A full-stack ticket management system built with React, TypeScript, and AWS services, designed to interface with the RepairShopr API. This is a port of my previous project, CacellSystem, which was built using Unity.
 
-## 🏗️ Architecture
+## Architecture
 
 - **Frontend**: React 19 + TypeScript + Vite 7 + Tailwind CSS 4 (Material Design)
 - **Authentication**: AWS Cognito User Pool with group-based permissions
@@ -11,7 +11,7 @@ A full-stack ticket management system built with React, TypeScript, and AWS serv
 - **API Gateway**: REST API with Cognito authorization
 - **Security**: JWT tokens with role-based access control
 
-## 📋 Prerequisites
+## Prerequisites
 
 - AWS Account with appropriate permissions
 - RepairShopr API key
@@ -20,7 +20,7 @@ A full-stack ticket management system built with React, TypeScript, and AWS serv
 
 ---
 
-## 🚀 Quick Start (Development)
+## Quick Start (Development)
 
 ### 1. Install Dependencies
 
@@ -57,7 +57,7 @@ The application will be available at `http://localhost:5173`
 
 ---
 
-## 🔐 AWS Setup Guide
+## AWS Setup Guide
 
 ### Step 1: Create Cognito User Pool
 
@@ -185,7 +185,7 @@ zip -r lambda-deployment.zip .
 
 ---
 
-## 🎯 Production Deployment
+## Production Deployment
 
 ### Build for Production
 
