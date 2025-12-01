@@ -1,7 +1,7 @@
 
 # True Tickets - React Application with AWS Cognito
 
-A full-stack ticket management system built with React, TypeScript, and AWS services, designed to interface with the RepairShopr API.
+A full-stack ticket management system built with React, TypeScript, and AWS services, designed to interface with the RepairShopr API. This is a port of my previous project, CacellSystem, which was built using Unity.
 
 ## 🏗️ Architecture
 
@@ -63,7 +63,7 @@ The application will be available at `http://localhost:5173`
 
 1. Navigate to AWS Cognito → **Create user pool**
 2. Configure sign-in:
-   - ✅ Email only (no username or phone)
+   - Email only (no username or phone)
 3. Configure security:
    - Set password policy (recommended: 8+ chars, uppercase, lowercase, numbers)
    - MFA: **Optional** (recommended for production)
@@ -72,7 +72,7 @@ The application will be available at `http://localhost:5173`
 5. Integrate app:
    - User pool name: `TrueTicketsPool`
    - App client name: `true-tickets-web-client`
-   - **❌ UNCHECK "Generate client secret"** (required for web apps)
+   - **UNCHECK "Generate client secret"** (required for web apps)
 
 #### Create User Groups
 
@@ -416,34 +416,6 @@ Check CloudWatch Logs:
 
 ---
 
-## 📝 License
+## License
 
 Proprietary - All rights reserved
-
----
-
-## 🆘 Support
-
-For issues or questions:
-1. Check CloudWatch logs for Lambda function errors
-2. Review API Gateway execution logs
-3. Verify Cognito configuration
-4. Check browser console for frontend errors
-
----
-
-## 🔒 Security Notes
-
-**Never commit these to version control:**
-- User Pool IDs
-- App Client IDs  
-- API Keys
-- `.env` file
-
-**Safe to commit:**
-- User Pool Name
-- App Client Name
-- AWS Region
-- Group names
-
-The `.env` file is protected by both `.gitignore` and `.cursorignore`.
