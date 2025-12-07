@@ -30,6 +30,7 @@ function TicketListItem({
         onClick={() => goTo(`/&${ticket.id}`)}
         targetUrl={targetUrl}
         className="md-row-box w-full text-left transition-all duration-150 group"
+        tabIndex={0}
       >
         {/* Desktop layout */}
         <div className="hidden sm:grid grid-cols-12 px-4 py-3">
@@ -295,6 +296,7 @@ export function TicketListView({
                     "md-chip text-md sm:text-md px-2 py-1 sm:px-3 sm:py-1.5",
                     statusHidden.has(status) ? "" : "md-chip--on",
                   )}
+                  tabIndex={statusFilterCollapsed ? -1 : 0}
                 >
                   {status}
                 </button>

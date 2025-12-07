@@ -441,7 +441,7 @@ function TicketView({
         .set({
           margin: [0, 0, 0, 0],
           filename: "ticket.pdf",
-          html2canvas: { scale: 6 },
+          html2canvas: { scale: 3 },
           jsPDF: {
             orientation: "landscape",
             unit: "in",
