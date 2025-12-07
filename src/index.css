@@ -382,11 +382,10 @@ html.light .md-btn-surface:focus-visible {
 }
 
 .md-row-box:focus-visible {
-  border-color: #3B82F6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
   z-index: 10;
   position: relative;
   background: color-mix(in oklab, #2c2c2f 90%, white);
+  outline: none;
 }
 
 html.light .md-row-box:focus-visible {
