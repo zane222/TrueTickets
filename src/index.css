@@ -290,8 +290,20 @@ html.light .md-btn-surface {
 }
 
 html.light .md-btn-surface:hover {
-  background: #F8FAFC;
-  filter: brightness(0.95);
+  background: #f5f7fa;
+  filter: none;
+}
+
+.md-btn-surface:focus-visible {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+  z-index: 10;
+  position: relative;
+  background: color-mix(in oklab, #2c2c2f 90%, white);
+}
+
+html.light .md-btn-surface:focus-visible {
+  background: #f5f7fa;
 }
 
 /* Mobile-specific improvements */
@@ -366,6 +378,19 @@ html.light .md-btn-surface:hover {
   box-shadow: 0 1px 0 rgba(0, 0, 0, .25);
   overflow-wrap: break-word;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  outline: none;
+}
+
+.md-row-box:focus-visible {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+  z-index: 10;
+  position: relative;
+  background: color-mix(in oklab, #2c2c2f 90%, white);
+}
+
+html.light .md-row-box:focus-visible {
+  background: #f5f7fa;
 }
 
 html.light .md-row-box {

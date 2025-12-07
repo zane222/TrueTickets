@@ -305,7 +305,7 @@ function CustomerView({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-8">
-        <div className="md:col-span-2 space-y-3 sm:space-y-6">
+        <div className="md:col-span-2 flex flex-col gap-3 sm:gap-6">
           <div className="md-card p-3 sm:p-8">
             <div className="text-lg sm:text-2xl font-bold mb-2">
               {customer.business_and_full_name || customer.fullname}
@@ -342,7 +342,7 @@ function CustomerView({
               <div className="col-span-2 font-semibold">Created</div>
             </div>
             <div
-              className="divide-y"
+              className="flex flex-col gap-0 divide-y"
               style={{ borderColor: "var(--md-sys-color-outline)" }}
             >
               {(tickets || []).map((ticket, index) => (
@@ -350,11 +350,11 @@ function CustomerView({
                   key={`${ticket.id}-${index}`}
                   onClick={() => goTo(`/&${ticket.id}`)}
                   targetUrl={`${window.location.origin}/&${ticket.id}`}
-                  className="md-row-box w-full text-left px-4 py-3 transition-all duration-150 group"
+                  className="md-row-box w-full text-left transition-all duration-150 group"
                   tabIndex={0}
                 >
                   {/* Desktop grid layout */}
-                  <div className="hidden sm:grid grid-cols-12">
+                  <div className="hidden sm:grid grid-cols-12 px-4 py-3">
                     <div className="col-span-2 truncate">
                       #{ticket.number ?? ticket.id}
                     </div>
@@ -370,7 +370,7 @@ function CustomerView({
                     </div>
                   </div>
                   {/* Mobile card layout */}
-                  <div className="sm:hidden space-y-2">
+                  <div className="sm:hidden space-y-2 px-4 py-3">
                     <div className="flex justify-between items-start">
                       <div className="font-semibold">
                         #{ticket.number ?? ticket.id}
