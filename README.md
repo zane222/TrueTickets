@@ -418,4 +418,7 @@ Check CloudWatch Logs:
 
 ## License
 
-Proprietary - All rights reserved
+Copyright (c) 2025 Zane Mouakket. All rights reserved.
+
+This code is publicly viewable but may not be used, modified, or distributed 
+without explicit permission. 
