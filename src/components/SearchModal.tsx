@@ -518,7 +518,7 @@ function SearchModal({
           >
             {loading && (
               <div className="flex items-center justify-center p-6 text-md gap-3">
-                <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+                <Loader2 className="w-5 h-5 animate-spin text-loading" />
                 <span className="font-medium">Searching...</span>
               </div>
             )}

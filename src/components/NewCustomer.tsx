@@ -582,7 +582,7 @@ export default function NewCustomer({
                   <button
                     type="button"
                     onClick={() => setPrimaryPhone(index)}
-                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${isPrimary ? "border-blue-500 bg-blue-500" : "border-gray-300 hover:border-gray-400"}`}
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${isPrimary ? "border-primary-indicator bg-primary-indicator" : "border-inactive-indicator hover:border-inactive-indicator"}`}
                     title={
                       isPrimary ? "Primary phone" : "Click to make primary"
                     }
@@ -611,7 +611,7 @@ export default function NewCustomer({
                   />
 
                   {isPrimary && (
-                    <span className="text-md font-medium text-blue-600">
+                    <span className="text-md font-medium text-primary">
                       Primary
                     </span>
                   )}

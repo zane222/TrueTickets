@@ -441,7 +441,7 @@ function TicketView({
         .set({
           margin: [0, 0, 0, 0],
           filename: "ticket.pdf",
-          html2canvas: { scale: 3 },
+          html2canvas: { scale: 6 },
           jsPDF: {
             orientation: "landscape",
             unit: "in",
@@ -604,7 +604,7 @@ function TicketView({
               onDrop={handleDrop}
               className={`md-card p-4 space-y-3 rounded-lg border-2 transition-colors min-h-[100px] ${dragActive
                 ? "border-dashed border-primary bg-primary/10 brightness-110"
-                : "border-solid border-gray-300"
+                : "border-solid border-outline"
                 }`}
             >
               <div className="flex justify-between items-center">
@@ -612,7 +612,7 @@ function TicketView({
                 <button
                   onClick={handleAddAttachment}
                   disabled={uploading}
-                  className="p-1 hover:bg-gray-600 rounded-md transition-colors disabled:opacity-50"
+                  className="p-1 hover:bg-on-surface/10 rounded-md transition-colors disabled:opacity-50"
                   title="Add attachment"
                   tabIndex={-1}
                 >
@@ -701,7 +701,8 @@ function TicketView({
           <div className="relative w-full h-full flex items-center justify-center">
             <button
               onClick={() => setFullScreenAttachment(null)}
-              className="absolute top-4 right-4 p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors z-10"
+              className="absolute top-4 right-4 p-2 rounded-full transition-colors z-10"
+              style={{ backgroundColor: "var(--color-bg-elevated-hover)" }}
               title="Close"
             >
               <X size={24} className="text-white" />

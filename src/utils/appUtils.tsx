@@ -297,7 +297,7 @@ export function formatCommentWithLinks(
           href={part}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-400 hover:text-blue-600 underline"
+          className="text-link underline"
         >
           {part}
         </a>

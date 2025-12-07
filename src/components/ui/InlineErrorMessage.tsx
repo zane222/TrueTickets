@@ -11,7 +11,7 @@ export function InlineErrorMessage({
 }: InlineErrorMessageProps): React.ReactElement {
     return (
         <div className={className}>
-            <div className="text-red-500 font-medium">{message}</div>
+            <div className="text-error font-medium">{message}</div>
         </div>
     );
 }

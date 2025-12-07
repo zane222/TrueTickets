@@ -33,6 +33,61 @@
   --md-elevation-1: 0 1px 2px rgba(0, 0, 0, .14), 0 1px 3px 1px rgba(0, 0, 0, .12);
   --md-elevation-2: 0 2px 4px rgba(0, 0, 0, .14), 0 3px 4px 1px rgba(0, 0, 0, .12);
   --md-elevation-3: 0 4px 8px rgba(0, 0, 0, .14), 0 1px 3px 1px rgba(0, 0, 0, .12);
+
+  /* ============================================
+     DESIGN TOKENS
+     ============================================ */
+
+  /* Spacing Scale */
+  --spacing-xs: 0.5rem;
+  /* 8px */
+  --spacing-sm: 0.75rem;
+  /* 12px */
+  --spacing-md: 1rem;
+  /* 16px */
+  --spacing-lg: 1.5rem;
+  /* 24px */
+  --spacing-xl: 2rem;
+  /* 32px */
+  --spacing-2xl: 3rem;
+  /* 48px */
+
+  /* Border Radius Scale */
+  --radius-sm: 0.75rem;
+  /* 12px - inputs, buttons */
+  --radius-md: 0.875rem;
+  /* 14px - row boxes */
+  --radius-lg: 1rem;
+  /* 16px - cards */
+  --radius-full: 9999px;
+  /* full rounded - pills, primary buttons */
+
+  /* Typography Scale */
+  --text-xs: 0.75rem;
+  /* 12px */
+  --text-sm: 0.875rem;
+  /* 14px */
+  --text-base: 1rem;
+  /* 16px */
+  --text-lg: 1.125rem;
+  /* 18px */
+  --text-xl: 1.25rem;
+  /* 20px */
+  --text-2xl: 1.5rem;
+  /* 24px */
+
+  /* Component-specific colors (Dark theme) */
+  --color-bg-base: #19191b;
+  --color-bg-elevated: #202024;
+  --color-bg-elevated-hover: #2c2c2f;
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-medium: rgba(255, 255, 255, 0.10);
+  --color-border-strong: rgba(255, 255, 255, 0.15);
+
+  /* Focus ring */
+  --focus-ring-width: 3px;
+  --focus-ring-color: rgba(59, 130, 246, 0.5);
+  --focus-ring: 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
 }
 
 /* Light theme overrides - Warm, cohesive colors matching dark mode aesthetic */
@@ -58,13 +113,25 @@
   --md-elevation-1: 0 1px 2px rgba(17, 24, 39, 0.08), 0 1px 3px 1px rgba(17, 24, 39, 0.06);
   --md-elevation-2: 0 2px 4px rgba(17, 24, 39, 0.08), 0 3px 4px 1px rgba(17, 24, 39, 0.06);
   --md-elevation-3: 0 4px 8px rgba(17, 24, 39, 0.08), 0 1px 3px 1px rgba(17, 24, 39, 0.06);
+
+  /* Component-specific colors (Light theme) */
+  --color-bg-base: #E2E8F0;
+  --color-bg-elevated: #ffffff;
+  --color-bg-elevated-hover: #f5f7fa;
+  --color-border-subtle: rgba(13, 71, 161, 0.12);
+  --color-border-medium: #CBD5E1;
+  --color-border-strong: rgba(13, 71, 161, 0.2);
 }
+
+/* ============================================
+   GLOBAL STYLES
+   ============================================ */
 
 /* Global application surfaces */
 html,
 body,
 #root {
-  background: #19191b;
+  background: var(--color-bg-base);
   color: var(--md-sys-color-on-surface, #ffffff);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
@@ -72,33 +139,33 @@ body,
 html.light,
 html.light body,
 html.light #root {
-  background: #E2E8F0;
+  background: var(--color-bg-base);
   color: #1a1a1a;
 }
 
 .material-surface {
-  background: #19191b;
+  background: var(--color-bg-base);
   color: var(--md-sys-color-on-surface, #ffffff);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 html.light .material-surface {
-  background: #E2E8F0;
+  background: var(--color-bg-base);
   color: #1a1a1a;
 }
 
 .material-app-bar {
-  background: #202024;
+  background: var(--color-bg-elevated);
   color: var(--md-sys-color-on-surface, #ffffff);
   box-shadow: var(--md-elevation-2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--color-border-subtle);
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 html.light .material-app-bar {
   background: #eceff1;
   color: #1a1a1a;
-  border-bottom-color: rgba(0, 0, 0, 0.08);
+  border-bottom-color: var(--color-border-subtle);
 }
 
 
@@ -110,29 +177,33 @@ html.light .material-app-bar {
   box-shadow: var(--md-elevation-2);
 }
 
+/* ============================================
+   COMPONENT STYLES
+   ============================================ */
+
 /* Material You component utilities */
 .md-card {
-  background: #202024;
+  background: var(--color-bg-elevated);
   color: var(--md-sys-color-on-surface, #ffffff);
   border: 1px solid color-mix(in oklab, var(--md-sys-color-outline, #8f96a3) 35%, transparent);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--md-elevation-1);
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 html.light .md-card {
-  background: #ffffff;
+  background: var(--color-bg-elevated);
   color: #1a1a1a;
-  border-color: #CBD5E1;
+  border-color: var(--color-border-medium);
 }
 
 .md-input {
-  background: #202024;
+  background: var(--color-bg-elevated);
   color: var(--md-sys-color-on-surface, #ffffff);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--color-border-subtle);
   width: 100%;
   padding: 0.625rem 0.875rem;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   outline: none;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
@@ -145,17 +216,17 @@ html.light .md-input {
 
 .md-input:focus {
   border-color: color-mix(in oklab, var(--md-sys-color-primary) 50%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--md-sys-color-primary) 25%, transparent);
+  box-shadow: var(--focus-ring);
 }
 
 .md-textarea {
-  background: #202024;
+  background: var(--color-bg-elevated);
   color: var(--md-sys-color-on-surface, #ffffff);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--color-border-subtle);
   width: 100%;
   min-height: 6rem;
   padding: 0.625rem 0.875rem;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   outline: none;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
@@ -167,7 +238,7 @@ html.light .md-textarea {
 }
 
 .md-textarea:focus {
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--md-sys-color-primary) 20%, transparent);
+  box-shadow: var(--focus-ring);
   border-color: color-mix(in oklab, var(--md-sys-color-primary) 45%, transparent);
 }
 
@@ -176,9 +247,9 @@ html.light .md-textarea {
   align-items: center;
   gap: 0.375rem;
   padding: 0.3rem 0.6rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
   background: #252529;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--color-border-subtle);
   color: var(--md-sys-color-on-surface, #ffffff);
   cursor: pointer;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
@@ -203,7 +274,7 @@ html.light .md-chip--on {
 }
 
 .md-chip:hover {
-  background: #2b2b2f;
+  background: var(--color-bg-elevated-hover);
   transition: background-color 0.2s ease;
 }
 
@@ -234,7 +305,7 @@ button,
 }
 
 .md-btn-primary {
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
   padding: 0.5rem 0.875rem;
   background: var(--md-sys-color-primary, #1e88ff);
   color: var(--md-sys-color-on-primary, #19191b) !important;
@@ -261,7 +332,7 @@ button,
 }
 
 .md-btn-tonal {
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
   padding: 0.5rem 0.875rem;
   background: var(--md-sys-color-primary-container, #113b77);
   color: var(--md-sys-color-on-primary-container, #c5d9f1);
@@ -270,11 +341,11 @@ button,
 }
 
 .md-btn-surface {
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   padding: 0.5rem 0.875rem;
-  background: #2c2c2f;
+  background: var(--color-bg-elevated-hover);
   color: var(--md-sys-color-on-surface, #ffffff);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid var(--color-border-medium);
   cursor: pointer;
   font-weight: 600;
 }
@@ -282,28 +353,28 @@ button,
 html.light .md-btn-surface {
   background: #F8FAFC;
   color: #334155;
-  border-color: #CBD5E1;
+  border-color: var(--color-border-medium);
 }
 
 .md-btn-surface:hover {
-  background: color-mix(in oklab, #2c2c2f 90%, white);
+  background: color-mix(in oklab, var(--color-bg-elevated-hover) 90%, white);
 }
 
 html.light .md-btn-surface:hover {
-  background: #f5f7fa;
+  background: var(--color-bg-elevated-hover);
   filter: none;
 }
 
 .md-btn-surface:focus-visible {
   border-color: #3B82F6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+  box-shadow: var(--focus-ring);
   z-index: 10;
   position: relative;
-  background: color-mix(in oklab, #2c2c2f 90%, white);
+  background: color-mix(in oklab, var(--color-bg-elevated-hover) 90%, white);
 }
 
 html.light .md-btn-surface:focus-visible {
-  background: #f5f7fa;
+  background: var(--color-bg-elevated-hover);
 }
 
 /* Mobile-specific improvements */
@@ -372,9 +443,9 @@ html.light .md-btn-surface:focus-visible {
 
 
 .md-row-box {
-  background: #2c2c2f;
+  background: var(--color-bg-elevated-hover);
   border: 1px solid color-mix(in oklab, var(--md-sys-color-on-surface) 8%, transparent);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   box-shadow: 0 1px 0 rgba(0, 0, 0, .25);
   overflow-wrap: break-word;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
@@ -384,36 +455,36 @@ html.light .md-btn-surface:focus-visible {
 .md-row-box:focus-visible {
   z-index: 10;
   position: relative;
-  background: color-mix(in oklab, #2c2c2f 90%, white);
+  background: color-mix(in oklab, var(--color-bg-elevated-hover) 90%, white);
   outline: none;
 }
 
 html.light .md-row-box:focus-visible {
-  background: #f5f7fa;
+  background: var(--color-bg-elevated-hover);
 }
 
 html.light .md-row-box {
-  background: #ffffff;
-  border-color: rgba(13, 71, 161, 0.12);
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-subtle);
   box-shadow: 0 1px 0 rgba(13, 71, 161, 0.06);
 }
 
 .md-row-box:hover {
-  background: color-mix(in oklab, #2c2c2f 90%, white);
+  background: color-mix(in oklab, var(--color-bg-elevated-hover) 90%, white);
 }
 
 html.light .md-row-box:hover {
-  background: #f5f7fa;
+  background: var(--color-bg-elevated-hover);
 }
 
 /* Disable hover effect for comment boxes */
 .space-y-3 .md-row-box:hover {
-  background: #2c2c2f;
+  background: var(--color-bg-elevated-hover);
   /* Keep original background, no hover effect */
 }
 
 html.light .space-y-3 .md-row-box:hover {
-  background: #ffffff;
+  background: var(--color-bg-elevated);
 }
 
 /* Only break long URLs, not normal words in the comment box */
@@ -455,6 +526,43 @@ html.light .md-row-box a:hover {
 
 .text-outline {
   color: var(--md-sys-color-outline, #8f96a3);
+}
+
+.text-loading {
+  color: var(--md-sys-color-primary);
+}
+
+.text-error {
+  color: var(--md-sys-color-error);
+}
+
+.text-link {
+  color: var(--md-sys-color-primary);
+}
+
+.text-link:hover {
+  color: color-mix(in oklab, var(--md-sys-color-primary) 80%, black);
+}
+
+html.light .text-link:hover {
+  color: color-mix(in oklab, var(--md-sys-color-primary) 70%, black);
+}
+
+/* Primary indicator (radio buttons, checkboxes) */
+.border-primary-indicator {
+  border-color: var(--md-sys-color-primary);
+}
+
+.bg-primary-indicator {
+  background-color: var(--md-sys-color-primary);
+}
+
+.border-inactive-indicator {
+  border-color: var(--md-sys-color-outline);
+}
+
+.border-inactive-indicator:hover {
+  border-color: var(--md-sys-color-on-surface);
 }
 
 .text-on-primary-container {
@@ -540,8 +648,8 @@ html.light .text-gray-700 {
 .keybind-key {
   display: inline-block;
   padding: 0.25rem 0.5rem;
-  background: #2c2c2f;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--color-bg-elevated-hover);
+  border: 1px solid var(--color-border-strong);
   border-radius: 6px;
   font-family: monospace;
   font-size: 0.875rem;
@@ -553,7 +661,7 @@ html.light .text-gray-700 {
 
 html.light .keybind-key {
   background: #e8eef8;
-  border-color: rgba(13, 71, 161, 0.2);
+  border-color: var(--color-border-strong);
   color: #1a1a1a;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }

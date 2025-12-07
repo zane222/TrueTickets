@@ -168,7 +168,7 @@ export function ManageUsersModal({
             </h3>
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700"
+              className="text-outline hover:text-on-surface"
             >
               ✕
             </button>
@@ -190,9 +190,9 @@ export function ManageUsersModal({
                       {user.given_name || user.email || user.username}
                     </div>
                     {user.email && (
-                      <div className="text-sm text-gray-400">{user.email}</div>
+                      <div className="text-sm text-outline">{user.email}</div>
                     )}
-                    <div className="text-md text-gray-500">
+                    <div className="text-md text-outline">
                       {getGroupDisplayNames(user.groups)}
                     </div>
                   </div>
@@ -240,7 +240,7 @@ export function ManageUsersModal({
                 </div>
               ))}
               {users.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-outline">
                   No users found
                 </div>
               )}
