@@ -21,6 +21,7 @@ dependencies = [
  "tokio",
  "url",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]
@@ -2295,6 +2296,7 @@ version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "873a97c3f7a67dd042bceb47d056d288424b82d4c66b0a25e1a3b34675620951"
 dependencies = [
+ "aws-sdk-dynamodb",
  "base64 0.21.7",
  "serde",
  "serde_core",
@@ -2792,6 +2794,7 @@ version = "1.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f87b8aa10b915a06587d0dec516c282ff295b475d94abf425d62b57710070a2"
 dependencies = [
+ "getrandom 0.3.4",
  "js-sys",
  "wasm-bindgen",
 ]

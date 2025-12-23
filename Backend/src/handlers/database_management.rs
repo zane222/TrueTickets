@@ -4,17 +4,13 @@ use serde_json::json;
 use lambda_http::{Body, Response};
 use aws_sdk_dynamodb::{
     Client,
-    types::{AttributeValue, Put, TransactWriteItem},
+    types::{AttributeValue, Put, TransactWriteItem, ReturnValue},
 };
-use crate::http::{error_response, success_response};
+use crate::http::{error_response, success_response, success_response_hashmap, success_response_items};
 
 // --------------------------
 // TICKETS
 // --------------------------
-
-fn success_response_hashmap(hash_map: HashMap<String, AttributeValue>) -> Response<Body> {
-    hash_map
-}
 
 pub async fn handle_get_ticket_by_number(
     ticket_number: &str,
@@ -53,7 +49,7 @@ pub async fn handle_search_tickets_by_subject(
     match res {
         Ok(output) => {
             let items = output.items.unwrap_or_default();
-            success_response(items)
+            success_response_items(items)
         }
         Err(e) => error_response(500, "DynamoDB error", &format!("{}", e), None),
     }
@@ -69,7 +65,10 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Response<Body> {
         .await;
 
     match res {
-        Ok(output) => success_response(output.items.unwrap_or_default()),
+        Ok(output) => {
+            let items = output.items.unwrap_or_default();
+            success_response_items(items)
+        },
         Err(e) => error_response(500, "DynamoDB error", &format!("{}", e), None),
     }
 }
@@ -88,7 +87,7 @@ pub async fn handle_create_ticket(
         .update_expression("SET counter_value = if_not_exists(counter_value, :zero) + :inc")
         .expression_attribute_values(":inc", AttributeValue::N("1".to_string()))
         .expression_attribute_values(":zero", AttributeValue::N("0".to_string()))
-        .return_values(aws_sdk_dynamodb::model::ReturnValue::UpdatedNew)
+        .return_values(ReturnValue::UpdatedNew)
         .send()
         .await;
 
@@ -100,7 +99,9 @@ pub async fn handle_create_ticket(
 
     let now = Utc::now().to_rfc3339();
 
-    let txn_items = vec![
+    let mut txn_builder = client.transact_write_items();
+    
+    txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
             .put(Put::builder()
                 .table_name("Tickets")
@@ -110,24 +111,26 @@ pub async fn handle_create_ticket(
                 .item("details", AttributeValue::S(details))
                 .item("status", AttributeValue::S(status.unwrap_or("open".to_string())))
                 .item("last_updated", AttributeValue::S(now.clone()))
-                .build())
-            .build(),
+                .build()
+                .expect("Failed to build Put item for Tickets"))
+            .build()
+    );
+    
+    txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
             .put(Put::builder()
                 .table_name("TicketSubjects")
                 .item("ticket_number", AttributeValue::N(ticket_number.to_string()))
                 .item("subject", AttributeValue::S(subject))
-                .build())
+                .build()
+                .expect("Failed to build Put item for TicketSubjects"))
             .build()
-    ];
+    );
 
-    let txn_res = client.transact_write_items()
-        .transact_items(txn_items)
-        .send()
-        .await;
+    let txn_res = txn_builder.send().await;
 
     match txn_res {
-        Ok(_) => success_response(json!({ "ticket_number": ticket_number })),
+        Ok(_) => success_response(200, json!({ "ticket_number": ticket_number }).to_string()),
         Err(e) => error_response(500, "Failed to create ticket", &format!("{}", e), None),
     }
 }
@@ -160,16 +163,19 @@ pub async fn handle_update_ticket(
 
     let update_expr = format!("SET {}", update_expr.join(", "));
 
-    let res = client.update_item()
+    let mut update_builder = client.update_item()
         .table_name("Tickets")
         .key("ticket_number", AttributeValue::N(ticket_number.clone()))
-        .update_expression(update_expr)
-        .set_expression_attribute_values(Some(expr_vals))
-        .send()
-        .await;
+        .update_expression(update_expr);
+    
+    for (k, v) in expr_vals {
+        update_builder = update_builder.expression_attribute_values(k, v);
+    }
+
+    let res = update_builder.send().await;
 
     match res {
-        Ok(_) => success_response(json!({"ticket_number": ticket_number})),
+        Ok(_) => success_response(200, json!({"ticket_number": ticket_number}).to_string()),
         Err(e) => error_response(500, "Failed to update ticket", &format!("{}", e), None),
     }
 }
@@ -200,7 +206,7 @@ pub async fn handle_add_ticket_comment(
         .await;
 
     match res {
-        Ok(_) => success_response(json!({"ticket_number": ticket_number})),
+        Ok(_) => success_response(200, json!({"ticket_number": ticket_number}).to_string()),
         Err(e) => error_response(500, "Failed to add comment", &format!("{}", e), None),
     }
 }
@@ -214,7 +220,10 @@ pub async fn handle_get_ticket_last_updated(ticket_number: String, client: &Clie
         .await;
 
     match res {
-        Ok(output) => success_response(output.item.unwrap_or_default()),
+        Ok(output) => {
+            let item = output.item.unwrap_or_default();
+            success_response_hashmap(item)
+        },
         Err(e) => error_response(500, "Failed to get ticket last_updated", &format!("{}", e), None),
     }
 }
@@ -232,7 +241,10 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
         .await;
 
     match res {
-        Ok(output) => success_response(output.items.unwrap_or_default()),
+        Ok(output) => {
+            let items = output.items.unwrap_or_default();
+            success_response_items(items)
+        },
         Err(e) => error_response(500, "Failed to get customers", &format!("{}", e), None),
     }
 }
@@ -245,7 +257,9 @@ pub async fn handle_create_customer(
     let customer_id = uuid::Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
-    let mut txn_items = vec![
+    let mut txn_builder = client.transact_write_items();
+    
+    txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
             .put(Put::builder()
                 .table_name("Customers")
@@ -254,26 +268,25 @@ pub async fn handle_create_customer(
                 .item("primary_phone", AttributeValue::S(phone_numbers[0].clone()))
                 .item("phone_numbers", AttributeValue::L(phone_numbers.iter().map(|p| AttributeValue::S(p.clone())).collect()))
                 .item("last_updated", AttributeValue::S(now.clone()))
-                .build())
+                .build()
+                .expect("Failed to build Put item for Customers"))
             .build()
-    ];
+    );
 
     for phone in &phone_numbers {
         let phone_put = Put::builder()
             .table_name("CustomerPhoneIndex")
             .item("phone_number", AttributeValue::S(phone.clone()))
             .item("customer_id", AttributeValue::S(customer_id.clone()))
-            .build();
-        txn_items.push(TransactWriteItem::builder().put(phone_put).build());
+            .build()
+            .expect("Failed to build Put item for CustomerPhoneIndex");
+        txn_builder = txn_builder.transact_items(TransactWriteItem::builder().put(phone_put).build());
     }
 
-    let txn_res = client.transact_write_items()
-        .transact_items(txn_items)
-        .send()
-        .await;
+    let txn_res = txn_builder.send().await;
 
     match txn_res {
-        Ok(_) => success_response(json!({ "customer_id": customer_id })),
+        Ok(_) => success_response(200, json!({ "customer_id": customer_id }).to_string()),
         Err(e) => error_response(500, "Failed to create customer", &format!("{}", e), None),
     }
 }
@@ -304,16 +317,19 @@ pub async fn handle_update_customer(
 
     let update_expr = format!("SET {}", update_expr.join(", "));
 
-    let res = client.update_item()
+    let mut update_builder = client.update_item()
         .table_name("Customers")
         .key("customer_id", AttributeValue::S(customer_id.clone()))
-        .update_expression(update_expr)
-        .set_expression_attribute_values(Some(expr_vals))
-        .send()
-        .await;
+        .update_expression(update_expr);
+    
+    for (k, v) in expr_vals {
+        update_builder = update_builder.expression_attribute_values(k, v);
+    }
+
+    let res = update_builder.send().await;
 
     match res {
-        Ok(_) => success_response(json!({ "customer_id": customer_id })),
+        Ok(_) => success_response(200, json!({ "customer_id": customer_id }).to_string()),
         Err(e) => error_response(500, "Failed to update customer", &format!("{}", e), None),
     }
 }
@@ -327,7 +343,10 @@ pub async fn handle_get_customer_last_updated(customer_id: String, client: &Clie
         .await;
 
     match res {
-        Ok(output) => success_response(output.item.unwrap_or_default()),
+        Ok(output) => {
+            let item = output.item.unwrap_or_default();
+            success_response_hashmap(item)
+        },
         Err(e) => error_response(500, "Failed to get customer last_updated", &format!("{}", e), None),
     }
 }

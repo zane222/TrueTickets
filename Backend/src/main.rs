@@ -11,7 +11,13 @@ use aws_sdk_dynamodb::Client as DynamoDbClient;
 use aws_sdk_s3::Client as S3Client;
 
 use auth::{can_invite_users, can_manage_users, get_user_groups_from_event};
-use handlers::{handle_list_users, handle_update_user_group, handle_upload_attachment, handle_user_invitation};
+use handlers::{
+    handle_list_users, handle_update_user_group, handle_upload_attachment, handle_user_invitation,
+    handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
+    handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
+    handle_get_ticket_last_updated, handle_get_customers_by_phone, handle_create_customer,
+    handle_update_customer, handle_get_customer_last_updated
+};
 use http::{error_response, handle_options};
 
 const TARGET_URL: &str = "https://Cacell.repairshopr.com/api/v1";
@@ -64,51 +70,19 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
     // Route based on path and method
     match (path, method) {
         ("/invite-user", "POST") => {
-            // Extract and validate invitation data from request
-            let body_str = match event.body() {
-                Body::Empty => "{}",
-                Body::Text(s) => s,
-                Body::Binary(b) => {
-                    match std::str::from_utf8(b) {
-                        Ok(s) => s,
-                        Err(_) => {
-                            return error_response(
-                                400,
-                                "Invalid request body",
-                                "Could not parse request body as UTF-8",
-                                None,
-                            )
-                        }
-                    }
-                }
-                _ => "{}",
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return resp,
             };
 
-            let body: Value = match serde_json::from_str(body_str) {
-                Ok(v) => v,
-                Err(_) => {
-                    return error_response(
-                        400,
-                        "Invalid JSON",
-                        "Could not parse request body as JSON",
-                        None,
-                    )
-                }
+            let email: String = match get_value_in_json(&body, "email") {
+                Ok(val) => val,
+                Err(resp) => return resp,
             };
-
-            let email = match body.get("email").and_then(|v| v.as_str()) {
-                Some(e) => e,
-                None => {
-                    return error_response(
-                        400,
-                        "Missing parameter",
-                        "Email is required",
-                        None,
-                    )
-                }
+            let first_name: String = match get_value_in_json(&body, "firstName") {
+                Ok(val) => val,
+                Err(resp) => return resp,
             };
-
-            let first_name = body.get("firstName").and_then(|v| v.as_str()).unwrap_or("");
 
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
@@ -121,66 +95,24 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 );
             }
 
-            handle_user_invitation(email, first_name, cognito_client).await
+            handle_user_invitation(&email, &first_name, cognito_client).await
         }
         ("/users", "GET") => {
             handle_list_users(&event, cognito_client).await
         }
         ("/update-user-group", "POST") => {
-            // Extract and validate user group update data from request
-            let body_str = match event.body() {
-                Body::Empty => "{}",
-                Body::Text(s) => s,
-                Body::Binary(b) => {
-                    match std::str::from_utf8(b) {
-                        Ok(s) => s,
-                        Err(_) => {
-                            return error_response(
-                                400,
-                                "Invalid request body",
-                                "Could not parse request body as UTF-8",
-                                None,
-                            )
-                        }
-                    }
-                },
-                _ => "{}",
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return resp,
             };
 
-            let body: Value = match serde_json::from_str(body_str) {
-                Ok(v) => v,
-                Err(_) => {
-                    return error_response(
-                        400,
-                        "Invalid JSON",
-                        "Could not parse request body as JSON",
-                        None,
-                    )
-                }
+            let username: String = match get_value_in_json(&body, "username") {
+                Ok(val) => val,
+                Err(resp) => return resp,
             };
-
-            let username = match body.get("username").and_then(|v| v.as_str()) {
-                Some(u) => u,
-                None => {
-                    return error_response(
-                        400,
-                        "Missing parameter",
-                        "Username is required",
-                        None,
-                    )
-                }
-            };
-
-            let new_group = match body.get("group").and_then(|v| v.as_str()) {
-                Some(g) => g,
-                None => {
-                    return error_response(
-                        400,
-                        "Missing parameter",
-                        "Group is required",
-                        None,
-                    )
-                }
+            let new_group: String = match get_value_in_json(&body, "group") {
+                Ok(val) => val,
+                Err(resp) => return resp,
             };
 
             // Check user permissions
@@ -194,7 +126,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 );
             }
 
-            handle_update_user_group(username, new_group, cognito_client).await
+            handle_update_user_group(&username, &new_group, cognito_client).await
         }
         ("/upload-attachment", "POST") => {
             // Extract and validate attachment data from request
@@ -318,7 +250,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             handle_add_ticket_comment(ticket_number, comment_body, tech_name, &dynamodb_client).await
         }
         ("/ticket_was_changed", "GET") => {
-            let ticket_number: String = match event.query_string_parameters().get("number") {
+            let ticket_number: String = match event.query_string_parameters().first("number") {
                 Some(n) => n.to_string(),
                 None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
             };
@@ -356,7 +288,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             handle_create_customer(full_name, phone_numbers, &dynamodb_client).await
         }
         ("/customer", "PUT") => {
-            let customer_id: String = match event.query_string_parameters().get("customer_id") {
+            let customer_id: String = match event.query_string_parameters().first("customer_id") {
                 Some(c) => c.to_string(),
                 None => return error_response(400, "Missing customer_id", "Query parameter 'customer_id' is required", None),
             };
@@ -372,7 +304,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             handle_update_customer(customer_id, full_name, phone_numbers, &dynamodb_client).await
         }
         ("/customer_was_changed", "GET") => {
-            let customer_id: String = match event.query_string_parameters().get("customer_id") {
+            let customer_id: String = match event.query_string_parameters().first("customer_id") {
                 Some(c) => c.to_string(),
                 None => return error_response(400, "Missing customer_id", "Query parameter 'customer_id' is required", None),
             };
