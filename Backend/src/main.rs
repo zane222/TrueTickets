@@ -2,14 +2,16 @@ mod auth;
 mod handlers;
 mod http;
 
-use lambda_http::{run, service_fn, Body, Request, Response};
+use lambda_http::{run, service_fn, Body, Request, Response, RequestExt};
 use serde_json::Value;
+use serde::de::DeserializeOwned;
 use aws_config::BehaviorVersion;
 use aws_sdk_cognitoidentityprovider::Client as CognitoClient;
+use aws_sdk_dynamodb::Client as DynamoDbClient;
 use aws_sdk_s3::Client as S3Client;
 
 use auth::{can_invite_users, can_manage_users, get_user_groups_from_event};
-use handlers::{handle_list_users, handle_repairshopr_proxy, handle_update_user_group, handle_upload_attachment, handle_user_invitation};
+use handlers::{handle_list_users, handle_update_user_group, handle_upload_attachment, handle_user_invitation};
 use http::{error_response, handle_options};
 
 const TARGET_URL: &str = "https://Cacell.repairshopr.com/api/v1";
@@ -53,6 +55,11 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             Some("Ensure you are calling this Lambda via API Gateway"),
         );
     }
+
+
+    // Load AWS SDK config to create the DynamoDB client
+    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    let dynamodb_client = DynamoDbClient::new(&config);
 
     // Route based on path and method
     match (path, method) {
@@ -191,65 +198,23 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         }
         ("/upload-attachment", "POST") => {
             // Extract and validate attachment data from request
-            let body_str = match event.body() {
-                Body::Empty => "{}",
-                Body::Text(s) => s,
-                Body::Binary(b) => {
-                    match std::str::from_utf8(b) {
-                        Ok(s) => s,
-                        Err(_) => {
-                            return error_response(
-                                400,
-                                "Invalid request body",
-                                "Could not parse request body as UTF-8",
-                                None,
-                            )
-                        }
-                    }
-                },
-                _ => "{}",
+            let body = match parse_json_body(event.body()) {
+                Ok(body) => body,
+                Err(response) => return response,
             };
 
-            let body: Value = match serde_json::from_str(body_str) {
-                Ok(v) => v,
-                Err(_) => {
-                    return error_response(
-                        400,
-                        "Invalid JSON",
-                        "Could not parse request body as JSON",
-                        None,
-                    )
-                }
+            let ticket_id: i64 = match get_value_in_json(&body, "ticket_id") {
+                Ok(val) => val,
+                Err(response) => return response,
             };
-
-            let ticket_id = match body.get("ticket_id").and_then(|v| v.as_i64()) {
-                Some(id) => id,
-                None => {
-                    return error_response(
-                        400,
-                        "Missing parameter",
-                        "ticket_id is required and must be an integer",
-                        None,
-                    )
-                }
+            let image_data: String = match get_value_in_json(&body, "image_data") {
+                Ok(val) => val,
+                Err(response) => return response,
             };
-
-            let image_data = match body.get("image_data").and_then(|v| v.as_str()) {
-                Some(data) => data,
-                None => {
-                    return error_response(
-                        400,
-                        "Missing parameter",
-                        "image_data is required (base64 encoded data URL)",
-                        None,
-                    )
-                }
+            let file_name: String = match get_value_in_json(&body, "file_name") {
+                Ok(val) => val,
+                Err(response) => return response,
             };
-
-            let file_name = body
-                .get("file_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("attachment.png");
 
             // Extract base64 data from data URL if needed
             let base64_data = if image_data.starts_with("data:") {
@@ -266,23 +231,152 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                     }
                 }
             } else {
-                image_data
+                &image_data
             };
 
-            handle_upload_attachment(ticket_id, base64_data, file_name, &api_key, s3_client, TARGET_URL).await
+            handle_upload_attachment(ticket_id, base64_data, &file_name, &api_key, s3_client, TARGET_URL).await
         }
-        (p, _) if p.starts_with("/api") => {
-            // Route to RepairShopr proxy for /api/* paths
-            let modified_path = path.strip_prefix("/api").unwrap_or("");
-            match handle_repairshopr_proxy(&event, modified_path, &api_key, TARGET_URL).await {
-                Ok(response) => response,
-                Err(e) => error_response(
-                    502,
-                    "Bad Gateway (rs)",
-                    &e,
-                    Some("A network error occurred when trying to reach RepairShopr."),
-                ),
+        // -------------------------
+        // TICKETS
+        // -------------------------
+        ("/tickets", "GET") => { // it could be /tickets?number=12345 or /tickets?query=lcd. Each calls a different function
+            if let Some(number) = event.query_string_parameters().first("number") {
+                handle_get_ticket_by_number(number, &dynamodb_client).await
+            } else if let Some(query) = event.query_string_parameters().first("subject_query") {
+                handle_search_tickets_by_subject(query, &dynamodb_client).await
+            } else {
+                return error_response(
+                    400,
+                    "Missing query parameter",
+                    "Provide either 'number' or 'subject_query'",
+                    None,
+                );
             }
+        }
+        ("/recent_tickets_list", "GET") => {
+            handle_get_recent_tickets(&dynamodb_client).await
+        }
+        ("/ticket", "POST") => {
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return resp,
+            };
+
+            let customer_id: String = match get_value_in_json(&body, "customer_id") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
+            let subject: String = match get_value_in_json(&body, "subject") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
+            let details: String = match get_value_in_json(&body, "details") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
+            let status: Option<String> = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+            handle_create_ticket(customer_id, subject, details, status, &dynamodb_client).await
+        }
+        ("/ticket", "PUT") => {
+            let ticket_number: String = match event.query_string_parameters().first("number") {
+                Some(n) => n.to_string(),
+                None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
+            };
+
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return resp,
+            };
+
+            let subject = body.get("subject").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let details = body.get("details").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+            handle_update_ticket(ticket_number, subject, details, status, &dynamodb_client).await
+        }
+        ("/ticket/comment", "POST") => {
+            let ticket_number: String = match event.query_string_parameters().first("ticket_number") {
+                Some(n) => n.to_string(),
+                None => return error_response(400, "Missing ticket_number", "Query parameter 'ticket_number' is required", None),
+            };
+
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return resp,
+            };
+
+            let comment_body: String = match get_value_in_json(&body, "comment_body") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
+            let tech_name: String = match get_value_in_json(&body, "tech_name") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
+
+            handle_add_ticket_comment(ticket_number, comment_body, tech_name, &dynamodb_client).await
+        }
+        ("/ticket_was_changed", "GET") => {
+            let ticket_number: String = match event.query_string_parameters().get("number") {
+                Some(n) => n.to_string(),
+                None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
+            };
+            handle_get_ticket_last_updated(ticket_number, &dynamodb_client).await
+        }
+
+        // -------------------------
+        // CUSTOMERS
+        // -------------------------
+        ("/customers", "GET") => {
+            let phone_number: String = match event.query_string_parameters().first("phone_number") {
+                Some(p) => p.to_string(),
+                None => return error_response(400, "Missing phone_number", "Query parameter 'phone_number' is required", None),
+            };
+            handle_get_customers_by_phone(phone_number, &dynamodb_client).await
+        }
+        ("/customer", "POST") => {
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return resp,
+            };
+
+            let full_name: String = match get_value_in_json(&body, "full_name") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
+            let phone_numbers: Vec<String> = match body.get("phone_numbers") {
+                Some(v) => match serde_json::from_value(v.clone()) {
+                    Ok(vec) => vec,
+                    Err(_) => return error_response(400, "Invalid phone_numbers", "phone_numbers must be an array of strings", None),
+                },
+                None => return error_response(400, "Missing phone_numbers", "phone_numbers array is required", None),
+            };
+
+            handle_create_customer(full_name, phone_numbers, &dynamodb_client).await
+        }
+        ("/customer", "PUT") => {
+            let customer_id: String = match event.query_string_parameters().get("customer_id") {
+                Some(c) => c.to_string(),
+                None => return error_response(400, "Missing customer_id", "Query parameter 'customer_id' is required", None),
+            };
+
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return resp,
+            };
+
+            let full_name = body.get("full_name").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let phone_numbers = body.get("phone_numbers").and_then(|v| serde_json::from_value(v.clone()).ok());
+
+            handle_update_customer(customer_id, full_name, phone_numbers, &dynamodb_client).await
+        }
+        ("/customer_was_changed", "GET") => {
+            let customer_id: String = match event.query_string_parameters().get("customer_id") {
+                Some(c) => c.to_string(),
+                None => return error_response(400, "Missing customer_id", "Query parameter 'customer_id' is required", None),
+            };
+            handle_get_customer_last_updated(customer_id, &dynamodb_client).await
         }
         _ => {
             // Method not allowed for other paths
@@ -292,6 +386,67 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 path,
                 Some("You're sending a request that doesn't exist."),
             )
+        }
+    }
+}
+
+fn parse_json_body(body: &Body) -> Result<Value, Response<Body>> {
+    let body_str = match body {
+        Body::Empty => "{}",
+        Body::Text(s) => s,
+        Body::Binary(b) => {
+            match std::str::from_utf8(b) {
+                Ok(s) => s,
+                Err(_) => {
+                    return Err(error_response(
+                        400,
+                        "Invalid request body",
+                        "Could not parse request body as UTF-8",
+                        None,
+                    ))
+                }
+            }
+        },
+        _ => "{}",
+    };
+
+    let json: Value = match serde_json::from_str(body_str) {
+        Ok(v) => v,
+        Err(_) => {
+            return Err(error_response(
+                400,
+                "Invalid JSON",
+                "Could not parse request body as JSON",
+                None,
+            ))
+        }
+    };
+
+    Ok(json)
+}
+
+fn get_value_in_json<T>(body: &Value, key: &str) -> Result<T, Response<Body>>
+where
+    T: DeserializeOwned,
+{
+    match body.get(key) {
+        Some(v) => {
+            serde_json::from_value(v.clone()).map_err(|_| {
+                error_response(
+                    400,
+                    "Invalid parameter",
+                    &format!("{} is not a valid value", key),
+                    None,
+                )
+            })
+        },
+        None => {
+            return Err(error_response(
+                400,
+                "Missing parameter",
+                &format!("{} is required", key),
+                None,
+            ))
         }
     }
 }
