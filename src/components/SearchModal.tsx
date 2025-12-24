@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Search, Loader2 } from "lucide-react";
-import { formatPhone } from "../utils/appUtils.jsx";
+import { formatPhone, fmtDate } from "../utils/appUtils.jsx";
 import { convertStatus } from "../constants/appConstants.js";
 import { useApi } from "../hooks/useApi";
 import NavigationButton from "./ui/NavigationButton";
@@ -27,11 +27,9 @@ function SearchModal({
 
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Refs to track current search and abort controller for cancellation
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentSearchQueryRef = useRef<string>("");
 
-  // New Customer autofill helpers
   const handleNewCustomer = React.useCallback(() => {
     const query = search.trim();
     if (!query) {
@@ -44,14 +42,8 @@ function SearchModal({
     const params = new URLSearchParams();
     if (isLikelyPhone(digits)) {
       params.set("phone", digits);
-    } else if (query.includes(" ")) {
-      const spaceIndex = query.lastIndexOf(" ");
-      const firstName = query.slice(0, spaceIndex).trim();
-      const lastName = query.slice(spaceIndex + 1).trim();
-      if (firstName) params.set("first_name", firstName);
-      if (lastName) params.set("last_name", lastName);
     } else {
-      params.set("first_name", query); // fallback single-field
+      params.set("full_name", query);
     }
     const queryString = params.toString();
     if (queryString) url += `?${queryString}`;
@@ -75,19 +67,17 @@ function SearchModal({
       const first = results[0];
       if (first) {
         onClose();
-        if (searchType === "customers") {
-          goTo(`/$${first.id}`);
+        if (isCustomer(first)) {
+          goTo(`/$${first.customer_id}`);
         } else {
-          goTo(`/&${first.id}`);
+          goTo(`/&${first.ticket_number}`);
         }
       }
     }
   };
 
-  // Reset search state when modal closes
   useEffect(() => {
     if (!open) {
-      // Cancel any pending requests
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
@@ -101,10 +91,8 @@ function SearchModal({
     }
   }, [open]);
 
-  // Clear results immediately when user starts typing
   useEffect(() => {
     if (search.trim() === "") {
-      // Cancel any pending requests when search is cleared
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
@@ -116,16 +104,13 @@ function SearchModal({
       return;
     }
 
-    // Cancel previous search request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
 
-    // Store the current search query for verification later
     currentSearchQueryRef.current = search.trim();
 
-    // Clear results immediately when user starts typing
     setResults([]);
     setStatus("");
     setLoading(true);
@@ -137,33 +122,23 @@ function SearchModal({
     return () => {
       clearTimeout(timeoutId);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, searchType]);
 
   useEffect(() => {
-    let timeoutId: number | undefined;
     if (!loading && pendingSubmit.current && results.length > 0) {
       const first = results[0];
       if (first) {
-        timeoutId = window.setTimeout(() => {
-          // click after delay so the user can see the results for a moment
-          onClose();
-          if (searchType === "customers") {
-            goTo(`/$${first.id}`);
-          } else {
-            goTo(`/&${first.id}`);
-          }
-        }, 150);
+        onClose();
+        if (isCustomer(first)) {
+          goTo(`/$${first.customer_id}`);
+        } else {
+          goTo(`/&${first.ticket_number}`);
+        }
       }
-      // Keep UI state in sync
       pendingSubmit.current = false;
     }
-    return () => {
-      if (timeoutId) window.clearTimeout(timeoutId);
-    };
   }, [loading, results, searchType, onClose, goTo]);
 
-  // Get latest ticket number when modal opens
   useEffect(() => {
     let isMounted = true;
     if (open && !latestTicketNumber) {
@@ -176,7 +151,7 @@ function SearchModal({
           const tickets = data.tickets || [];
           if (tickets.length > 0) {
             const highestNumber = Math.max(
-              ...tickets.map((ticket) => ticket.number || ticket.id || 0),
+              ...tickets.map((t) => t.ticket_number || 0),
             );
             setLatestTicketNumber(highestNumber);
           }
@@ -186,269 +161,150 @@ function SearchModal({
       };
       fetchLatestTicketNumber();
     }
-    return () => {
-      isMounted = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, api]);
+    return () => { isMounted = false; };
+  }, [open, api, latestTicketNumber]);
 
-  // Enhanced phone number parsing
   const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
-  const isLikelyPhone = (digits: string) =>
-    digits.length >= 7 && digits.length <= 11;
+  const isLikelyPhone = (digits: string) => digits.length >= 7 && digits.length <= 11;
   const canParse = (str: string) => /^\d/.test(str.trim()) && !isNaN(parseInt(str));
 
-  // Smart ticket number search for exactly 3 digits
   const searchTicketNumber = React.useCallback(
     async (query: string, signal: AbortSignal) => {
       const latest = latestTicketNumber;
       if (!latest || query.length !== 3) {
-        // Fallback to simple search if no latest ticket number or not 3 digits
         const data = await api.get<{ tickets: SmallTicket[] }>(
           `/tickets?number=${encodeURIComponent(query)}`,
         );
-        // Only update state if this request wasn't aborted and query still matches
         if (!signal.aborted && currentSearchQueryRef.current === query) {
           setResults(data.tickets || []);
-          if (data.tickets?.length === 0) {
-            setStatus("No results found");
-          } else {
-            setStatus("");
-          }
+          setStatus(data.tickets?.length === 0 ? "No results found" : "");
           setLoading(false);
           if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
             pendingSubmit.current = false;
             onClose();
-            goTo(`/&${data.tickets[0].id}`);
+            goTo(`/&${data.tickets[0].ticket_number}`);
           }
         }
         return;
       }
 
       const latestTicketStr = latest.toString();
-
-      // Find tickets ending with the 3-digit query
       const latestNum = parseInt(latestTicketStr, 10);
+      let searchNumber = parseInt(latestTicketStr.slice(0, -3) + query, 10);
+      if (searchNumber > latestNum) searchNumber -= 1000;
 
-      // Calculate the base number by replacing the last 3 digits
-      const baseNumber = parseInt(latestTicketStr.slice(0, -3) + query, 10);
-
-      // If the calculated number is higher than latest, subtract 1000
-      let searchNumber = baseNumber;
-      if (searchNumber > latestNum) {
-        searchNumber -= 1000;
-      }
-
-      // Prepare all API calls in parallel
       const apiCalls: Promise<SmallTicket | null>[] = [];
       for (let i = -1; i < 2; i++) {
         const number = searchNumber - i * 1000;
         if (number < 1) continue;
-
         apiCalls.push(
-          api
-            .get<{ tickets: SmallTicket[] }>(`/tickets?number=${number}`)
-            .then((d) => {
-              const tickets = d.tickets || [];
-              return tickets.length > 0 ? tickets[0] : null;
-            })
-            .catch((): null => null),
+          api.get<SmallTicket[]>(`/tickets?number=${number}`)
+            .then(tickets => tickets?.length > 0 ? tickets[0] : null)
+            .catch(() => null)
         );
       }
 
       const res = await Promise.all(apiCalls);
-      const validTickets = res.filter((t): t is SmallTicket => t !== null);
+      const valid = res.filter((t): t is SmallTicket => t !== null);
 
-      // Only update state if this request wasn't aborted and query still matches
       if (!signal.aborted && currentSearchQueryRef.current === query) {
-        setResults(validTickets);
-        if (validTickets.length === 0) {
-          setStatus("No results found");
-        } else {
-          setStatus("");
-        }
+        setResults(valid);
+        setStatus(valid.length === 0 ? "No results found" : "");
         setLoading(false);
-        if (pendingSubmit.current && validTickets.length > 0) {
+        if (pendingSubmit.current && valid.length > 0) {
           pendingSubmit.current = false;
           onClose();
-          goTo(`/&${validTickets[0].id}`);
+          goTo(`/&${valid[0].ticket_number}`);
         }
       }
-    },
-    [latestTicketNumber, api, onClose, goTo],
+    }, [latestTicketNumber, api, onClose, goTo]
   );
 
-  // Smart search logic
   const performSearch = React.useCallback(
     async (query: string, signal: AbortSignal) => {
       try {
         const trimmedQuery = query.trim();
         const phoneDigits = parsePhoneNumber(trimmedQuery);
 
-        // Phone number search
         if (isLikelyPhone(phoneDigits)) {
           setSearchType("customers");
-          const data = await api.get<{ customers: Customer[] }>(
+          const customers = await api.get<Customer[]>(
             `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
           );
-          // Only update state if this request wasn't aborted and query still matches
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
-            setResults(data.customers || []);
-            if (data.customers?.length === 0) {
-              setStatus("No results found");
-            } else {
-              setStatus("");
-            }
+            setResults(customers || []);
+            setStatus(customers?.length === 0 ? "No results found" : "");
             setLoading(false);
-            if (pendingSubmit.current && data.customers && data.customers.length > 0) {
+            if (pendingSubmit.current && customers && customers.length > 0) {
               pendingSubmit.current = false;
               onClose();
-              goTo(`/$${data.customers[0].id}`);
+              goTo(`/$${customers[0].customer_id}`);
             }
           }
-        }
-        // 3-digit ticket number
-        else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
+        } else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
           setSearchType("tickets");
           await searchTicketNumber(trimmedQuery, signal);
           return;
-        }
-        // Regular ticket number search
-        else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
+        } else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
           setSearchType("tickets");
-          const data = await api.get<{ tickets: SmallTicket[] }>(
+          const tickets = await api.get<SmallTicket[]>(
             `/tickets?number=${encodeURIComponent(trimmedQuery)}`,
           );
-          // Only update state if this request wasn't aborted and query still matches
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
-            setResults(data.tickets || []);
-            if (data.tickets?.length === 0) {
-              setStatus("No results found");
-            } else {
-              setStatus("");
-            }
+            setResults(tickets || []);
+            setStatus(tickets?.length === 0 ? "No results found" : "");
             setLoading(false);
-            if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
+            if (pendingSubmit.current && tickets && tickets.length > 0) {
               pendingSubmit.current = false;
               onClose();
-              goTo(`/&${data.tickets[0].id}`);
+              goTo(`/&${tickets[0].ticket_number}`);
             }
           }
-        }
-        // Partial phone number
-        else if (
-          phoneDigits.length >= 3 &&
-          phoneDigits.length < 7 &&
-          /[\d\-\.\(\)\s]/.test(trimmedQuery) &&
-          !/[a-zA-Z]/.test(trimmedQuery)
-        ) {
-          setSearchType("customers");
-          const data = await api.get<{ customers: Customer[] }>(
-            `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
-          );
-          // Only update state if this request wasn't aborted and query still matches
+        } else {
+          const [customers, tickets] = await Promise.all([
+            api.get<Customer[]>(`/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`),
+            api.get<SmallTicket[]>(`/tickets?query=${encodeURIComponent(trimmedQuery)}`),
+          ]);
+
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
-            setResults(data.customers || []);
-            if (data.customers?.length === 0) {
-              setStatus("No results found");
-            } else {
+
+            if (customers.length > 0) {
+              setSearchType("customers");
+              setResults(customers);
               setStatus("");
-            }
-            setLoading(false);
-            if (pendingSubmit.current && data.customers && data.customers.length > 0) {
-              pendingSubmit.current = false;
-              onClose();
-              goTo(`/$${data.customers[0].id}`);
-            }
-          }
-        }
-        // Text queries: search both and pick best
-        else {
-          try {
-            const [customersData, ticketsData] = await Promise.all([
-              api.get<{ customers: Customer[] }>(
-                `/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`,
-              ),
-              api.get<{ tickets: SmallTicket[] }>(
-                `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
-              ),
-            ]);
-
-            // Only update state if this request wasn't aborted and query still matches
-            if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
-              const customers = customersData.customers || [];
-              const tickets = ticketsData.tickets || [];
-
-              if (customers.length > 0) {
-                setSearchType("customers");
-                setResults(customers);
-                setStatus("");
-                if (pendingSubmit.current) {
-                  pendingSubmit.current = false;
-                  onClose();
-                  goTo(`/$${customers[0].id}`);
-                }
-              } else {
-                setSearchType("tickets");
-                setResults(tickets);
-                if (tickets.length === 0) {
-                  setStatus("No results found");
-                } else {
-                  setStatus("");
-                }
-                if (pendingSubmit.current && tickets.length > 0) {
-                  pendingSubmit.current = false;
-                  onClose();
-                  goTo(`/&${tickets[0].id}`);
-                }
-              }
-              setLoading(false);
-            }
-          } catch {
-            setSearchType("tickets");
-            const data = await api.get<{ tickets: SmallTicket[] }>(
-              `/tickets?query=${encodeURIComponent(trimmedQuery)}`,
-            );
-            // Only update state if this request wasn't aborted and query still matches
-            if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
-              setResults(data.tickets || []);
-              if (data.tickets?.length === 0) {
-                setStatus("No results found");
-              } else {
-                setStatus("");
-              }
-              setLoading(false);
-              if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
+              if (pendingSubmit.current) {
                 pendingSubmit.current = false;
                 onClose();
-                goTo(`/&${data.tickets[0].id}`);
+                goTo(`/$${customers[0].customer_id}`);
+              }
+            } else {
+              setSearchType("tickets");
+              setResults(tickets);
+              setStatus(tickets.length === 0 ? "No results found" : "");
+              if (pendingSubmit.current && tickets.length > 0) {
+                pendingSubmit.current = false;
+                onClose();
+                goTo(`/&${tickets[0].ticket_number}`);
               }
             }
+            setLoading(false);
           }
         }
       } catch (err) {
-        // Ignore aborted requests
         if (err instanceof Error && err.name !== "AbortError") {
           console.error("Search error:", err);
         }
-        // Only clear results if not aborted
         if (!signal.aborted) {
           setResults([]);
           setStatus("No results found");
           setLoading(false);
         }
       }
-    },
-    [searchTicketNumber, api, onClose, goTo],
+    }, [searchTicketNumber, api, onClose, goTo]
   );
 
-  // Type guard functions
-  const isCustomer = (_item: SmallTicket | Customer): _item is Customer => {
-    return searchType === "customers";
-  };
-
-  const isTicket = (_item: SmallTicket | Customer): _item is SmallTicket => {
-    return searchType === "tickets";
+  const isCustomer = (item: SmallTicket | Customer): item is Customer => {
+    return 'customer_id' in item;
   };
 
   if (!open) return null;
@@ -463,7 +319,6 @@ function SearchModal({
           <div className="flex items-center gap-2">
             <button
               onClick={handleNewCustomer}
-              title="New Customer"
               className="md-btn-primary elev-1 text-base px-4 py-2"
               tabIndex={-1}
             >
@@ -471,7 +326,7 @@ function SearchModal({
             </button>
             <button
               onClick={onClose}
-              className="md-btn-surface elev-1 inline-flex items-center justify-center w-8 h-8 p-0 touch-manipulation"
+              className="md-btn-surface elev-1 inline-flex items-center justify-center w-8 h-8 p-0"
               tabIndex={-1}
             >
               ×
@@ -479,7 +334,6 @@ function SearchModal({
           </div>
         </div>
 
-        {/* Search Input */}
         <form onSubmit={handleSearchSubmit} className="relative pl-10 sm:pl-12">
           <input
             ref={searchInputRef}
@@ -493,29 +347,24 @@ function SearchModal({
           <Search className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
         </form>
 
-        {/* Results */}
         <div className="md-card overflow-hidden flex-1 overflow-y-auto">
-          {/* Dynamic table header based on search type */}
-          <div className="hidden sm:grid grid-cols-12 text-sm tracking-wider px-5 py-3 text-on-surface">
+          <div className="hidden sm:grid grid-cols-12 text-sm tracking-wider px-5 py-3 text-on-surface font-semibold">
             {searchType === "customers" ? (
               <>
-                <div className="col-span-5 font-semibold">Name</div>
-                <div className="col-span-3 font-semibold">Phone</div>
-                <div className="col-span-4 font-semibold">Created</div>
+                <div className="col-span-5">Name</div>
+                <div className="col-span-3">Phone</div>
+                <div className="col-span-4">Created</div>
               </>
             ) : (
               <>
-                <div className="col-span-1 font-semibold">Number</div>
-                <div className="col-span-7 font-semibold">Subject</div>
-                <div className="col-span-2 font-semibold">Status</div>
-                <div className="col-span-2 font-semibold">Customer</div>
+                <div className="col-span-1">Number</div>
+                <div className="col-span-7">Subject</div>
+                <div className="col-span-2">Status</div>
+                <div className="col-span-2">Customer</div>
               </>
             )}
           </div>
-          <div
-            className="divide-y"
-            style={{ borderColor: "var(--md-sys-color-outline)" }}
-          >
+          <div className="divide-y" style={{ borderColor: "var(--md-sys-color-outline)" }}>
             {loading && (
               <div className="flex items-center justify-center p-6 text-md gap-3">
                 <Loader2 className="w-5 h-5 animate-spin text-loading" />
@@ -527,105 +376,55 @@ function SearchModal({
                 {status}
               </div>
             )}
-            {!loading &&
-              results.length > 0 &&
-              results.map((item) => (
-                <NavigationButton
-                  key={item.id}
-                  onClick={() => {
-                    onClose();
-                    if (searchType === "customers") {
-                      goTo(`/$${item.id}`);
-                    } else {
-                      goTo(`/&${item.id}`);
-                    }
-                  }}
-                  targetUrl={
-                    searchType === "customers"
-                      ? `${window.location.origin}/$${item.id}`
-                      : `${window.location.origin}/&${item.id}`
-                  }
-                  className="md-row-box w-full text-left transition-all duration-150 group"
-                  tabIndex={1}
-                >
-                  {isCustomer(item) ? (
-                    <>
-                      {/* Customer Desktop layout */}
-                      <div className="hidden sm:grid grid-cols-12 px-4 py-3">
-                        <div className="col-span-5 truncate">
-                          {item.business_then_name ||
-                            `${item.firstname || ""} ${item.lastname || ""}`}
-                        </div>
-                        <div className="col-span-3 truncate">
-                          {item.phone ? formatPhone(item.phone) : "—"}
-                        </div>
-                        <div className="col-span-4 truncate text-md">
-                          {item.created_at
-                            ? new Date(item.created_at).toLocaleDateString()
-                            : "—"}
-                        </div>
+            {!loading && results.map((item) => (
+              <NavigationButton
+                key={isCustomer(item) ? item.customer_id : item.ticket_number}
+                onClick={() => {
+                  onClose();
+                  if (isCustomer(item)) goTo(`/$${item.customer_id}`);
+                  else goTo(`/&${item.ticket_number}`);
+                }}
+                targetUrl={isCustomer(item) ? `${window.location.origin}/$${item.customer_id}` : `${window.location.origin}/&${item.ticket_number}`}
+                className="md-row-box w-full text-left transition-all duration-150 group"
+                tabIndex={1}
+              >
+                {isCustomer(item) ? (
+                  <>
+                    <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                      <div className="col-span-5 truncate">{item.full_name}</div>
+                      <div className="col-span-3 truncate">{item.primary_phone ? formatPhone(item.primary_phone) : "—"}</div>
+                      <div className="col-span-4 truncate text-md">{fmtDate(item.created_at)}</div>
+                    </div>
+                    <div className="sm:hidden px-4 py-3 space-y-2">
+                      <div className="text-md">{item.full_name}</div>
+                      <div className="flex items-center justify-between text-md">
+                        {item.primary_phone && <span>{formatPhone(item.primary_phone)}</span>}
+                        <span className="text-md text-on-surface">{fmtDate(item.created_at)}</span>
                       </div>
-
-                      {/* Customer Mobile layout */}
-                      <div className="sm:hidden px-4 py-3 space-y-2">
-                        <div className="text-md">
-                          {item.business_then_name ||
-                            `${item.firstname || ""} ${item.lastname || ""}`}
-                        </div>
-                        <div className="flex items-center justify-between text-md">
-                          {item.phone && <span>{formatPhone(item.phone)}</span>}
-                          <span className="text-md text-on-surface">
-                            {item.created_at
-                              ? new Date(item.created_at).toLocaleDateString()
-                              : "—"}
-                          </span>
-                        </div>
-                      </div>
-                    </>
-                  ) : isTicket(item) ? (
-                    <>
-                      {/* Ticket Desktop layout */}
-                      <div className="hidden sm:grid grid-cols-12 px-4 py-3">
-                        <div className="col-span-1 truncate">
-                          #{item.number ?? item.id}
-                        </div>
-                        <div className="col-span-7 truncate">
-                          {item.subject}
-                        </div>
-                        <div className="col-span-2 truncate">
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                      <div className="col-span-1 truncate">#{item.ticket_number}</div>
+                      <div className="col-span-7 truncate">{item.subject}</div>
+                      <div className="col-span-2 truncate">{convertStatus(item.status || "")}</div>
+                      <div className="col-span-2 truncate">{item.customer_full_name}</div>
+                    </div>
+                    <div className="sm:hidden px-4 py-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-semibold text-md font-mono">#{item.ticket_number}</div>
+                        <div className="text-md px-2 py-1 rounded-full" style={{ backgroundColor: "var(--md-sys-color-surface-variant)", color: "var(--md-sys-color-on-surface-variant)" }}>
                           {convertStatus(item.status || "")}
                         </div>
-                        <div className="col-span-2 truncate">
-                          {item.customer_business_then_name}
-                        </div>
                       </div>
-
-                      {/* Ticket Mobile layout */}
-                      <div className="sm:hidden px-4 py-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="font-semibold text-md font-mono">
-                            #{item.number ?? item.id}
-                          </div>
-                          <div
-                            className="text-md px-2 py-1 rounded-full"
-                            style={{
-                              backgroundColor:
-                                "var(--md-sys-color-surface-variant)",
-                              color: "var(--md-sys-color-on-surface-variant)",
-                            }}
-                          >
-                            {convertStatus(item.status || "")}
-                          </div>
-                        </div>
-                        <div className="text-md truncate">{item.subject}</div>
-                        <div className="text-md truncate text-on-surface">
-                          {item.customer_business_then_name}
-                        </div>
-                      </div>
-                    </>
-                  ) : null}
-                </NavigationButton>
-              ))}
+                      <div className="text-md truncate">{item.subject}</div>
+                      <div className="text-md truncate text-on-surface">{item.customer_full_name}</div>
+                    </div>
+                  </>
+                )}
+              </NavigationButton>
+            ))}
           </div>
         </div>
       </div>

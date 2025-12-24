@@ -7,14 +7,17 @@ use serde_json::json;
 
 use crate::http::{error_response, success_response};
 
+use aws_sdk_dynamodb::Client as DynamoDbClient;
+use aws_sdk_dynamodb::types::AttributeValue;
+use chrono::Utc;
+
 /// Handle attachment upload to ticket
 pub async fn handle_upload_attachment(
-    ticket_id: i64,
+    ticket_number: String,
     base64_data: &str,
     file_name: &str,
-    api_key: &str,
     s3_client: &S3Client,
-    target_url: &str,
+    db_client: &DynamoDbClient,
 ) -> Response<Body> {
     // Decode base64 data to bytes
     use base64::Engine;
@@ -44,11 +47,8 @@ pub async fn handle_upload_attachment(
     };
 
     // Generate unique S3 key for the file
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
-        .as_secs();
-    let s3_key = format!("attachments/{}/{}_{}", ticket_id, timestamp, file_name);
+    let timestamp = Utc::now().timestamp();
+    let s3_key = format!("attachments/{}/{}_{}", ticket_number, timestamp, file_name);
 
     // Upload file to S3
     let byte_stream = ByteStream::from(file_bytes);
@@ -64,41 +64,31 @@ pub async fn handle_upload_attachment(
             // Get the public URL of the uploaded file
             let s3_url = format!("https://{}.s3.amazonaws.com/{}", bucket_name, s3_key);
 
-            // Call RepairShopr attach_file_url endpoint
-            let url = format!("{}/tickets/{}/attach_file_url", target_url, ticket_id);
-
-            let attach_body = json!({
-                "files": [
-                    {
-                        "url": s3_url,
-                        "filename": file_name
-                    }
+            // Create attachment attribute
+            let attachment = AttributeValue::M(
+                vec![
+                    ("file_name".to_string(), AttributeValue::S(file_name.to_string())),
+                    ("url".to_string(), AttributeValue::S(s3_url)),
+                    ("created_at".to_string(), AttributeValue::S(Utc::now().to_rfc3339())),
                 ]
-            });
+                .into_iter()
+                .collect(),
+            );
 
-            let request_builder = reqwest::Client::new()
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", api_key))
-                .header("Content-Type", "application/json")
-                .body(attach_body.to_string());
+            // Update DynamoDB
+            let db_res = db_client.update_item()
+                .table_name("Tickets")
+                .key("ticket_number", AttributeValue::N(ticket_number.clone()))
+                .update_expression("SET attachments = list_append(if_not_exists(attachments, :empty), :a), last_updated = :lu")
+                .expression_attribute_values(":a", AttributeValue::L(vec![attachment]))
+                .expression_attribute_values(":empty", AttributeValue::L(vec![]))
+                .expression_attribute_values(":lu", AttributeValue::S(Utc::now().to_rfc3339()))
+                .send()
+                .await;
 
-            match request_builder.send().await {
-                Ok(response) => {
-                    let status = response.status().as_u16();
-                    let response_body = response
-                        .text()
-                        .await
-                        .unwrap_or_else(|_| "{}".to_string());
-                    success_response(status, response_body)
-                }
-                Err(e) => {
-                    error_response(
-                        502,
-                        "Bad Gateway",
-                        &format!("Failed to attach file to ticket: {}", e),
-                        Some("Check that the ticket ID is valid and the API key has permission"),
-                    )
-                }
+            match db_res {
+                Ok(_) => success_response(200, json!({"ticket_number": ticket_number}).to_string()),
+                Err(e) => error_response(500, "Failed to update ticket attachments", &format!("{}", e), None),
             }
         }
         Err(e) => {

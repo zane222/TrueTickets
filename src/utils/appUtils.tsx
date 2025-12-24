@@ -8,7 +8,7 @@
  * record and perform internal guarded accesses.
  */
 
-import type { SmallTicket, LargeTicket } from "../types/api";
+import type { Ticket } from "../types/api";
 
 /**
  * Class name utility function
@@ -82,40 +82,15 @@ export function formatPhone(phoneNumber: string = ""): string {
  * property access so TypeScript remains happy and runtime behavior is the same.
  */
 export function getTicketPassword(
-  ticket: SmallTicket | LargeTicket | Record<string, unknown>,
+  ticket: Ticket | Record<string, unknown>,
 ): string {
   try {
-    // Normalize to a record for safe indexed access
     const t = ticket as Record<string, unknown>;
-    // Check ticket_fields[0].ticket_type_id first, fallback to main ticket_type_id
-    // Safely handle possibly-typed ticket_fields without using `any`.
-    let typeId: number | undefined;
-    const maybeFields = t["ticket_fields"];
-    if (Array.isArray(maybeFields) && maybeFields.length > 0) {
-      const first = maybeFields[0] as Record<string, unknown>;
-      if (typeof first["ticket_type_id"] === "number") {
-        typeId = first["ticket_type_id"] as number;
-      }
-    }
-    if (typeId === undefined && typeof t["ticket_type_id"] === "number") {
-      typeId = t["ticket_type_id"] as number;
-    }
-    const props = (t["properties"] || {}) as Record<string, unknown>;
-    const invalid = new Set(["n", "na", "n/a", "none"]);
-    const norm = (str: unknown): string =>
-      typeof str === "string" ? str.toLowerCase().trim() : "";
-
-    if (typeId === 9818 || typeId === 9836) {
-      const normalizedPassword = norm(props["Password"]);
-      if (normalizedPassword && !invalid.has(normalizedPassword)) {
-        const pw = props["Password"];
-        return typeof pw === "string" ? pw : "";
-      }
-    } else if (typeId === 9801) {
-      const normalizedPassword = norm(props["passwordForPhone"]);
-      if (normalizedPassword && !invalid.has(normalizedPassword)) {
-        const pw = props["passwordForPhone"];
-        return typeof pw === "string" ? pw : "";
+    if (typeof t["password"] === "string") {
+      const pw = t["password"] as string;
+      const invalid = new Set(["n", "na", "n/a", "none"]);
+      if (pw && !invalid.has(pw.toLowerCase().trim())) {
+        return pw;
       }
     }
     return "";
@@ -199,7 +174,7 @@ export function getDeviceTypeFromSubject(subjectText: string): string | null {
  * internal `Model` vT JSON when present.
  */
 export function getTicketDeviceInfo(
-  ticket: SmallTicket | LargeTicket | Record<string, unknown>,
+  ticket: Ticket | Record<string, unknown>,
 ): {
   device: string;
   itemsLeft: string[];
@@ -207,53 +182,27 @@ export function getTicketDeviceInfo(
 } {
   try {
     const t = ticket as Record<string, unknown>;
-    const props = (t?.properties || {}) as Record<string, unknown>;
-    const model =
-      typeof props["Model"] === "string" ? (props["Model"] as string) : "";
-    if (model && model.startsWith("vT")) {
-      const data = JSON.parse(model.substring(2)) as Record<string, unknown>;
-      const device = typeof data.device === "string" ? data.device : "Other";
+    let device = "Other";
+    let itemsLeft: string[] = [];
+    let estimatedTime = "";
 
-      // If device is "Other" or not found, try to detect from subject
-      if (device === "Other" || !device) {
-        const detectedDevice = getDeviceTypeFromSubject(
-          typeof t?.subject === "string" ? (t.subject as string) : "",
-        );
-        return {
-          device: detectedDevice || "Other",
-          itemsLeft: Array.isArray(data.itemsLeft)
-            ? (data.itemsLeft as string[])
-            : [],
-          estimatedTime:
-            typeof data.estimatedTime === "string"
-              ? (data.estimatedTime as string)
-              : "",
-        };
-      }
-
-      return {
-        device: device,
-        itemsLeft: Array.isArray(data.itemsLeft)
-          ? (data.itemsLeft as string[])
-          : [],
-        estimatedTime:
-          typeof data.estimatedTime === "string"
-            ? (data.estimatedTime as string)
-            : "",
-      };
-    } else {
-      // No vT JSON found, try to detect from subject
-      const detectedDevice = getDeviceTypeFromSubject(
-        typeof t?.subject === "string" ? (t.subject as string) : "",
-      );
-      return {
-        device: detectedDevice || "Other",
-        itemsLeft: [],
-        estimatedTime: "",
-      };
+    // Use top-level estimated_time if available
+    if (typeof t["estimated_time"] === "string" && t["estimated_time"]) {
+      estimatedTime = t["estimated_time"] as string;
     }
+
+    // Detection fallback for device
+    const detectedDevice = getDeviceTypeFromSubject(
+      typeof t?.subject === "string" ? (t.subject as string) : "",
+    );
+    device = detectedDevice || "Other";
+
+    return {
+      device,
+      itemsLeft,
+      estimatedTime,
+    };
   } catch {
-    // Fallback: try to detect from subject even if JSON parsing fails
     const detectedDevice = getDeviceTypeFromSubject(
       typeof (ticket as Record<string, unknown>)?.subject === "string"
         ? ((ticket as Record<string, unknown>).subject as string)

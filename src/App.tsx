@@ -223,14 +223,14 @@ function App() {
     const query = url.searchParams;
     if (pathname === "/newcustomer") return { view: "newcustomer" };
     if (pathname.startsWith("/$")) {
-      const id = parseInt(pathname.slice(2), 10);
+      const id = pathname.slice(2);
       if (query.has("newticket"))
         return { view: "ticket-editor", customerId: id };
       if (query.has("edit")) return { view: "customer-edit", id };
       return { view: "customer", id };
     }
     if (pathname.startsWith("/&")) {
-      const id = parseInt(pathname.slice(2), 10);
+      const id = pathname.slice(2);
       if (query.has("edit")) return { view: "ticket-editor", ticketId: id };
       return { view: "ticket", id };
     }

@@ -45,11 +45,8 @@ export function useChangeDetection(
       }
 
       // Extract and store the updated_at timestamp from initial data
-      const initialUpdatedAt = (initialData as Record<string, unknown>).updated_at ||
-        ((initialData as { ticket?: Record<string, unknown> }).ticket?.updated_at) ||
-        ((initialData as { customer?: Record<string, unknown> }).customer?.updated_at) ||
-        new Date().toISOString();
-      updatedAtRef.current = typeof initialUpdatedAt === 'string' ? initialUpdatedAt : new Date().toISOString();
+      const initialLastUpdated = (initialData as Record<string, unknown>).last_updated || new Date().toISOString();
+      updatedAtRef.current = typeof initialLastUpdated === 'string' ? initialLastUpdated : new Date().toISOString();
 
       setIsPolling(true);
       setHasChanged(false);
@@ -107,11 +104,11 @@ export function useChangeDetection(
       stopPolling();
 
       // Update the stored updated_at timestamp
-      const newUpdatedAt = (newData as Record<string, unknown>).updated_at ||
-        ((newData as { ticket?: Record<string, unknown> }).ticket?.updated_at) ||
-        ((newData as { customer?: Record<string, unknown> }).customer?.updated_at) ||
+      const newLastUpdated = (newData as Record<string, unknown>).last_updated ||
+        ((newData as { ticket?: Record<string, unknown> }).ticket?.last_updated) ||
+        ((newData as { customer?: Record<string, unknown> }).customer?.last_updated) ||
         updatedAtRef.current;
-      updatedAtRef.current = typeof newUpdatedAt === 'string' ? newUpdatedAt : updatedAtRef.current;
+      updatedAtRef.current = typeof newLastUpdated === 'string' ? newLastUpdated : updatedAtRef.current;
 
       setHasChanged(false);
     },

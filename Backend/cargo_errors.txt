@@ -1,0 +1,240 @@
+cargo :     Checking TrueTickets v0.1.0 
+(C:\Users\User\Documents\React\Backend)
+At line:1 char:1
++ cargo check 2>&1 | Out-File -FilePath 
+cargo_errors.txt -Encoding asci ...
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    C 
+   hecking Tr...\React\Backend):String) [], Remot  
+  eException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+error[E0308]: mismatched types
+    --> src\handlers\database_management.rs:169:26
+     |
+ 161 |         
+update_expr.push("customer_full_name = :cfn");
+     |         -----------      
+--------------------------- this argument has type 
+`&str`...
+     |         |
+     |         ... which causes `update_expr` to 
+have type `Vec<&str>`
+...
+ 169 |         update_expr.push("subject = 
+:s".to_string());
+     |                     ---- 
+^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&str`, found 
+`String`
+     |                     |
+     |                     arguments to this 
+method are incorrect
+     |
+note: method defined here
+    --> C:\Users\User\.rustup\toolchains\stable-x86
+_64-pc-windows-msvc\lib/rustlib/src/rust\library\al
+loc\src\vec\mod.rs:2571:12
+     |
+2571 |     pub fn push(&mut self, value: T) {
+     |            ^^^^
+help: try removing the method call
+     |
+ 169 -         update_expr.push("subject = 
+:s".to_string());
+ 169 +         update_expr.push("subject = :s");
+     |
+
+error[E0308]: mismatched types
+    --> src\handlers\database_management.rs:173:26
+     |
+ 161 |         
+update_expr.push("customer_full_name = :cfn");
+     |         -----------      
+--------------------------- this argument has type 
+`&str`...
+     |         |
+     |         ... which causes `update_expr` to 
+have type `Vec<&str>`
+...
+ 173 |         update_expr.push("details = 
+:d".to_string());
+     |                     ---- 
+^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&str`, found 
+`String`
+     |                     |
+     |                     arguments to this 
+method are incorrect
+     |
+note: method defined here
+    --> C:\Users\User\.rustup\toolchains\stable-x86
+_64-pc-windows-msvc\lib/rustlib/src/rust\library\al
+loc\src\vec\mod.rs:2571:12
+     |
+2571 |     pub fn push(&mut self, value: T) {
+     |            ^^^^
+help: try removing the method call
+     |
+ 173 -         update_expr.push("details = 
+:d".to_string());
+ 173 +         update_expr.push("details = :d");
+     |
+
+error[E0308]: mismatched types
+    --> src\handlers\database_management.rs:177:26
+     |
+ 161 |         
+update_expr.push("customer_full_name = :cfn");
+     |         -----------      
+--------------------------- this argument has type 
+`&str`...
+     |         |
+     |         ... which causes `update_expr` to 
+have type `Vec<&str>`
+...
+ 177 |         update_expr.push("status = 
+:st".to_string());
+     |                     ---- 
+^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&str`, found 
+`String`
+     |                     |
+     |                     arguments to this 
+method are incorrect
+     |
+note: method defined here
+    --> C:\Users\User\.rustup\toolchains\stable-x86
+_64-pc-windows-msvc\lib/rustlib/src/rust\library\al
+loc\src\vec\mod.rs:2571:12
+     |
+2571 |     pub fn push(&mut self, value: T) {
+     |            ^^^^
+help: try removing the method call
+     |
+ 177 -         update_expr.push("status = 
+:st".to_string());
+ 177 +         update_expr.push("status = :st");
+     |
+
+error[E0308]: mismatched types
+    --> src\handlers\database_management.rs:181:26
+     |
+ 161 |         
+update_expr.push("customer_full_name = :cfn");
+     |         -----------      
+--------------------------- this argument has type 
+`&str`...
+     |         |
+     |         ... which causes `update_expr` to 
+have type `Vec<&str>`
+...
+ 181 |         update_expr.push("password = 
+:pw".to_string());
+     |                     ---- 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&str`, 
+found `String`
+     |                     |
+     |                     arguments to this 
+method are incorrect
+     |
+note: method defined here
+    --> C:\Users\User\.rustup\toolchains\stable-x86
+_64-pc-windows-msvc\lib/rustlib/src/rust\library\al
+loc\src\vec\mod.rs:2571:12
+     |
+2571 |     pub fn push(&mut self, value: T) {
+     |            ^^^^
+help: try removing the method call
+     |
+ 181 -         update_expr.push("password = 
+:pw".to_string());
+ 181 +         update_expr.push("password = :pw");
+     |
+
+error[E0308]: mismatched types
+    --> src\handlers\database_management.rs:185:26
+     |
+ 161 |         
+update_expr.push("customer_full_name = :cfn");
+     |         -----------      
+--------------------------- this argument has type 
+`&str`...
+     |         |
+     |         ... which causes `update_expr` to 
+have type `Vec<&str>`
+...
+ 185 |         update_expr.push("estimated_time = 
+:et".to_string());
+     |                     ---- 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected 
+`&str`, found `String`
+     |                     |
+     |                     arguments to this 
+method are incorrect
+     |
+note: method defined here
+    --> C:\Users\User\.rustup\toolchains\stable-x86
+_64-pc-windows-msvc\lib/rustlib/src/rust\library\al
+loc\src\vec\mod.rs:2571:12
+     |
+2571 |     pub fn push(&mut self, value: T) {
+     |            ^^^^
+help: try removing the method call
+     |
+ 185 -         update_expr.push("estimated_time = 
+:et".to_string());
+ 185 +         update_expr.push("estimated_time = 
+:et");
+     |
+
+error[E0308]: mismatched types
+    --> src\handlers\database_management.rs:189:22
+     |
+ 161 |         
+update_expr.push("customer_full_name = :cfn");
+     |         -----------      
+--------------------------- this argument has type 
+`&str`...
+     |         |
+     |         ... which causes `update_expr` to 
+have type `Vec<&str>`
+...
+ 189 |     update_expr.push("last_updated = 
+:lu".to_string());
+     |                 ---- 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `&str`, 
+found `String`
+     |                 |
+     |                 arguments to this method 
+are incorrect
+     |
+note: method defined here
+    --> C:\Users\User\.rustup\toolchains\stable-x86
+_64-pc-windows-msvc\lib/rustlib/src/rust\library\al
+loc\src\vec\mod.rs:2571:12
+     |
+2571 |     pub fn push(&mut self, value: T) {
+     |            ^^^^
+help: try removing the method call
+     |
+ 189 -     update_expr.push("last_updated = 
+:lu".to_string());
+ 189 +     update_expr.push("last_updated = :lu");
+     |
+
+warning: unused variable: `api_key`
+  --> src\main.rs:28:9
+   |
+28 |     let api_key = match 
+std::env::var("REPAIRSHOPR_API_KEY") {
+   |         ^^^^^^^ help: if this is intentional, 
+prefix it with an underscore: `_api_key`
+   |
+   = note: `#[warn(unused_variables)]` (part of 
+`#[warn(unused)]`) on by default
+
+For more information about this error, try `rustc 
+--explain E0308`.
+warning: `TrueTickets` (bin "TrueTickets") 
+generated 1 warning
+error: could not compile `TrueTickets` (bin 
+"TrueTickets") due to 6 previous errors; 1 warning 
+emitted

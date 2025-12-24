@@ -240,11 +240,7 @@ pub async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) 
                 }));
             }
 
-            let response_body = json!({
-                "users": users,
-            });
-
-            success_response(200, response_body.to_string())
+            success_response(200, json!(users).to_string())
         }
         Err(e) => {
             error_response(

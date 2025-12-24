@@ -20,7 +20,7 @@ interface ManageUsersModalProps {
 }
 
 interface UserWithGroups extends CognitoUser {
-  groups?: string[];
+  // groups is already in CognitoUser as string[]
 }
 
 interface SelectedUser extends UserWithGroups {
@@ -67,10 +67,9 @@ export function ManageUsersModal({
   const loadUsers = async (retryCount = 0) => {
     setUsersLoading(true);
     try {
-      const result = await apiClient.get<{ users: UserWithGroups[] }>("/users");
-
-      if (result && Array.isArray(result?.users)) {
-        setUsers(result.users);
+      const result = await apiClient.get<UserWithGroups[]>("/users");
+      if (Array.isArray(result)) {
+        setUsers(result);
       } else {
         console.warn("Invalid users response:", result);
         setUsers([]);

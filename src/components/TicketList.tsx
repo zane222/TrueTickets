@@ -18,7 +18,7 @@ function TicketListItem({
   ticket,
   goTo,
 }: TicketListItemProps): React.ReactElement {
-  const targetUrl = `${window.location.origin}/&${ticket.id}`;
+  const targetUrl = `${window.location.origin}/&${ticket.ticket_number}`;
   return (
     <motion.div
       data-row
@@ -27,7 +27,7 @@ function TicketListItem({
       exit={{ opacity: 0 }}
     >
       <NavigationButton
-        onClick={() => goTo(`/&${ticket.id}`)}
+        onClick={() => goTo(`/&${ticket.ticket_number}`)}
         targetUrl={targetUrl}
         className="md-row-box w-full text-left transition-all duration-150 group"
         tabIndex={0}
@@ -35,7 +35,7 @@ function TicketListItem({
         {/* Desktop layout */}
         <div className="hidden sm:grid grid-cols-12 px-4 py-3">
           <div className="col-span-1 truncate">
-            #{ticket.number ?? ticket.id}
+            #{ticket.ticket_number}
           </div>
           <div className="col-span-5 truncate">{ticket.subject}</div>
           <div className="col-span-2 truncate">
@@ -45,10 +45,10 @@ function TicketListItem({
             {getTicketDeviceInfo(ticket).device}
           </div>
           <div className="col-span-1 truncate">
-            {fmtDate(ticket.created_at || "")}
+            {fmtDate(ticket.created_at)}
           </div>
           <div className="col-span-2 truncate">
-            {ticket.customer_business_then_name}
+            {ticket.customer_full_name}
           </div>
         </div>
 
@@ -56,10 +56,10 @@ function TicketListItem({
         <div className="sm:hidden px-4 py-3 space-y-2">
           <div className="flex justify-between items-start">
             <div className="text-md font-medium truncate flex-1 min-w-0">
-              #{ticket.number ?? ticket.id}
+              #{ticket.ticket_number}
             </div>
             <div className="text-md truncate ml-2 text-outline">
-              {fmtDate(ticket.created_at || "")}
+              {fmtDate(ticket.created_at)}
             </div>
           </div>
           <div className="text-md truncate text-on-surface">
@@ -74,7 +74,7 @@ function TicketListItem({
             </div>
           </div>
           <div className="text-md truncate text-on-surface">
-            {ticket.customer_business_then_name}
+            {ticket.customer_full_name}
           </div>
         </div>
       </NavigationButton>
@@ -189,10 +189,9 @@ export function TicketListView({
       setLoading(true);
       try {
         const currentPage = reset ? 1 : pageRef.current + 1;
-        const data = await api.get<{ tickets: SmallTicket[] }>(
+        const tickets = await api.get<SmallTicket[]>(
           `/tickets?page=${currentPage}`,
         );
-        const tickets = data.tickets || [];
         if (reset) {
           setItems(tickets);
           setPage(1);
@@ -200,9 +199,9 @@ export function TicketListView({
           pageRef.current = 1;
         } else {
           // Filter out any duplicates by ticket ID using the ref (stable)
-          const existingIds = new Set(itemsRef.current.map((item) => item.id));
+          const existingIds = new Set(itemsRef.current.map((item) => item.ticket_number));
           const newTickets = tickets.filter(
-            (ticket) => !existingIds.has(ticket.id),
+            (ticket) => !existingIds.has(ticket.ticket_number),
           );
           // Use functional update to avoid depending on `items` in closure
           setItems((prev) => {
@@ -336,7 +335,7 @@ export function TicketListView({
                 return selectedDevices.has(deviceIndex);
                 })*/
               .map((ticket) => (
-                <TicketListItem key={ticket.id} ticket={ticket} goTo={goTo} />
+                <TicketListItem key={ticket.ticket_number} ticket={ticket} goTo={goTo} />
               ))}
           </AnimatePresence>
         </div>

@@ -16,7 +16,8 @@ use handlers::{
     handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
     handle_get_ticket_last_updated, handle_get_customers_by_phone, handle_create_customer,
-    handle_update_customer, handle_get_customer_last_updated
+    handle_update_customer, handle_get_customer_last_updated, handle_get_tickets_by_customer_id,
+    handle_search_customers_by_name, handle_get_customer_by_id
 };
 use http::{error_response, handle_options};
 
@@ -25,7 +26,7 @@ const TARGET_URL: &str = "https://Cacell.repairshopr.com/api/v1";
 /// Handle the Lambda event
 async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_client: &S3Client) -> Response<Body> {
     // Get API key from environment
-    let api_key = match std::env::var("REPAIRSHOPR_API_KEY") {
+    let _api_key = match std::env::var("REPAIRSHOPR_API_KEY") {
         Ok(v) => v,
         Err(_) => {
             return error_response(
@@ -135,7 +136,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(response) => return response,
             };
 
-            let ticket_id: i64 = match get_value_in_json(&body, "ticket_id") {
+            let ticket_id: String = match get_value_in_json(&body, "ticket_id") {
                 Ok(val) => val,
                 Err(response) => return response,
             };
@@ -166,23 +167,31 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 &image_data
             };
 
-            handle_upload_attachment(ticket_id, base64_data, &file_name, &api_key, s3_client, TARGET_URL).await
+            handle_upload_attachment(ticket_id, base64_data, &file_name, s3_client, &dynamodb_client).await
         }
         // -------------------------
         // TICKETS
         // -------------------------
-        ("/tickets", "GET") => { // it could be /tickets?number=12345 or /tickets?query=lcd. Each calls a different function
+        ("/tickets", "GET") => {
             if let Some(number) = event.query_string_parameters().first("number") {
                 handle_get_ticket_by_number(number, &dynamodb_client).await
-            } else if let Some(query) = event.query_string_parameters().first("subject_query") {
+            } else if let Some(query) = event.query_string_parameters().first("subject_query").or(event.query_string_parameters().first("query")) {
                 handle_search_tickets_by_subject(query, &dynamodb_client).await
+            } else if let Some(customer_id) = event.query_string_parameters().first("customer_id") {
+                handle_get_tickets_by_customer_id(customer_id.to_string(), &dynamodb_client).await
             } else {
-                return error_response(
-                    400,
-                    "Missing query parameter",
-                    "Provide either 'number' or 'subject_query'",
-                    None,
-                );
+                // Check if path is /tickets/{id}
+                let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+                if parts.len() == 2 && parts[0] == "tickets" {
+                    handle_get_ticket_by_number(parts[1], &dynamodb_client).await
+                } else {
+                    return error_response(
+                        400,
+                        "Missing query parameter",
+                        "Provide 'number', 'query', 'customer_id', or use /tickets/{id}",
+                        None,
+                    );
+                }
             }
         }
         ("/recent_tickets_list", "GET") => {
@@ -198,6 +207,10 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => val,
                 Err(resp) => return resp,
             };
+            let customer_full_name: String = match get_value_in_json(&body, "customer_full_name") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
             let subject: String = match get_value_in_json(&body, "subject") {
                 Ok(val) => val,
                 Err(resp) => return resp,
@@ -206,9 +219,15 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => val,
                 Err(resp) => return resp,
             };
+            let primary_phone: String = match get_value_in_json(&body, "primary_phone") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
             let status: Option<String> = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let password: Option<String> = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let estimated_time: Option<String> = body.get("estimated_time").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-            handle_create_ticket(customer_id, subject, details, status, &dynamodb_client).await
+            handle_create_ticket(customer_id, customer_full_name, primary_phone, subject, details, status, password, estimated_time, &dynamodb_client).await
         }
         ("/ticket", "PUT") => {
             let ticket_number: String = match event.query_string_parameters().first("number") {
@@ -221,11 +240,15 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => return resp,
             };
 
+            let customer_full_name = body.get("customer_full_name").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let primary_phone = body.get("primary_phone").and_then(|v| v.as_str()).map(|s| s.to_string());
             let subject = body.get("subject").and_then(|v| v.as_str()).map(|s| s.to_string());
             let details = body.get("details").and_then(|v| v.as_str()).map(|s| s.to_string());
             let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let password = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let estimated_time = body.get("estimated_time").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-            handle_update_ticket(ticket_number, subject, details, status, &dynamodb_client).await
+            handle_update_ticket(ticket_number, customer_full_name, primary_phone, subject, details, status, password, estimated_time, &dynamodb_client).await
         }
         ("/ticket/comment", "POST") => {
             let ticket_number: String = match event.query_string_parameters().first("ticket_number") {
@@ -260,12 +283,20 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         // -------------------------
         // CUSTOMERS
         // -------------------------
-        ("/customers", "GET") => {
-            let phone_number: String = match event.query_string_parameters().first("phone_number") {
-                Some(p) => p.to_string(),
-                None => return error_response(400, "Missing phone_number", "Query parameter 'phone_number' is required", None),
-            };
-            handle_get_customers_by_phone(phone_number, &dynamodb_client).await
+        ("/customers", "GET") | ("/customers/autocomplete", "GET") => {
+            if let Some(phone) = event.query_string_parameters().first("phone_number") {
+                handle_get_customers_by_phone(phone.to_string(), &dynamodb_client).await
+            } else if let Some(query) = event.query_string_parameters().first("query") {
+                handle_search_customers_by_name(query, &dynamodb_client).await
+            } else {
+                // Check if path is /customers/{id}
+                let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+                if parts.len() == 2 && parts[0] == "customers" {
+                    handle_get_customer_by_id(parts[1].to_string(), &dynamodb_client).await
+                } else {
+                    return error_response(400, "Missing query parameter", "Provide either 'phone_number', 'query', or use /customers/{id}", None);
+                }
+            }
         }
         ("/customer", "POST") => {
             let body = match parse_json_body(event.body()) {
@@ -277,6 +308,10 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => val,
                 Err(resp) => return resp,
             };
+            let email: String = match get_value_in_json(&body, "email") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
             let phone_numbers: Vec<String> = match body.get("phone_numbers") {
                 Some(v) => match serde_json::from_value(v.clone()) {
                     Ok(vec) => vec,
@@ -285,7 +320,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 None => return error_response(400, "Missing phone_numbers", "phone_numbers array is required", None),
             };
 
-            handle_create_customer(full_name, phone_numbers, &dynamodb_client).await
+            handle_create_customer(full_name, email, phone_numbers, &dynamodb_client).await
         }
         ("/customer", "PUT") => {
             let customer_id: String = match event.query_string_parameters().first("customer_id") {
@@ -299,9 +334,10 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             };
 
             let full_name = body.get("full_name").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let email = body.get("email").and_then(|v| v.as_str()).map(|s| s.to_string());
             let phone_numbers = body.get("phone_numbers").and_then(|v| serde_json::from_value(v.clone()).ok());
 
-            handle_update_customer(customer_id, full_name, phone_numbers, &dynamodb_client).await
+            handle_update_customer(customer_id, full_name, email, phone_numbers, &dynamodb_client).await
         }
         ("/customer_was_changed", "GET") => {
             let customer_id: String = match event.query_string_parameters().first("customer_id") {

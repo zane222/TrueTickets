@@ -35,7 +35,7 @@ import type { LargeTicket, Comment } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketViewProps {
-  id: number;
+  id: string;
   goTo: (to: string) => void;
   showSearch: boolean;
 }
@@ -58,7 +58,7 @@ function TicketView({
   const parentContainerRef = useRef<HTMLDivElement | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null); // Track which status is being updated
-  const [fullScreenAttachment, setFullScreenAttachment] = useState<{ id: number; url: string; fileName?: string } | null>(null);
+  const [fullScreenAttachment, setFullScreenAttachment] = useState<{ url: string; fileName?: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [ticketCardScale, setTicketCardScale] = useState<number>(1.48);
@@ -75,13 +75,6 @@ function TicketView({
     stopPolling,
     resetPolling: _resetPolling,
   } = useChangeDetection(`/tickets/${id}`);
-
-  // Helper function to decode \u escape sequences in URLs
-  const decodeUrl = useCallback((url: string): string => {
-    return url.replace(/\\u([0-9a-fA-F]{4})/g, (_match, code) => {
-      return String.fromCharCode(parseInt(code, 16));
-    });
-  }, []);
 
   const handleFileUpload = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -151,7 +144,7 @@ function TicketView({
         }, 1000);
       }
     }
-  }, [id, api]);
+  }, [id, api, _error]);
 
   const handleAddAttachment = () => {
     // Check if device has camera capability
@@ -186,7 +179,6 @@ function TicketView({
       handleFileUpload(e.dataTransfer.files);
     }
   }, [handleFileUpload]);
-
   // Register keybinds for this page
   const ticketViewKeybinds: KeyBind[] = useMemo(() => [
     {
@@ -271,8 +263,8 @@ function TicketView({
         const searchEvent = new CustomEvent("openSearch");
         window.dispatchEvent(searchEvent);
       },
-      c: () => goTo(`/$${ticket?.customer?.id || ticket?.customer_id}`),
-      e: () => goTo(`/&${id}?edit`),
+      c: () => goTo(`/$${ticket?.customer_id}`),
+      e: () => goTo(`/&${ticket?.ticket_number}?edit`),
       p: () => generatePDF(),
       // Status change shortcuts
       d: () => updateTicketStatus(STATUSES[0]), // Diagnosing
@@ -304,11 +296,10 @@ function TicketView({
   const fetchTicket = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiRef.current!.get<{ ticket: LargeTicket }>(
+      const ticketData = await apiRef.current!.get<LargeTicket>(
         `/tickets/${id}`,
       );
       if (!fetchTicketRef.current.isMounted) return;
-      const ticketData = data.ticket;
       setTicket(ticketData);
 
       // Start change detection polling via ref (stable)
@@ -363,7 +354,7 @@ function TicketView({
       const originalStatus = convertStatusToOriginal(status);
       // Send the full ticket object with updated status
       const updatedTicket = { ...ticket, status: originalStatus };
-      await api.put(`/tickets/${ticket.id}`, updatedTicket);
+      await api.put(`/tickets/${ticket.ticket_number}`, updatedTicket);
       setTicket(updatedTicket);
 
       // Restart polling with the updated ticket data
@@ -429,9 +420,7 @@ function TicketView({
       />
     );
 
-  const phone = formatPhone(
-    ticket.customer?.phone || ticket.customer?.mobile || "",
-  );
+  const phone = formatPhone(ticket.primary_phone || "");
 
   const generatePDF = async () => {
     if (!ticketCardRef.current) return;
@@ -486,8 +475,8 @@ function TicketView({
       {/* Top Action Buttons */}
       <div className="flex flex-row justify-end gap-4 mb-6">
         <NavigationButton
-          onClick={() => goTo(`/$${ticket.customer?.id || ticket.customer_id}`)}
-          targetUrl={`${window.location.origin}/$${ticket.customer?.id || ticket.customer_id}`}
+          onClick={() => goTo(`/$${ticket.customer_id}`)}
+          targetUrl={`${window.location.origin}/$${ticket.customer_id}`}
           className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
           tabIndex={-1}
         >
@@ -503,8 +492,8 @@ function TicketView({
           Print PDF
         </button>
         <NavigationButton
-          onClick={() => goTo(`/&${ticket.id}?edit`)}
-          targetUrl={`${window.location.origin}/&${ticket.id}?edit`}
+          onClick={() => goTo(`/&${ticket.ticket_number}?edit`)}
+          targetUrl={`${window.location.origin}/&${ticket.ticket_number}?edit`}
           className="md-btn-primary elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
           tabIndex={-1}
         >
@@ -522,7 +511,7 @@ function TicketView({
               <div ref={ticketCardRef}> {/* This div can't have any styling on it because HTML2PDF needs to read it */}
                 <TicketCard
                   password={getTicketPassword(ticket)}
-                  ticketNumber={ticket.number ?? ticket.id}
+                  ticketNumber={ticket.ticket_number}
                   subject={
                     ticket.subject +
                     (getTicketDeviceInfo(ticket).estimatedTime
@@ -532,12 +521,8 @@ function TicketView({
                   itemsLeft={formatItemsLeft(
                     getTicketDeviceInfo(ticket).itemsLeft,
                   )}
-                  name={
-                    ticket.customer?.business_and_full_name ||
-                    ticket.customer?.fullname ||
-                    ""
-                  }
-                  creationDate={fmtDateAndTime(ticket.created_at || "")}
+                  name={ticket.customer_full_name}
+                  creationDate={fmtDateAndTime(ticket.created_at)}
                   phoneNumber={phone}
                 />
               </div>
@@ -622,23 +607,21 @@ function TicketView({
 
               {/* Attachments grid */}
               <div className="grid grid-cols-1 gap-4">
-                {(ticket.attachments || []).map((attachment) => {
-                  const decodedUrl = decodeUrl(attachment.file?.url || "");
+                {(ticket.attachments || []).map((attachment, index) => {
                   return (
                     <div
-                      key={attachment.id}
+                      key={index}
                       className="border border-outline rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow max-h-45"
                       onClick={() =>
                         setFullScreenAttachment({
-                          id: attachment.id,
-                          url: decodedUrl,
+                          url: attachment.url,
                           fileName: attachment.file_name,
                         })
                       }
                     >
-                      {attachment.file?.url && (
+                      {attachment.url && (
                         <img
-                          src={decodedUrl}
+                          src={attachment.url}
                           alt={attachment.file_name}
                           className="w-full h-auto max-h-64 object-cover"
                         />
@@ -674,7 +657,7 @@ function TicketView({
           <div className="md-card p-6">
             <div className="text-lg font-semibold mb-4">Comments</div>
             <CommentsBox
-              ticketId={ticket.id}
+              ticketNumber={ticket.ticket_number}
               comments={ticket.comments}
             />
           </div>
@@ -720,13 +703,14 @@ function TicketView({
 }
 
 interface CommentsBoxProps {
-  ticketId: number;
+  ticketNumber: number;
   comments?: Comment[];
 }
 function CommentsBox({
-  ticketId,
+  ticketNumber,
   comments = [],
 }: CommentsBoxProps): React.ReactElement {
+  console.log("CommentsBox ticketNumber:", ticketNumber);
   const api = useApi();
   const [text, setText] = useState<string>("");
   const [list, setList] = useState<Comment[]>(comments || []);
@@ -840,12 +824,9 @@ function CommentsBox({
         techName = currentUserName ?? "True Tickets";
       }
 
-      await api.post(`/tickets/${ticketId}/comment`, {
-        subject: "Update",
-        body: text,
-        tech: techName,
-        hidden: true,
-        do_not_email: true,
+      await api.post(`/ticket/comment?ticket_number=${ticketNumber}`, {
+        comment_body: text,
+        tech_name: techName,
       });
       setText("");
       // Trigger a refresh event to reload the ticket data
@@ -877,28 +858,22 @@ function CommentsBox({
       <div className="space-y-3">
         {(list || [])
           .filter((comment) => {
-            const body = (comment.body ?? "").trim();
+            const body = (comment.comment_body ?? "").trim();
             return body !== "Ticket marked as Pre-Diagnosed.";
           })
-          .map((comment) => (
-            <div key={comment.id} className="md-row-box p-3 relative">
-              {/* Top bar details: tech + time (left), SMS (right) */}
+          .map((comment, index) => (
+            <div key={index} className="md-row-box p-3 relative">
+              {/* Top bar details: tech + time */}
               <div className="absolute inset-x-3 top-2 flex items-center justify-between text-md text-outline">
                 <div className="flex items-center gap-3">
-                  {comment.tech ? <span>{comment.tech}</span> : null}
+                  {comment.tech_name ? <span>{comment.tech_name}</span> : null}
                   <span>{fmtDateAndTime(comment.created_at || "")}</span>
                 </div>
-                {typeof comment.hidden === "boolean" &&
-                  comment.hidden === false ? (
-                  <span>Probably SMS</span>
-                ) : (
-                  <span />
-                )}
               </div>
 
               {/* Body */}
               <div className="whitespace-pre-wrap leading-relaxed pt-5 text-base">
-                {formatCommentWithLinks(comment.body || "")}
+                {formatCommentWithLinks(comment.comment_body || "")}
               </div>
             </div>
           ))}

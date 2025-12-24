@@ -14,12 +14,12 @@ import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
-import type { Customer, SmallTicket, Phone } from "../types/api";
+import type { Customer, SmallTicket } from "../types/api";
 
 import { InlineErrorMessage } from "./ui/InlineErrorMessage";
 
 interface CustomerViewProps {
-  id: number;
+  id: string;
   goTo: (to: string) => void;
   showSearch: boolean;
 }
@@ -84,9 +84,11 @@ function CustomerView({
         window.dispatchEvent(searchEvent);
       },
       n: () => {
-        const customerName = customer?.business_and_full_name || customer?.fullname || "";
+        const customerName = customer?.full_name || "";
         const encodedName = encodeURIComponent(customerName);
-        goTo(`/$${id}?newticket&customerName=${encodedName}`);
+        const primaryPhone = customer?.primary_phone || "";
+        const encodedPhone = encodeURIComponent(primaryPhone);
+        goTo(`/$${id}?newticket&customerName=${encodedName}&primaryPhone=${encodedPhone}`);
       },
     },
     showSearch,
@@ -121,43 +123,20 @@ function CustomerView({
   // Stable fetch callback that accepts the id and a mounted ref so the effect can
   // call it without including large dependencies.
   const fetchCustomer = React.useCallback(
-    async (idParam: number, mountedRef: { current: boolean }) => {
+    async (idParam: string, mountedRef: { current: boolean }) => {
       try {
-        const data = await apiRef.current!.get<{ customer: Customer }>(
+        const customerData = await apiRef.current!.get<Customer>(
           `/customers/${encodeURIComponent(idParam.toString())}`,
         );
         if (!mountedRef.current) return;
-        const customerData = data.customer;
         setCustomer(customerData);
 
         // Start change detection polling via ref
         if (startPollingRef.current) startPollingRef.current(customerData);
 
-        // Load phones using the same api ref
-        try {
-          const phoneData = await apiRef.current!.get<{ phones: Phone[] }>(
-            `/customers/${encodeURIComponent(idParam.toString())}/phones`,
-          );
-          if (!mountedRef.current) return;
-          const phoneArray = phoneData.phones || [];
-          const numbers = phoneArray
-            .map((p) => p?.number || "")
-            .filter(Boolean);
-          setAllPhones(numbers);
-        } catch {
-          if (!mountedRef.current) return;
-          // Fallback to mobile/phone if phones endpoint fails
-          const customer = customerData;
-          const basePhone =
-            customer.mobile && String(customer.mobile).trim()
-              ? customer.mobile
-              : customer.phone || "";
-          if (basePhone) {
-            setAllPhones([basePhone]);
-          } else {
-            setAllPhones([]);
-          }
-        }
+        // Use phone_numbers directly from customer data
+        const numbers = customerData.phone_numbers || [];
+        setAllPhones(numbers);
       } catch (error) {
         console.error(error);
       } finally {
@@ -222,11 +201,10 @@ function CustomerView({
 
         const MAX_PAGES = 50;
         while (hasMore && page <= MAX_PAGES) {
-          const data = await api.get<{ tickets: SmallTicket[] }>(
+          const tickets = await api.get<SmallTicket[]>(
             `/tickets?customer_id=${encodeURIComponent(id)}&page=${page}`,
           );
           if (!isMounted.current) return;
-          const tickets = data.tickets || [];
           if (!tickets || tickets.length === 0) {
             hasMore = false;
           } else {
@@ -291,11 +269,13 @@ function CustomerView({
         </NavigationButton>
         <NavigationButton
           onClick={() => {
-            const customerName = customer?.business_and_full_name || customer?.fullname || "";
+            const customerName = customer?.full_name || "";
             const encodedName = encodeURIComponent(customerName);
-            goTo(`/$${id}?newticket&customerName=${encodedName}`);
+            const primaryPhone = customer?.primary_phone || "";
+            const encodedPhone = encodeURIComponent(primaryPhone);
+            goTo(`/$${id}?newticket&customerName=${encodedName}&primaryPhone=${encodedPhone}`);
           }}
-          targetUrl={`${window.location.origin}/$${id}?newticket&customerName=${encodeURIComponent(customer?.business_and_full_name || customer?.fullname || "")}`}
+          targetUrl={`${window.location.origin}/$${id}?newticket&customerName=${encodeURIComponent(customer?.full_name || "")}&primaryPhone=${encodeURIComponent(customer?.primary_phone || "")}`}
           className="md-btn-primary elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
           tabIndex={-1}
         >
@@ -308,10 +288,11 @@ function CustomerView({
         <div className="md:col-span-2 flex flex-col gap-4 sm:gap-6">
           <div className="md-card p-4 sm:p-8">
             <div className="text-lg sm:text-2xl font-bold mb-2">
-              {customer.business_and_full_name || customer.fullname}
+              {customer.full_name}
             </div>
-            <div className="mb-1 text-md sm:text-base text-outline">
-              {customer.email}
+            <div className="mb-1 text-md sm:text-base text-outline flex items-center justify-between">
+              <span>{customer.email}</span>
+              <span className="text-md font-normal">Joined: {fmtDate(customer.created_at)}</span>
             </div>
             <div className="space-y-1">
               {allPhones.length > 0 ? (
@@ -347,16 +328,16 @@ function CustomerView({
             >
               {(tickets || []).map((ticket, index) => (
                 <NavigationButton
-                  key={`${ticket.id}-${index}`}
-                  onClick={() => goTo(`/&${ticket.id}`)}
-                  targetUrl={`${window.location.origin}/&${ticket.id}`}
+                  key={`${ticket.ticket_number}-${index}`}
+                  onClick={() => goTo(`/&${ticket.ticket_number}`)}
+                  targetUrl={`${window.location.origin}/&${ticket.ticket_number}`}
                   className="md-row-box w-full text-left transition-all duration-150 group"
                   tabIndex={0}
                 >
                   {/* Desktop grid layout */}
                   <div className="hidden sm:grid grid-cols-12 px-4 py-3">
                     <div className="col-span-2 truncate">
-                      #{ticket.number ?? ticket.id}
+                      #{ticket.ticket_number}
                     </div>
                     <div className="col-span-4 truncate">{ticket.subject}</div>
                     <div className="col-span-2 truncate">
@@ -366,17 +347,17 @@ function CustomerView({
                       {getTicketDeviceInfo(ticket).device}
                     </div>
                     <div className="col-span-2 truncate">
-                      {fmtDate(ticket.created_at || "")}
+                      {fmtDate(ticket.created_at)}
                     </div>
                   </div>
                   {/* Mobile card layout */}
                   <div className="sm:hidden space-y-2 px-4 py-3">
                     <div className="flex justify-between items-start">
                       <div className="font-semibold">
-                        #{ticket.number ?? ticket.id}
+                        #{ticket.ticket_number}
                       </div>
                       <div className="text-md text-outline">
-                        {fmtDate(ticket.created_at || "")}
+                        {fmtDate(ticket.created_at)}
                       </div>
                     </div>
                     <div className="font-medium">{ticket.subject}</div>

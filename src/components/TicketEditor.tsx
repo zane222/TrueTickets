@@ -12,12 +12,12 @@ import {
   getDeviceTypeFromSubject,
 } from "../utils/appUtils.tsx";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
-import type { LargeTicket, TicketProperties } from "../types/api";
+import type { Ticket, PostTicket } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketEditorProps {
-  ticketId?: number | undefined;
-  customerId?: number | undefined;
+  ticketId?: string | undefined;
+  customerId?: string | undefined;
   goTo: (to: string) => void;
   showSearch: boolean;
 }
@@ -30,9 +30,7 @@ function TicketEditor({
 }: TicketEditorProps): React.ReactElement {
   const api = useApi();
   const { dataChanged } = useAlertMethods();
-  const [previousTicket, setPreviousTicket] = useState<LargeTicket | null>(
-    null,
-  );
+  const [previousTicket, setPreviousTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
   const [subject, setSubject] = useState("");
   const [password, setPassword] = useState("");
@@ -41,19 +39,14 @@ function TicketEditor({
   const [timeEstimate, setTimeEstimate] = useState("");
   const [itemsLeft, setItemsLeft] = useState<string[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
-  const [existingProperties, setExistingProperties] =
-    useState<TicketProperties>({} as TicketProperties);
   const [customerName, setCustomerName] = useState<string>("");
 
-  // Ref for subject input to manage focus
   const subjectInputRef = useRef<HTMLInputElement>(null);
 
-  // Change detection
   const { hasChanged, startPolling, stopPolling } = useChangeDetection(
-    `/tickets/${ticketId}`,
+    `/ticket?number=${ticketId}`,
   );
 
-  // Load existing ticket data when editing
   useEffect(() => {
     if (!ticketId) {
       setLoading(false);
@@ -61,77 +54,35 @@ function TicketEditor({
       return;
     }
 
-    // Immediately show loading state when ticketId changes
     setLoading(true);
-
     let isMounted = true;
     (async () => {
       try {
-        const data = await api.get<{ ticket: LargeTicket }>(
-          `/tickets/${ticketId}`,
+        const data = await api.get<{ ticket: Ticket }>(
+          `/ticket?number=${ticketId}`,
         );
         if (!isMounted) return;
         const ticket = data.ticket;
         setPreviousTicket(ticket);
-
-        // Start change detection polling
         startPolling(ticket);
+
         setSubject(ticket.subject || "");
+        setCustomerName(ticket.customer_full_name);
+        setPassword(ticket.password || "");
+        setTimeEstimate(ticket.estimated_time || "");
 
-        // Set customer name if available
-        if (ticket.customer_business_then_name) {
-          setCustomerName(ticket.customer_business_then_name);
-        }
-
-        // Load existing properties to preserve them
-        const properties = (ticket.properties || {}) as TicketProperties;
-        setExistingProperties(properties);
-
-        // Set password from existing data (guard unknown types)
-        const pw = properties.Password || "";
-        setPassword(pw);
-
-        // Set charger status from existing data (do not rely on previousTicket state inside this effect)
-        {
-          const acChargerVal = properties["AC Charger"];
-          const hasCharger =
-            (typeof acChargerVal === "string" && acChargerVal === "1") ||
-            (typeof acChargerVal === "number" && acChargerVal === 1);
-          if (hasCharger) {
-            setItemsLeft((prev) => {
-              // Avoid adding duplicate 'Charger' entries
-              if (prev.includes("Charger")) return prev;
-              return [...prev, "Charger"];
-            });
-          }
-        }
-
-        // Parse device info from model (vT)
         const deviceInfo = getTicketDeviceInfo(ticket);
-
-        // Set device from JSON
         if (deviceInfo.device) {
-          const deviceIndex = DEVICES.indexOf(deviceInfo.device);
-          if (deviceIndex !== -1) {
-            setDeviceIdx(deviceIndex);
-          }
+          const idx = DEVICES.indexOf(deviceInfo.device);
+          if (idx !== -1) setDeviceIdx(idx);
         }
-
-        // Set items left from JSON
         if (Array.isArray(deviceInfo.itemsLeft)) {
           setItemsLeft(deviceInfo.itemsLeft);
-        }
-
-        // Set estimated time from JSON
-        if (deviceInfo.estimatedTime) {
-          setTimeEstimate(deviceInfo.estimatedTime);
         }
       } catch (error) {
         console.error(error);
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     })();
     return () => {
@@ -139,275 +90,107 @@ function TicketEditor({
     };
   }, [ticketId, api, startPolling]);
 
-  // Cleanup polling when component unmounts or ticketId changes
   useEffect(() => {
-    return () => {
-      stopPolling();
-    };
+    return () => stopPolling();
   }, [ticketId, stopPolling]);
 
-  // Set customer name from previous ticket (for editing) or from URL parameter (for new tickets)
   useEffect(() => {
-    if (previousTicket?.customer_business_then_name) {
-      setCustomerName(previousTicket.customer_business_then_name);
-    } else if (previousTicket?.customer) {
-      const customer = previousTicket.customer;
-      const name = customer.business_name || `${customer.firstname || ""} ${customer.lastname || ""}`.trim();
-      setCustomerName(name);
+    if (previousTicket?.customer_full_name) {
+      setCustomerName(previousTicket.customer_full_name);
     } else if (!ticketId) {
-      // For new tickets, check URL parameter
       const params = new URLSearchParams(window.location.search);
-      const customerNameParam = params.get("customerName");
-      if (customerNameParam) {
-        setCustomerName(decodeURIComponent(customerNameParam));
-      }
+      const name = params.get("customerName");
+      if (name) setCustomerName(decodeURIComponent(name));
     }
   }, [previousTicket, ticketId]);
 
-
-
-  // Show warning when changes are detected
   useEffect(() => {
     if (hasChanged) {
       dataChanged(
         "Ticket Data Changed",
-        "The ticket has been modified by someone else. Any unsaved changes may be lost if you continue editing.",
+        "The ticket has been modified by someone else. Please refresh to see changes.",
       );
     }
   }, [hasChanged, dataChanged]);
 
-  // Auto-select device type when subject changes (only for new tickets, and only if not manually selected)
   useEffect(() => {
-    if (subject && !isDeviceManual) {
-      // Get device type directly from subject text
-      const suggestedDevice = getDeviceTypeFromSubject(subject);
-      if (suggestedDevice) {
-        const suggestedDeviceIdx = DEVICES.indexOf(suggestedDevice);
-        if (suggestedDeviceIdx !== -1) {
-          setDeviceIdx(suggestedDeviceIdx);
+    if (subject && !isDeviceManual && !ticketId) {
+      const suggested = getDeviceTypeFromSubject(subject);
+      if (suggested) {
+        const idx = DEVICES.indexOf(suggested);
+        if (idx !== -1) {
+          setDeviceIdx(idx);
           setIsDeviceManual(false);
         }
       }
     }
-  }, [subject, ticketId]);
+  }, [subject, ticketId, isDeviceManual]);
 
-  // Focus on subject input when component mounts or when navigating to a new/different ticket
   useEffect(() => {
-    // Only focus after loading completes and form is rendered
     if (!loading) {
-      // Small delay to ensure the input is rendered and DOM is stable
-      const timeoutId = setTimeout(() => {
-        if (subjectInputRef.current) {
-          subjectInputRef.current.focus();
-        }
+      const tid = setTimeout(() => {
+        if (subjectInputRef.current) subjectInputRef.current.focus();
       }, 50);
-      return () => clearTimeout(timeoutId);
+      return () => clearTimeout(tid);
     }
   }, [ticketId, customerId, loading]);
 
-  // Register keybinds for this page
-  const ticketEditorKeybinds = useMemo<KeyBind[]>(() => [
-    {
-      key: "H",
-      description: "Home",
-      category: "Navigation",
-    },
-    {
-      key: "S",
-      description: "Search",
-      category: "Navigation",
-    },
-    {
-      key: "C",
-      description: "Cancel",
-      category: "Navigation",
-    },
+  const keybinds = useMemo<KeyBind[]>(() => [
+    { key: "H", description: "Home", category: "Navigation" },
+    { key: "S", description: "Search", category: "Navigation" },
+    { key: "C", description: "Cancel", category: "Navigation" },
   ], []);
 
-  useRegisterKeybinds(ticketEditorKeybinds);
+  useRegisterKeybinds(keybinds);
 
   useHotkeys(
     {
       h: () => goTo("/"),
-      s: () => {
-        // Trigger search modal from parent
-        const searchEvent = new CustomEvent("openSearch");
-        window.dispatchEvent(searchEvent);
-      },
+      s: () => window.dispatchEvent(new CustomEvent("openSearch")),
       c: () => {
-        // Cancel functionality - go back to customer if available, otherwise go to home
-        if (ticketId) {
-          goTo(`/&${ticketId}`);
-        } else if (customerId) {
-          goTo(`/$${customerId}`);
-        } else {
-          goTo("/");
-        }
-      },
-      t: () => {
         if (ticketId) goTo(`/&${ticketId}`);
+        else if (customerId) goTo(`/$${customerId}`);
+        else goTo("/");
       },
     },
     showSearch,
   );
 
-  function toggleItem(name: string): void {
-    setItemsLeft((items) =>
-      items.includes(name)
-        ? items.filter((item) => item !== name)
-        : [...items, name],
-    );
-  }
-
-  async function save(): Promise<void> {
+  async function save() {
     setSaving(true);
     try {
-      const properties = { ...existingProperties };
+      const model = {
+        device: (deviceIdx !== null && DEVICES[deviceIdx]) || "Other",
+        itemsLeft,
+        estimatedTime: timeEstimate,
+      };
 
-      properties.Password = password || "";
-      properties["AC Charger"] = itemsLeft.includes("Charger") ? "1" : "0";
-
-      // Tech Notes will only be set to empty for new tickets
-      if (!ticketId) {
-        properties["Tech Notes"] = "";
-      }
-
-      let model: Record<string, string | string[]> = {};
-      let result: { ticket: LargeTicket };
       if (ticketId) {
-        // Implement ChangeTicketTypeIdToComputer logic to preserve fields
-        const currentTicketTypeId =
-          previousTicket?.ticket_type_id ||
-          previousTicket?.ticket_type?.id ||
-          previousTicket?.ticket_fields?.[0]?.ticket_type_id;
-
-        // Build legacy options based on current ticket type
-        if (currentTicketTypeId === 9836) {
-          if (properties?.Model && properties.Model !== "")
-            model["Model: "] = properties.Model;
-          if (properties?.["IMEI or S/N"] && properties["IMEI or S/N"] !== "")
-            model["IMEI or S/N: "] = properties["IMEI or S/N"];
-          {
-            const everWet =
-              typeof properties?.["Ever Been Wet"] === "string" ||
-                Array.isArray(properties?.["Ever Been Wet"])
-                ? properties["Ever Been Wet"]
-                : "Unknown";
-            model["Ever been Wet: "] = everWet;
-          }
-          if (
-            properties?.["Previous Damage or Issues"] &&
-            properties["Previous Damage or Issues"] !== ""
-          )
-            model["Previous Damage or Issues: "] =
-              properties?.["Previous Damage or Issues"];
-          if (
-            properties?.["Tech Notes"] &&
-            properties["Tech Notes"] !== "" &&
-            !properties["Tech Notes"].includes("{")
-          )
-            model["Tech notes: "] = properties?.["Tech Notes"];
-          if (properties?.["Current Issue:"] && properties["Current Issue:"] !== "")
-            model["Current issue: "] = properties?.["Current Issue:"];
-          if (properties?.Size && properties.Size !== "")
-            model["Size: "] = properties?.Size;
-        }
-        if (currentTicketTypeId === 9801) {
-          if (properties?.Model && properties.Model !== "")
-            model["Model: "] = properties.Model;
-          if (
-            properties?.["IMEI/Serial"] &&
-            properties["IMEI/Serial"] !== ""
-          )
-            model["IMEI or S/N: "] = properties?.["IMEI/Serial"];
-          {
-            const everWet =
-              typeof properties?.["Ever Been Wet"] === "string" ||
-                Array.isArray(properties?.["Ever Been Wet"])
-                ? properties["Ever Been Wet"]
-                : "Unknown";
-            model["Ever been Wet: "] = everWet;
-          }
-          if (
-            properties?.["Previous Damage or Issues"] &&
-            properties["Previous Damage or Issues"] !== ""
-          )
-            model["Previous Damage or Issues: "] =
-              properties?.["Previous Damage or Issues"];
-          if (
-            properties?.["Tech Notes"] &&
-            properties["Tech Notes"] !== "" &&
-            !properties["Tech Notes"].includes("{")
-          )
-            model["Tech notes: "] = properties?.["Tech Notes"];
-          if (properties?.["Current Issue:"] && properties["Current Issue:"] !== "")
-            model["Current issue: "] = properties?.["Current Issue:"];
-          properties.Password = properties?.['Password (type "none" if no password)'] || "";
-        }
-        if (currentTicketTypeId === 23246) {
-          if (properties?.Model && properties.Model !== "")
-            model["Model: "] = properties.Model;
-          if (
-            properties?.["Tech Notes"] &&
-            properties["Tech Notes"] !== "" &&
-            !properties["Tech Notes"].includes("{")
-          )
-            model["Tech notes: "] = properties?.["Tech Notes"];
-        }
-
-        // Set password and preserve legacy options in Model
-        properties.Password = (password || "").trim() !== "" ? password : "n";
-
-        model = {
-          ...model,
-          device: (deviceIdx !== null && DEVICES[deviceIdx]) || "Other",
-          itemsLeft: itemsLeft,
-          estimatedTime: timeEstimate,
+        const updateData = {
+          subject,
+          customer_full_name: customerName,
+          password,
+          estimated_time: timeEstimate,
+          details: "vT" + JSON.stringify(model),
         };
-        properties.Model = "vT" + JSON.stringify(model);
-
-        const updatedTicket = {
-          ...previousTicket,
-          subject: subject,
-          ticket_type_id: 9818,
-          properties: properties,
-        };
-
-        result = await api.put<{ ticket: LargeTicket }>(
-          `/tickets/${ticketId}`,
-          updatedTicket,
-        );
+        const res = await api.put<{ ticket_number: number }>(`/ticket?number=${ticketId}`, updateData);
+        goTo(`/&${res.ticket_number}`);
       } else {
-        // For new tickets, create the full payload
-        const payload = {
-          customer_id:
-            customerId || previousTicket?.customer_id || previousTicket?.id,
-          user_id: 0,
-          ticket_type_id: 9818,
-          subject: subject,
-          problem_type: "Other",
+        const params = new URLSearchParams(window.location.search);
+        const phone = params.get("primaryPhone") || "";
+        const payload: PostTicket = {
+          customer_id: customerId || "",
+          customer_full_name: customerName,
+          primary_phone: phone,
+          subject,
+          details: "vT" + JSON.stringify(model),
           status: "New",
-          due_date: new Date().toISOString(),
-          properties: {
-            Password: password || "n",
-            "AC Charger": itemsLeft.includes("Charger") ? "1" : "0",
-            Model:
-              "vT" +
-              JSON.stringify(
-                {
-                  device: (deviceIdx !== null && DEVICES[deviceIdx]) || "Other",
-                  itemsLeft: itemsLeft,
-                  estimatedTime: timeEstimate,
-                },
-                null,
-                2,
-              ),
-          },
+          password,
+          estimated_time: timeEstimate,
         };
-        result = await api.post<{ ticket: LargeTicket }>(`/tickets`, payload);
+        const res = await api.post<{ ticket_number: number }>("/ticket", payload);
+        goTo(`/&${res.ticket_number}`);
       }
-      const idOfNewlyCreatedOrUpdatedTicket = result.ticket.id;
-      goTo(`/&${idOfNewlyCreatedOrUpdatedTicket}`);
     } catch (error) {
       console.error(error);
     } finally {
@@ -415,13 +198,13 @@ function TicketEditor({
     }
   }
 
-  if (loading)
-    return (
-      <LoadingSpinnerWithText
-        text="Loading..."
-        className="mx-auto max-w-3xl px-3 py-10 text-center"
-      />
+  function toggleItem(name: string) {
+    setItemsLeft(items =>
+      items.includes(name) ? items.filter(i => i !== name) : [...items, name]
     );
+  }
+
+  if (loading) return <LoadingSpinnerWithText text="Loading..." className="mx-auto max-w-3xl px-3 py-10 text-center" />;
 
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 py-4 sm:py-6">
@@ -429,26 +212,16 @@ function TicketEditor({
         <div className="flex items-center justify-between">
           <div>
             <div className="text-2xl font-bold text-primary">
-              {ticketId
-                ? `Edit Ticket - #${previousTicket?.number ?? ticketId}`
-                : "New Ticket"}
+              {ticketId ? `Edit Ticket - #${previousTicket?.ticket_number}` : "New Ticket"}
             </div>
-            {customerName && (
-              <div className="text-md text-outline mt-1">
-                {customerName}
-              </div>
-            )}
+            {customerName && <div className="text-md text-outline mt-1">{customerName}</div>}
           </div>
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <button
               onClick={() => {
-                if (ticketId) {
-                  goTo(`/&${ticketId}`);
-                } else if (customerId) {
-                  goTo(`/$${customerId}`);
-                } else {
-                  goTo("/");
-                }
+                if (ticketId) goTo(`/&${ticketId}`);
+                else if (customerId) goTo(`/$${customerId}`);
+                else goTo("/");
               }}
               className="md-btn-surface elev-1 w-full sm:w-auto"
               tabIndex={-1}
@@ -460,146 +233,84 @@ function TicketEditor({
               disabled={saving}
               className="md-btn-primary elev-1 disabled:opacity-80 relative overflow-hidden w-full sm:w-auto"
               whileTap={{ scale: saving ? 1 : 0.95 }}
-              animate={
-                saving
-                  ? {
-                    backgroundColor: "var(--md-sys-color-primary-container)",
-                    color: "var(--md-sys-color-on-primary-container)",
-                  }
-                  : {
-                    backgroundColor: "var(--md-sys-color-primary)",
-                    color: "var(--md-sys-color-on-primary)",
-                  }
-              }
-              transition={{ duration: 0.15 }}
+              animate={saving ? { backgroundColor: "var(--md-sys-color-primary-container)", color: "var(--md-sys-color-on-primary-container)" } : { backgroundColor: "var(--md-sys-color-primary)", color: "var(--md-sys-color-on-primary)" }}
               tabIndex={4}
             >
               <div className="flex items-center justify-center gap-2">
-                <span>
-                  {saving
-                    ? ticketId
-                      ? "Updating..."
-                      : "Creating..."
-                    : ticketId
-                      ? "Update"
-                      : "Create"}
-                </span>
-                {saving && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0 }}
-                  >
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  </motion.div>
-                )}
+                <span>{saving ? (ticketId ? "Updating..." : "Creating...") : (ticketId ? "Update" : "Create")}</span>
+                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               </div>
-              {/* Loading overlay animation */}
-              {saving && (
-                <motion.div
-                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                  initial={{ x: "-100%" }}
-                  animate={{ x: "100%" }}
-                  transition={{
-                    duration: 1.5,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
-                />
-              )}
             </motion.button>
           </div>
         </div>
 
-        {/* Subject spanning both columns */}
         <div className="space-y-2">
           <label className="text-md font-medium">Subject</label>
           <input
             ref={subjectInputRef}
             className="md-input"
             value={subject}
-            onChange={(event) => setSubject(event.target.value)}
+            onChange={e => setSubject(e.target.value)}
             placeholder="Enter ticket subject..."
             tabIndex={1}
           />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-          {/* Column on the left */}
           <div className="space-y-4 md:space-y-6">
-            {/* Password */}
             <div className="space-y-2">
               <label className="text-md font-medium">Password</label>
               <input
                 className="md-input"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={e => setPassword(e.target.value)}
                 placeholder="Device password"
                 tabIndex={2}
               />
             </div>
 
-            {/* Items Left */}
             <div className="space-y-2">
               <label className="text-md font-medium">Items Left</label>
               <div className="flex flex-wrap gap-2">
-                {ITEMS_LEFT.map(
-                  (item, index) =>
-                    item && (
-                      <button
-                        key={index}
-                        onClick={() => toggleItem(item)}
-                        className={`md-chip ${itemsLeft.includes(item) ? "md-chip--on" : ""}`}
-                        tabIndex={-1}
-                      >
-                        {item}
-                      </button>
-                    ),
-                )}
+                {ITEMS_LEFT.map((item, i) => item && (
+                  <button
+                    key={i}
+                    onClick={() => toggleItem(item)}
+                    className={`md-chip ${itemsLeft.includes(item) ? "md-chip--on" : ""}`}
+                    tabIndex={-1}
+                  >
+                    {item}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* Column on the right */}
           <div className="space-y-4 md:space-y-6">
-            {/* Estimated Time - text input */}
             <div className="space-y-2">
               <label className="text-md font-medium">Estimated Time</label>
               <input
                 className="md-input"
                 value={timeEstimate}
-                onChange={(event) => setTimeEstimate(event.target.value)}
-                placeholder="e.g. 30 min, 2 hours, Call by: 11th"
+                onChange={e => setTimeEstimate(e.target.value)}
+                placeholder="e.g. 30 min, 2 hours"
                 tabIndex={3}
               />
             </div>
 
-            {/* Device Type - single select radio-style pills */}
             <div className="space-y-2">
               <label className="text-md font-medium">Device Type</label>
-              <div
-                role="radiogroup"
-                aria-label="Device Type"
-                className="p-2 flex flex-wrap gap-2"
-              >
-                {DEVICES.map((device, index) => {
-                  const active = deviceIdx === index;
+              <div className="p-2 flex flex-wrap gap-2">
+                {DEVICES.map((device, i) => {
+                  const active = deviceIdx === i;
                   return (
                     <button
-                      key={index}
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => {
-                        setDeviceIdx(index);
-                        setIsDeviceManual(true);
-                      }}
+                      key={i}
+                      onClick={() => { setDeviceIdx(i); setIsDeviceManual(true); }}
                       className={`inline-flex items-center gap-2 md-chip ${active ? "md-chip--on" : ""}`}
                       tabIndex={-1}
                     >
-                      <span
-                        aria-hidden
-                        className={`w-2.5 h-2.5 rounded-full ${active ? "bg-indicator-dot" : "border border-outline"}`}
-                      />
+                      <span className={`w-2.5 h-2.5 rounded-full ${active ? "bg-indicator-dot" : "border border-outline"}`} />
                       <span>{device || "Other"}</span>
                     </button>
                   );

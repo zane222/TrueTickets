@@ -12,6 +12,7 @@ dependencies = [
  "aws-sdk-s3",
  "base64 0.22.1",
  "chrono",
+ "futures",
  "lambda_http",
  "rand",
  "reqwest",
