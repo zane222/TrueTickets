@@ -10,14 +10,29 @@ use crate::http::{error_response, success_response};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Comment {
+    pub comment_body: String,
+    pub tech_name: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PhoneNumber {
+    pub number: String,
+    #[serde(default)]
+    pub prefers_texting: bool,
+    #[serde(default)]
+    pub no_english: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TicketWithoutCustomer {
     pub ticket_number: i64,
     pub subject: String,
     pub customer_id: String,
     pub status: String,
 
-    #[serde(default)]
-    pub password: Option<String>,
+    pub password: String,
 
 
     #[serde(default)]
@@ -27,7 +42,7 @@ pub struct TicketWithoutCustomer {
     pub last_updated: i64,
 
     #[serde(default)]
-    pub comments: Vec<Value>,
+    pub comments: Vec<Comment>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -42,7 +57,7 @@ pub struct Customer {
     pub customer_id: String,
     pub full_name: String,
     pub email: String,
-    pub phone_numbers: Vec<String>,
+    pub phone_numbers: Vec<PhoneNumber>,
 
     #[serde(default)]
     pub created_at: i64,
@@ -51,8 +66,28 @@ pub struct Customer {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-struct CounterValue {
+pub struct CounterValue {
     pub counter_value: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CustomerIdOnly {
+    pub customer_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TicketNumberOnly {
+    pub ticket_number: String,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+pub struct TicketLastUpdated {
+    pub last_updated: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct CustomerPhonesOnly {
+    pub phone_numbers: Vec<PhoneNumber>,
 }
 // --------------------------
 // TICKETS
@@ -111,7 +146,7 @@ pub async fn handle_get_ticket_by_number(
     // 3. Compose response
     let full_ticket = Ticket {
         details: ticket_nocust,
-        customer: customer,
+        customer,
     };
 
     match serde_json::to_string(&full_ticket) {
@@ -128,23 +163,18 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
         .send()
         .await;
 
-    let customer_data = match customer_res {
+    let customer: Customer = match customer_res {
         Ok(out) => {
             if let Some(item) = out.item {
                 match serde_dynamo::from_item(item) {
-                    Ok(json) => json,
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
+                    Ok(c) => c,
+                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
                 }
             } else {
                 return error_response(404, "Customer not found", "No customer with that ID", None);
             }
         },
         Err(e) => return error_response(500, "Failed to get customer", &format!("{}", e), None),
-    };
-
-    let customer: Customer = match serde_json::from_value(customer_data) {
-        Ok(c) => c,
-        Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
     };
 
     // Query Tickets by customer id
@@ -156,7 +186,7 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
         .send()
         .await;
 
-    match res {
+    let tickets = match res {
         Ok(output) => {
             let mut tickets_nocust = Vec::new();
             for item in output.items.unwrap_or_default() {
@@ -171,12 +201,14 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
                 customer: customer.clone(),
             }).collect();
 
-            match serde_json::to_string(&tickets) {
-                Ok(json) => success_response(200, &json),
-                Err(e) => error_response(500, "Serialization Error", &format!("{}", e), None),
-            }
+            tickets
         }
-        Err(e) => error_response(500, "Failed to get tickets for customer", &format!("{}", e), None),
+        Err(e) => return error_response(500, "Failed to get tickets for customer", &format!("{}", e), None),
+    };
+
+    match serde_json::to_string(&tickets) {
+        Ok(json) => success_response(200, &json),
+        Err(e) => error_response(500, "Serialization Error", &format!("{}", e), None),
     }
 }
 
@@ -219,11 +251,6 @@ pub async fn handle_search_tickets_by_subject(
         .items()
         .send();
 
-    #[derive(Deserialize)]
-    struct TicketWithOnlySubject {
-        ticket_number: String,
-    }
-
     // collect the ticket numbers into a Vec
     let mut ticket_numbers: Vec<String> = Vec::new();
     loop {
@@ -236,10 +263,11 @@ pub async fn handle_search_tickets_by_subject(
         };
         match page {
             Some(item) => {
-                match serde_dynamo::from_item::<_, TicketWithOnlySubject>(item) {
-                    Ok(tn) => ticket_numbers.push(tn.ticket_number),
+                let tn: TicketNumberOnly = match serde_dynamo::from_item(item) {
+                    Ok(val) => val,
                     Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject: {}", e), None),
-                }
+                };
+                ticket_numbers.push(tn.ticket_number);
             },
             None => break,
         }
@@ -338,7 +366,7 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Response<Body> {
 pub async fn handle_create_ticket(
     customer_id: String,
     subject: String,
-    password: Option<String>,
+    password: String,
     client: &Client,
 ) -> Response<Body> {
     // Atomically get next ticket number
@@ -386,7 +414,7 @@ pub async fn handle_create_ticket(
         .item("subject", AttributeValue::S(subject.clone())) // Stored with original casing
         .item("customer_id", AttributeValue::S(customer_id.clone()))
         .item("status", AttributeValue::S("Diagnosing".to_string()))
-        .item("password", AttributeValue::S(password.unwrap_or_default()))
+        .item("password", AttributeValue::S(password.clone()))
         .item("created_at", AttributeValue::N(now.clone()))
         .item("last_updated", AttributeValue::N(now.clone()))
         .build() {
@@ -482,7 +510,7 @@ pub async fn handle_update_ticket(
 
     let update = match update_builder.build() {
         Ok(u) => u,
-        Err(e) => return error_response(500, "Failed to build Update for Tickets", &format!("Error: {}", e.to_string()), None),
+        Err(e) => return error_response(500, "Failed to build Update for Tickets", &format!("Error: {}", e), None),
     };
     txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
 
@@ -533,26 +561,20 @@ pub async fn handle_get_ticket_last_updated(ticket_number: String, client: &Clie
         .send()
         .await;
 
-    #[derive(Deserialize)]
-    struct LastUpdated {
-        last_updated: String,
-    }
-
-    let LastUpdated { last_updated } = match res {
+    match res {
         Ok(output) => {
             if let Some(item) = output.item {
-                match serde_dynamo::from_item(item) {
+                let lu: TicketLastUpdated = match serde_dynamo::from_item(item) {
                     Ok(val) => val,
                     Err(_) => return error_response(500, "Invalid data", "last_updated missing or invalid", None),
-                }
+                };
+                success_response(200, &json!({ "last_updated": lu.last_updated }).to_string())
             } else {
-                return error_response(404, "Ticket not found", "No ticket with that number", None)
+                error_response(404, "Ticket not found", "No ticket with that number", None)
             }
         },
-        Err(e) => return error_response(500, "Failed to get ticket last_updated", &format!("{}", e), None),
-    };
-
-    success_response(200, &json!({ "last_updated": last_updated }).to_string())
+        Err(e) => error_response(500, "Failed to get ticket last_updated", &format!("{}", e), None),
+    }
 }
 
 // --------------------------
@@ -573,10 +595,11 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
             let items = output.items.unwrap_or_default();
             let mut ids = Vec::new();
             for item in items {
-                match item.get("customer_id").and_then(|v| v.as_s().ok()) {
-                    Some(s) => ids.push(s.to_string()),
-                    None => return error_response(500, "Data Integrity Error", "Missing or invalid customer_id in phone index", None),
-                }
+                let cid: CustomerIdOnly = match serde_dynamo::from_item(item) {
+                     Ok(val) => val,
+                     Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize phone number index: {}", e), None),
+                };
+                ids.push(cid.customer_id);
             }
             ids
         },
@@ -679,11 +702,11 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         };
 
         if let Some(item) = item_opt {
-            if let Some(id) = item.get("customer_id").and_then(|v| v.as_s().ok()) {
-                customer_ids.push(id.clone());
-            } else {
-                return error_response(500, "Data Error", "Missing or invalid customer_id in search result", None);
-            }
+             let cid: CustomerIdOnly = match serde_dynamo::from_item(item) {
+                 Ok(val) => val,
+                 Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer search result: {}", e), None),
+             };
+             customer_ids.push(cid.customer_id);
         } else {
             break;
         }
@@ -736,7 +759,7 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
 pub async fn handle_create_customer(
     full_name: String,
     email: String,
-    phone_numbers: Vec<String>,
+    phone_numbers: Vec<PhoneNumber>,
     client: &Client,
 ) -> Response<Body> {
     let customer_id = uuid::Uuid::new_v4().to_string();
@@ -750,7 +773,17 @@ pub async fn handle_create_customer(
         .item("full_name", AttributeValue::S(full_name.clone())) // Stored with original casing
         .item("email", AttributeValue::S(email.clone()))
 
-        .item("phone_numbers", AttributeValue::L(phone_numbers.iter().map(|p| AttributeValue::S(p.clone())).collect()))
+        .item("phone_numbers", AttributeValue::L(
+            phone_numbers.iter().map(|p| {
+                AttributeValue::M(
+                    vec![
+                        ("number".to_string(), AttributeValue::S(p.number.clone())),
+                        ("prefers_texting".to_string(), AttributeValue::Bool(p.prefers_texting)),
+                        ("no_english".to_string(), AttributeValue::Bool(p.no_english)),
+                    ].into_iter().collect()
+                )
+            }).collect()
+        ))
         .item("created_at", AttributeValue::N(now.clone()))
         .item("last_updated", AttributeValue::N(now.clone()))
         .build() {
@@ -782,7 +815,7 @@ pub async fn handle_create_customer(
     for phone in &phone_numbers {
         let phone_put = match Put::builder()
             .table_name("CustomerPhoneIndex")
-            .item("phone_number", AttributeValue::S(phone.clone()))
+            .item("phone_number", AttributeValue::S(phone.number.clone()))
             .item("customer_id", AttributeValue::S(customer_id.clone()))
             .build() {
                 Ok(p) => p,
@@ -803,7 +836,7 @@ pub async fn handle_update_customer(
     customer_id: String,
     full_name: Option<String>,
     email: Option<String>,
-    phone_numbers: Option<Vec<String>>,
+    phone_numbers: Option<Vec<PhoneNumber>>,
     client: &Client,
 ) -> Response<Body> {
     let mut txn_builder = client.transact_write_items();
@@ -821,22 +854,11 @@ pub async fn handle_update_customer(
         let old_phones: Vec<String> = match current_res {
             Ok(output) => {
                 if let Some(item) = output.item {
-                    if let Some(list_av) = item.get("phone_numbers") {
-                        if let Ok(list) = list_av.as_l() {
-                            let mut phones = Vec::new();
-                            for av in list {
-                                match av.as_s() {
-                                    Ok(s) => phones.push(s.to_string()),
-                                    Err(_) => return error_response(500, "Data Integrity Error", "Non-string phone number found", None),
-                                }
-                            }
-                            phones
-                        } else {
-                            return error_response(500, "Data Integrity Error", "phone_numbers is not a list", None);
-                        }
-                    } else {
-                        Vec::new()
-                    }
+                    let res: CustomerPhonesOnly = match serde_dynamo::from_item(item) {
+                        Ok(val) => val,
+                        Err(e) => return error_response(500, "Data Integrity Error", &format!("Failed to parse phone number to update it: {}", e), None),
+                    };
+                    res.phone_numbers.into_iter().map(|p| p.number).collect()
                 } else {
                     Vec::new()
                 }
@@ -861,7 +883,7 @@ pub async fn handle_update_customer(
         for phone in new_phones {
             let put = match Put::builder()
                 .table_name("CustomerPhoneIndex")
-                .item("phone_number", AttributeValue::S(phone.clone()))
+                .item("phone_number", AttributeValue::S(phone.number.clone()))
                 .item("customer_id", AttributeValue::S(customer_id.clone()))
                 .build() {
                     Ok(p) => p,
@@ -896,7 +918,17 @@ pub async fn handle_update_customer(
 
     if let Some(ref new_phones) = phone_numbers {
         update_parts.push("phone_numbers = :phones".to_string());
-        expr_vals.insert(":phones".to_string(), AttributeValue::L(new_phones.iter().map(|p| AttributeValue::S(p.clone())).collect()));
+        expr_vals.insert(":phones".to_string(), AttributeValue::L(
+            new_phones.iter().map(|p| {
+                AttributeValue::M(
+                    vec![
+                        ("number".to_string(), AttributeValue::S(p.number.clone())),
+                        ("prefers_texting".to_string(), AttributeValue::Bool(p.prefers_texting)),
+                        ("no_english".to_string(), AttributeValue::Bool(p.no_english)),
+                    ].into_iter().collect()
+                )
+            }).collect()
+        ));
     }
 
     if let Some(e) = email {
@@ -944,19 +976,14 @@ pub async fn handle_get_customer_last_updated(customer_id: String, client: &Clie
         .send()
         .await;
 
-    #[derive(Deserialize)]
-    struct LastUpdated {
-        last_updated: String,
-    }
-
     match res {
         Ok(output) => {
             if let Some(item) = output.item {
-                let LastUpdated { last_updated } = match serde_dynamo::from_item(item) {
+                let lu: TicketLastUpdated = match serde_dynamo::from_item(item) {
                     Ok(val) => val,
                     Err(_) => return error_response(500, "Invalid data", "last_updated missing or invalid", None),
                 };
-                success_response(200, &json!({ "last_updated": last_updated }).to_string())
+                success_response(200, &json!({ "last_updated": lu.last_updated }).to_string())
             } else {
                 error_response(404, "Customer not found", "No customer with that ID", None)
             }
@@ -1009,23 +1036,26 @@ async fn batch_fetch_and_merge_customers(
         }
     }
 
-    let tickets: Vec<Ticket> = tickets_nocust.into_iter().map(|details| {
-        let customer = customer_map.get(&details.customer_id).cloned().unwrap_or_else(|| {
-            // Fallback if customer missing
-            Customer {
-                customer_id: details.customer_id.clone(),
-                full_name: "Unknown".to_string(),
-                email: "".to_string(),
-                phone_numbers: Vec::new(),
-                created_at: 0,
-                last_updated: 0,
+    let mut tickets = Vec::new();
+    for details in tickets_nocust {
+        let customer = customer_map.get(&details.customer_id).cloned();
+        match customer {
+            Some(c) => {
+                tickets.push(Ticket {
+                    details,
+                    customer: c,
+                });
             }
-        });
-        Ticket {
-            details,
-            customer,
+            None => {
+                return Err(error_response(
+                    500,
+                    "Data Integrity Error",
+                    &format!("Ticket {} refers to missing customer_id {}", details.ticket_number, details.customer_id),
+                    None
+                ));
+            }
         }
-    }).collect();
+    }
 
     Ok(tickets)
 }

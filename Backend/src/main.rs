@@ -17,7 +17,7 @@ use handlers::{
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
     handle_get_ticket_last_updated, handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_customer_last_updated, handle_get_tickets_by_customer_id,
-    handle_search_customers_by_name, handle_get_customer_by_id
+    handle_search_customers_by_name, handle_get_customer_by_id, PhoneNumber
 };
 use http::{error_response, handle_options};
 
@@ -197,8 +197,10 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => return resp,
             };
 
-            let password: Option<String> = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
-
+            let password: String = match get_value_in_json(&body, "password") {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
 
             handle_create_ticket(customer_id, subject, password, &dynamodb_client).await
         }
@@ -283,10 +285,10 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => val,
                 Err(resp) => return resp,
             };
-            let phone_numbers: Vec<String> = match body.get("phone_numbers") {
+            let phone_numbers: Vec<PhoneNumber> = match body.get("phone_numbers") {
                 Some(v) => match serde_json::from_value(v.clone()) {
                     Ok(vec) => vec,
-                    Err(_) => return error_response(400, "Invalid phone_numbers", "phone_numbers must be an array of strings", None),
+                    Err(_) => return error_response(400, "Invalid phone_numbers", "phone_numbers must be an array of objects with 'number', 'prefers_texting', 'no_english'", None),
                 },
                 None => return error_response(400, "Missing phone_numbers", "phone_numbers array is required", None),
             };
