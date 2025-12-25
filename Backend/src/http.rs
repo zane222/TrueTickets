@@ -49,13 +49,13 @@ pub fn error_response(
 }
 
 /// Build a successful response with CORS headers
-pub fn success_response(status: u16, body: String) -> Response<Body> {
+pub fn success_response(status: u16, body: &str) -> Response<Body> {
     let (key, value) = get_cors_origin_header();
     Response::builder()
         .status(status)
         .header(key, value)
         .header("Content-Type", "application/json")
-        .body(body.into())
+        .body(body.to_string().into())
         .expect("Couldn't create success response")
 }
 
@@ -71,30 +71,4 @@ pub fn handle_options() -> Response<Body> {
         .header("Content-Type", "application/json")
         .body(Body::Empty)
         .expect("Couldn't handle CORS request")
-}
-
-/// Build a successful response from a DynamoDB item
-pub fn success_response_hashmap(hash_map: HashMap<String, AttributeValue>) -> Response<Body> {
-    match serde_dynamo::from_item::<_, serde_json::Value>(hash_map) {
-        Ok(val) => {
-             match serde_json::to_string(&val) {
-                 Ok(json_str) => success_response(200, json_str),
-                 Err(e) => error_response(500, "Serialization error", &format!("{}", e), None),
-             }
-        }
-        Err(e) => error_response(500, "Serde Dynamo error", &format!("{}", e), None),
-    }
-}
-
-/// Build a successful response from a list of DynamoDB items
-pub fn success_response_items(items: Vec<HashMap<String, AttributeValue>>) -> Response<Body> {
-    match serde_dynamo::from_items::<_, serde_json::Value>(items) {
-        Ok(vals) => {
-             match serde_json::to_string(&vals) {
-                 Ok(json_str) => success_response(200, json_str),
-                 Err(e) => error_response(500, "Serialization error", &format!("{}", e), None),
-             }
-        }
-        Err(e) => error_response(500, "Serde Dynamo error", &format!("{}", e), None),
-    }
 }

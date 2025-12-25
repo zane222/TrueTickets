@@ -102,12 +102,12 @@ pub async fn handle_repairshopr_proxy(
                     // If updated_at is not newer than if_modified_since, return empty response
                     if let Some(updated_at) = updated_at && updated_at <= if_modified_since {
                         // Resource not modified, return empty response with 304 status
-                        return Ok(success_response(304, "{}".to_string()));
+                        return Ok(success_response(304, "{}"));
                     }
                 }
             }
 
-            Ok(success_response(status, response_body))
+            Ok(success_response(status, &response_body))
         }
         Err(e) => {
             let suggestion = format!(

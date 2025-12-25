@@ -139,7 +139,7 @@ pub async fn handle_user_invitation(
                 "user": user_info,
             });
 
-            success_response(200, response_body.to_string())
+            success_response(200, &response_body.to_string())
         }
         Err(e) => {
             let error_code = e.to_string();
@@ -240,7 +240,7 @@ pub async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) 
                 }));
             }
 
-            success_response(200, json!(users).to_string())
+            success_response(200, &json!(users).to_string())
         }
         Err(e) => {
             error_response(
@@ -307,7 +307,7 @@ pub async fn handle_update_user_group(
                 let response_body = json!({
                     "message": format!("User {} deleted successfully", username),
                 });
-                success_response(200, response_body.to_string())
+                success_response(200, &response_body.to_string())
             }
             Err(e) => {
                 error_response(
@@ -354,7 +354,7 @@ pub async fn handle_update_user_group(
                         let response_body = json!({
                             "message": format!("User {} moved to group {}", username, new_group),
                         });
-                        success_response(200, response_body.to_string())
+                        success_response(200, &response_body.to_string())
                     }
                     Err(e) => {
                         error_response(

@@ -87,7 +87,7 @@ pub async fn handle_upload_attachment(
                 .await;
 
             match db_res {
-                Ok(_) => success_response(200, json!({"ticket_number": ticket_number}).to_string()),
+                Ok(_) => success_response(200, &json!({"ticket_number": ticket_number}).to_string()),
                 Err(e) => error_response(500, "Failed to update ticket attachments", &format!("{}", e), None),
             }
         }

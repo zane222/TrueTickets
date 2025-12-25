@@ -223,11 +223,10 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => val,
                 Err(resp) => return resp,
             };
-            let status: Option<String> = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
             let password: Option<String> = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
             let estimated_time: Option<String> = body.get("estimated_time").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-            handle_create_ticket(customer_id, customer_full_name, primary_phone, subject, details, status, password, estimated_time, &dynamodb_client).await
+            handle_create_ticket(customer_id, customer_full_name, primary_phone, subject, details, password, estimated_time, &dynamodb_client).await
         }
         ("/ticket", "PUT") => {
             let ticket_number: String = match event.query_string_parameters().first("number") {
@@ -294,7 +293,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 if parts.len() == 2 && parts[0] == "customers" {
                     handle_get_customer_by_id(parts[1].to_string(), &dynamodb_client).await
                 } else {
-                    return error_response(400, "Missing query parameter", "Provide either 'phone_number', 'query', or use /customers/{id}", None);
+                    error_response(400, "Missing query parameter", "Provide either 'phone_number', 'query', or use /customers/{id}", None)
                 }
             }
         }
@@ -467,7 +466,7 @@ mod tests {
 
     #[test]
     fn test_success_response() {
-        let response = success_response(200, "{}".to_string());
+        let response = success_response(200, "{}");
         assert_eq!(response.status(), 200);
         assert_eq!(
             response.headers().get("Content-Type").unwrap(),

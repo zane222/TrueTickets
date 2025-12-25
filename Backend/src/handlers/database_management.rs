@@ -3,10 +3,51 @@ use serde_json::json;
 use lambda_http::{Body, Response};
 use aws_sdk_dynamodb::{
     Client,
-    types::{AttributeValue, Put, Delete, TransactWriteItem, ReturnValue, KeysAndAttributes, TransactGetItem, Get},
+    types::{AttributeValue, Put, Delete, TransactWriteItem, ReturnValue, KeysAndAttributes},
 };
 use std::collections::HashMap;
-use crate::http::{error_response, success_response, success_response_hashmap, success_response_items};
+use crate::http::{error_response, success_response};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Ticket {
+    pub ticket_number: i64,
+    pub subject: String,
+    pub customer_id: String,
+    pub customer_full_name: String,
+    pub primary_phone: String,
+    pub status: String,
+    pub details: String,
+
+    #[serde(default)]
+    pub password: Option<String>,
+
+    #[serde(default)]
+    pub estimated_time: Option<String>,
+
+    #[serde(default)]
+    pub created_at: i64,
+
+    #[serde(default)]
+    pub last_updated: i64,
+
+    #[serde(default)]
+    pub comments: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Customer {
+    pub customer_id: String,
+    pub full_name: String,
+    pub email: String,
+    pub phone_numbers: Vec<String>,
+    pub primary_phone: String,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub last_updated: i64,
+}
 
 // --------------------------
 // TICKETS
@@ -25,7 +66,14 @@ pub async fn handle_get_ticket_by_number(
     match res {
         Ok(output) => {
             if let Some(item) = output.item {
-                success_response_hashmap(item)
+                let ticket_number_val: i64 = match get_value_from_item(&item, "ticket_number") {
+                    Ok(val) => val,
+                    Err(err_res) => return err_res,
+                };
+                match extract_ticket_json(&item) {
+                     Ok(json_val) => success_response(200, &json_val.to_string()),
+                     Err(err_res) => err_res,
+                }
             } else {
                 error_response(404, "Ticket not found", "No ticket with that number", None)
             }
@@ -48,7 +96,14 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
     match res {
         Ok(output) => {
             let items = output.items.unwrap_or_default();
-            success_response_items(items)
+            let mut json_items = Vec::new();
+            for item in items {
+                match extract_ticket_json(&item) {
+                     Ok(json) => json_items.push(json),
+                     Err(e) => return e,
+                }
+            }
+            success_response(200, &serde_json::Value::Array(json_items).to_string())
         }
         Err(e) => error_response(500, "Failed to get tickets for customer", &format!("{}", e), None),
     }
@@ -60,12 +115,10 @@ pub async fn handle_search_tickets_by_subject(
 ) -> Response<Body> {
     // 1. Search TicketSubjects (lowercase)
     // 2. BatchGet Tickets
-    use futures::TryStreamExt;
-    
     let query_lower = query.to_lowercase();
     let words: Vec<&str> = query_lower.split_whitespace().collect();
     if words.is_empty() {
-        return success_response_items(Vec::new());
+        return success_response(200, "[]");
     }
 
     let mut filter_exprs = Vec::new();
@@ -79,9 +132,9 @@ pub async fn handle_search_tickets_by_subject(
     }
 
     let filter_expression = filter_exprs.join(" AND ");
-    
+
     let mut ticket_numbers: Vec<String> = Vec::new();
-    
+
     let mut query_builder = client.query()
         .table_name("TicketSubjects")
         .index_name("TicketNumberIndex")
@@ -98,7 +151,7 @@ pub async fn handle_search_tickets_by_subject(
         .into_paginator()
         .items()
         .send();
-    
+
     while let Some(item) = paginator.try_next().await.unwrap_or(None) {
         if let Some(tn) = item.get("ticket_number").and_then(|v| v.as_n().ok()) {
             ticket_numbers.push(tn.clone());
@@ -107,9 +160,9 @@ pub async fn handle_search_tickets_by_subject(
             break;
         }
     }
-    
+
     if ticket_numbers.is_empty() {
-         return success_response_items(Vec::new());
+         return success_response(200, "[]");
     }
 
     // 2. Batch Get full tickets
@@ -120,7 +173,7 @@ pub async fn handle_search_tickets_by_subject(
             key
         })
         .collect();
-    
+
     let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
         .build()
@@ -130,22 +183,27 @@ pub async fn handle_search_tickets_by_subject(
         .request_items("Tickets", ka)
         .send()
         .await;
-        
+
     match batch_res {
         Ok(output) => {
-             let responses = output.responses.unwrap_or_default();
-             let items = responses.get("Tickets").cloned().unwrap_or_default();
-             // Important: BatchGetItem doesn't guarantee order. We should probably sort them by ticket_number desc if we want consistency with the search order, 
-             // but the user requirement "then responding with the full tickets" doesn't strictly imply preserving the 1-15 order, allowing client to sort. 
+             let mut items = output.responses.unwrap_or_default().remove("Tickets").unwrap_or_default();
+             // Important: BatchGetItem doesn't guarantee order. We should probably sort them by ticket_number desc if we want consistency with the search order,
+             // but the user requirement "then responding with the full tickets" doesn't strictly imply preserving the 1-15 order, allowing client to sort.
              // However, for best UX, let's sort them.
-             let mut sorted_items = items;
-             sorted_items.sort_by(|a, b| {
+             items.sort_by(|a, b| {
                  let a_tn = a.get("ticket_number").and_then(|v| v.as_n().ok()).and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
                  let b_tn = b.get("ticket_number").and_then(|v| v.as_n().ok()).and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
                  b_tn.cmp(&a_tn)
              });
-             
-             success_response_items(sorted_items)
+
+             let mut json_items = Vec::new();
+             for item in items {
+                 match extract_ticket_json(&item) {
+                      Ok(json) => json_items.push(json),
+                      Err(e) => return e,
+                 }
+             }
+             success_response(200, &serde_json::Value::Array(json_items).to_string())
         }
         Err(e) => error_response(500, "Failed to get ticket details", &format!("{}", e), None),
     }
@@ -154,7 +212,7 @@ pub async fn handle_search_tickets_by_subject(
 pub async fn handle_get_recent_tickets(client: &Client) -> Response<Body> {
     // Query "Tickets" table directly using GSI "TicketNumberIndex" (pk="ALL")
     // Tickets now has gsi_pk = "ALL"
-    
+
     let res = client.query()
         .table_name("Tickets")
         .index_name("TicketNumberIndex")
@@ -168,7 +226,14 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Response<Body> {
     match res {
         Ok(output) => {
             let items = output.items.unwrap_or_default();
-            success_response_items(items)
+            let mut json_items = Vec::new();
+            for item in items {
+                match extract_ticket_json(&item) {
+                     Ok(json) => json_items.push(json),
+                     Err(e) => return e,
+                }
+            }
+            success_response(200, &serde_json::Value::Array(json_items).to_string())
         }
         Err(e) => error_response(500, "Failed to get recent tickets", &format!("{}", e), None),
     }
@@ -180,7 +245,6 @@ pub async fn handle_create_ticket(
     primary_phone: String,
     subject: String,
     details: String,
-    status: Option<String>,
     password: Option<String>,
     estimated_time: Option<String>,
     client: &Client,
@@ -205,7 +269,7 @@ pub async fn handle_create_ticket(
     let now = Utc::now().timestamp().to_string();
 
     let mut txn_builder = client.transact_write_items();
-    
+
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
             .put(Put::builder()
@@ -216,7 +280,7 @@ pub async fn handle_create_ticket(
                 .item("customer_id", AttributeValue::S(customer_id.clone()))
                 .item("customer_full_name", AttributeValue::S(customer_full_name.clone())) // Also useful to have here
                 .item("primary_phone", AttributeValue::S(primary_phone.clone()))
-                .item("status", AttributeValue::S(status.clone().unwrap_or("open".to_string())))
+                .item("status", AttributeValue::S("Diagnosing".to_string()))
                 .item("details", AttributeValue::S(details))
                 .item("password", AttributeValue::S(password.unwrap_or_default()))
                 .item("estimated_time", AttributeValue::S(estimated_time.unwrap_or_default()))
@@ -226,7 +290,7 @@ pub async fn handle_create_ticket(
                 .expect("Failed to build Put item for Tickets"))
             .build()
     );
-    
+
     // TicketSubjects: Lowercase subject, standard fields for search
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -245,7 +309,7 @@ pub async fn handle_create_ticket(
     let txn_res = txn_builder.send().await;
 
     match txn_res {
-        Ok(_) => success_response(200, json!({ "ticket_number": ticket_number }).to_string()),
+        Ok(_) => success_response(200, &json!({ "ticket_number": ticket_number }).to_string()),
         Err(e) => error_response(500, "Failed to create ticket", &format!("{}", e), None),
     }
 }
@@ -263,10 +327,10 @@ pub async fn handle_update_ticket(
 ) -> Response<Body> {
     let mut txn_builder = client.transact_write_items();
 
-    
+
     // 1. Prepare Update for TicketSubjects (subject only needs update here if changed)
-    // We only store subject, ticket_number, gsi_pk, customer_id, created_at in TicketSubjects now. 
-    // Wait, the search implementation relies on filtered search on TicketSubjects. 
+    // We only store subject, ticket_number, gsi_pk, customer_id, created_at in TicketSubjects now.
+    // Wait, the search implementation relies on filtered search on TicketSubjects.
     // Does it need other fields? "The system must support substring search via full table scans for ticket subjects only"
     // So TicketSubjects really only needs subject.
     if let Some(s) = &subject {
@@ -275,22 +339,22 @@ pub async fn handle_update_ticket(
             .key("ticket_number", AttributeValue::N(ticket_number.clone()))
             .update_expression("SET subject = :s")
             .expression_attribute_values(":s", AttributeValue::S(s.to_lowercase())); // Lowercase
-            
+
         let update = update_builder.build().expect("Failed to build Update for TicketSubjects");
         txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
     }
 
     // 2. Prepare Update for Tickets (everything else + last_updated)
     // We ALWAYS update Tickets because last_updated must change on any edit
-    // However if NO fields are strictly for Tickets, we still need to update last_updated? 
+    // However if NO fields are strictly for Tickets, we still need to update last_updated?
     // The requirement says "Tickets and customers must store last-updated timestamps that change on any modification."
     // If we only change subject, does that count as modifying the ticket? Yes.
     // So we should update last_updated in Tickets table even if only subject changed?
-    // Or does TicketSubjects need its own last_updated? 
+    // Or does TicketSubjects need its own last_updated?
     // The user said "return whether the respective entity has changed... based on a last-updated timestamp".
     // Entities are "Tickets" and "Customers".
     // I will assume the main "Tickets" table holds the authoritative last_updated for the entity.
-    
+
     let mut update_parts = Vec::new();
     let mut expr_vals = HashMap::new();
 
@@ -323,7 +387,7 @@ pub async fn handle_update_ticket(
         expr_vals.insert(":et".to_string(), AttributeValue::S(et));
     }
 
-    update_parts.push("last_updated = :lu");
+    update_parts.push("last_updated = :lu".to_string());
     expr_vals.insert(":lu".to_string(), AttributeValue::N(Utc::now().timestamp().to_string()));
 
     let update_expr = format!("SET {}", update_parts.join(", "));
@@ -344,7 +408,7 @@ pub async fn handle_update_ticket(
     let res = txn_builder.send().await;
 
     match res {
-        Ok(_) => success_response(200, json!({"ticket_number": ticket_number}).to_string()),
+        Ok(_) => success_response(200, &json!({"ticket_number": ticket_number}).to_string()),
         Err(e) => error_response(500, "Failed to update ticket", &format!("{}", e), None),
     }
 }
@@ -375,7 +439,7 @@ pub async fn handle_add_ticket_comment(
         .await;
 
     match res {
-        Ok(_) => success_response(200, json!({"ticket_number": ticket_number}).to_string()),
+        Ok(_) => success_response(200, &json!({"ticket_number": ticket_number}).to_string()),
         Err(e) => error_response(500, "Failed to add comment", &format!("{}", e), None),
     }
 }
@@ -390,8 +454,15 @@ pub async fn handle_get_ticket_last_updated(ticket_number: String, client: &Clie
 
     match res {
         Ok(output) => {
-            let item = output.item.unwrap_or_default();
-            success_response_hashmap(item)
+            if let Some(item) = output.item {
+                let last_updated: i64 = match get_value_from_item(&item, "last_updated") {
+                     Ok(val) => val,
+                     Err(_) => return error_response(500, "Invalid data", "last_updated missing or invalid", None),
+                };
+                success_response(200, &json!({ "last_updated": last_updated }).to_string())
+            } else {
+                 error_response(404, "Ticket not found", "No ticket with that number", None)
+            }
         },
         Err(e) => error_response(500, "Failed to get ticket last_updated", &format!("{}", e), None),
     }
@@ -425,7 +496,7 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
     };
 
     if customer_ids.is_empty() {
-        return success_response(200, "[]".to_string());
+        return success_response(200, "[]");
     }
 
     // Batch get full customer details from Customers table ONLY
@@ -440,9 +511,9 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
 
     let ka_customers = match KeysAndAttributes::builder()
         .set_keys(Some(keys.clone()))
-        // projection_expression is optional, if we want everything we can omit it. 
+        // projection_expression is optional, if we want everything we can omit it.
         // User asked for: "id, full_name, and primary_phone"
-        .projection_expression("customer_id, full_name, primary_phone") 
+        .projection_expression("customer_id, full_name, primary_phone")
         .build() {
             Ok(ka) => ka,
             Err(e) => return error_response(500, "Failed to build batch get customers", &format!("{}", e), None),
@@ -457,10 +528,120 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
         Ok(output) => {
             let responses = output.responses.unwrap_or_default();
             let customers = responses.get("Customers").cloned().unwrap_or_default();
-            success_response_items(customers)
+            let mut json_items = Vec::new();
+            for item in customers {
+                match extract_customer_json(&item) {
+                     Ok(json) => json_items.push(json),
+                     Err(e) => return e,
+                }
+            }
+            success_response(200, &serde_json::Value::Array(json_items).to_string())
         }
         Err(e) => error_response(500, "Failed to get customer details", &format!("{}", e), None),
     }
+}
+
+fn get_value_from_item<T>(
+    item: &HashMap<String, AttributeValue>,
+    key: &str,
+) -> Result<T, Response<lambda_http::Body>>
+where
+    T: DeserializeOwned,
+{
+    // Get the attribute
+    let attr = item.get(key).ok_or_else(|| {
+        error_response(
+            400,
+            "Missing attribute",
+            &format!("{} is required", key),
+            None,
+        )
+    })?;
+
+    // Convert AttributeValue -> serde_json::Value
+    let json_val = match attr {
+        AttributeValue::S(s) => serde_json::Value::String(s.clone()),
+        AttributeValue::N(n) => {
+            // Try to parse as number
+            let n_val: serde_json::Number = n.parse().map_err(|_| {
+                error_response(
+                    400,
+                    "Invalid attribute",
+                    &format!("{} is not a valid number", key),
+                    None,
+                )
+            })?;
+            serde_json::Value::Number(n_val)
+        }
+        AttributeValue::Bool(b) => serde_json::Value::Bool(*b),
+        AttributeValue::L(l) => {
+            let arr: Vec<serde_json::Value> = l
+                .iter()
+                .map(|av| {
+                    get_value_from_item(&HashMap::from([("v".to_string(), av.clone())]), "v")
+                        .unwrap_or(serde_json::Value::Null)
+                })
+                .collect();
+            serde_json::Value::Array(arr)
+        }
+        AttributeValue::M(m) => {
+            let map: serde_json::Map<String, serde_json::Value> =
+                m.iter().map(|(k, v)| (k.clone(), get_value_from_item(&HashMap::from([(k.clone(), v.clone())]), k).unwrap_or(serde_json::Value::Null))).collect();
+            serde_json::Value::Object(map)
+        }
+        AttributeValue::Null(_) => serde_json::Value::Null,
+        _ => serde_json::Value::Null, // For unsupported types like Binary
+    };
+
+    // Deserialize to the requested type
+    serde_json::from_value(json_val).map_err(|_| {
+        error_response(
+            400,
+            "Invalid attribute type",
+            &format!("{} cannot be deserialized", key),
+            None,
+        )
+    })
+}
+
+fn extract_ticket_json(item: &HashMap<String, AttributeValue>) -> Result<serde_json::Value, Response<Body>> {
+    let ticket: Ticket = serde_dynamo::from_item(item.clone()).map_err(|e| {
+        error_response(
+             500,
+             "Deserialization Error",
+             &format!("Failed to deserialize ticket: {}", e),
+             None
+        )
+    })?;
+
+    serde_json::to_value(ticket).map_err(|e| {
+        error_response(
+            500,
+             "Serialization Error",
+             &format!("Failed to serialize ticket: {}", e),
+             None
+        )
+    })
+}
+
+fn extract_customer_json(item: &HashMap<String, AttributeValue>) -> Result<serde_json::Value, Response<Body>> {
+    let customer: Customer = serde_dynamo::from_item(item.clone()).map_err(|e| {
+        error_response(
+             500,
+             "Deserialization Error",
+             &format!("Failed to deserialize customer: {}", e),
+             None
+        )
+    })?;
+
+    serde_json::to_value(customer).map_err(|e| {
+         error_response(
+            500,
+             "Serialization Error",
+             &format!("Failed to serialize customer: {}", e),
+             None
+        )
+    })
 }
 
 pub async fn handle_get_customer_by_id(customer_id: String, client: &Client) -> Response<Body> {
@@ -472,8 +653,11 @@ pub async fn handle_get_customer_by_id(customer_id: String, client: &Client) -> 
 
     match res {
         Ok(output) => {
-             if let Some(item) = output.item {
-                success_response_hashmap(item)
+            if let Some(item) = output.item {
+                match extract_customer_json(&item) {
+                     Ok(json_val) => success_response(200, &json_val.to_string()),
+                     Err(err_res) => err_res,
+                }
             } else {
                 error_response(404, "Customer not found", "No customer with that ID", None)
             }
@@ -485,12 +669,10 @@ pub async fn handle_get_customer_by_id(customer_id: String, client: &Client) -> 
 pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Response<Body> {
     // 1. Search CustomerNames (lowercase)
     // 2. BatchGet Customers
-    use futures::TryStreamExt;
-    
     let query_lower = query.to_lowercase();
-    
+
     let mut customer_ids: Vec<String> = Vec::new();
-    
+
     let mut paginator = client.scan()
         .table_name("CustomerNames")
         .filter_expression("contains(full_name, :q)")
@@ -498,7 +680,7 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         .into_paginator()
         .items()
         .send();
-    
+
     while let Some(item) = paginator.try_next().await.unwrap_or(None) {
         if let Some(id) = item.get("customer_id").and_then(|v| v.as_s().ok()) {
              customer_ids.push(id.clone());
@@ -507,11 +689,11 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
             break;
         }
     }
-    
+
     if customer_ids.is_empty() {
-        return success_response_items(Vec::new());
+        return success_response(200, "[]");
     }
-    
+
     // 2. Batch Get full customers
     let keys: Vec<HashMap<String, AttributeValue>> = customer_ids.iter()
         .map(|id| {
@@ -520,7 +702,7 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
             key
         })
         .collect();
-        
+
     let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
         .build()
@@ -535,7 +717,14 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         Ok(output) => {
             let responses = output.responses.unwrap_or_default();
             let items = responses.get("Customers").cloned().unwrap_or_default();
-            success_response_items(items)
+            let mut json_items = Vec::new();
+            for item in items {
+                match extract_customer_json(&item) {
+                     Ok(json) => json_items.push(json),
+                     Err(e) => return e,
+                }
+            }
+            success_response(200, &serde_json::Value::Array(json_items).to_string())
         }
         Err(e) => error_response(500, "Failed to get customer details", &format!("{}", e), None),
     }
@@ -551,7 +740,7 @@ pub async fn handle_create_customer(
     let now = Utc::now().timestamp().to_string();
 
     let mut txn_builder = client.transact_write_items();
-    
+
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
             .put(Put::builder()
@@ -592,7 +781,7 @@ pub async fn handle_create_customer(
     let txn_res = txn_builder.send().await;
 
     match txn_res {
-        Ok(_) => success_response(200, json!({ "customer_id": customer_id }).to_string()),
+        Ok(_) => success_response(200, &json!({ "customer_id": customer_id }).to_string()),
         Err(e) => error_response(500, "Failed to create customer", &format!("{}", e), None),
     }
 }
@@ -615,7 +804,7 @@ pub async fn handle_update_customer(
             .projection_expression("phone_numbers")
             .send()
             .await;
-        
+
         let old_phones: Vec<String> = match current_res {
             Ok(output) => {
                 output.item
@@ -655,7 +844,7 @@ pub async fn handle_update_customer(
     }
 
     // 2. Update CustomerNames (if full_name changed)
-    if let Some(fn_val) = full_name {
+    if let Some(ref fn_val) = full_name {
         let update = aws_sdk_dynamodb::types::Update::builder()
             .table_name("CustomerNames")
             .key("customer_id", AttributeValue::S(customer_id.clone()))
@@ -685,7 +874,7 @@ pub async fn handle_update_customer(
         update_parts.push("email = :e".to_string());
         expr_vals.insert(":e".to_string(), AttributeValue::S(e));
     }
-    
+
     // Also update full_name in Customers if it changed (original case)
     if let Some(fn_val) = full_name {
         update_parts.push("full_name = :fn".to_string());
@@ -698,7 +887,7 @@ pub async fn handle_update_customer(
         .table_name("Customers")
         .key("customer_id", AttributeValue::S(customer_id.clone()))
         .update_expression(update_expr);
-    
+
     for (k, v) in expr_vals {
         update_builder = update_builder.expression_attribute_values(k, v);
     }
@@ -710,7 +899,7 @@ pub async fn handle_update_customer(
     let txn_res = txn_builder.send().await;
 
     match txn_res {
-        Ok(_) => success_response(200, json!({ "customer_id": customer_id }).to_string()),
+        Ok(_) => success_response(200, &json!({ "customer_id": customer_id }).to_string()),
         Err(e) => error_response(500, "Failed to update customer", &format!("{}", e), None),
     }
 }
@@ -725,8 +914,15 @@ pub async fn handle_get_customer_last_updated(customer_id: String, client: &Clie
 
     match res {
         Ok(output) => {
-            let item = output.item.unwrap_or_default();
-            success_response_hashmap(item)
+            if let Some(item) = output.item {
+                let last_updated: i64 = match get_value_from_item(&item, "last_updated") {
+                     Ok(val) => val,
+                     Err(_) => return error_response(500, "Invalid data", "last_updated missing or invalid", None),
+                };
+                success_response(200, &json!({ "last_updated": last_updated }).to_string())
+            } else {
+                 error_response(404, "Customer not found", "No customer with that ID", None)
+            }
         },
         Err(e) => error_response(500, "Failed to get customer last_updated", &format!("{}", e), None),
     }
