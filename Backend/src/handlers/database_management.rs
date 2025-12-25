@@ -95,10 +95,10 @@ pub async fn handle_get_ticket_by_number(
     let customer: Customer = match cust_res {
         Ok(output) => {
             if let Some(item) = output.item {
-                 match serde_dynamo::from_item(item) {
-                     Ok(c) => c,
-                     Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
-                 }
+                match serde_dynamo::from_item(item) {
+                    Ok(c) => c,
+                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
+                }
             } else {
                 // If customer is missing, that's a data integrity issue, but we still need to return something or error.
                 // Let's error.
@@ -235,18 +235,18 @@ pub async fn handle_search_tickets_by_subject(
             Err(e) => return error_response(500, "Pagination Error", &format!("Failed to get next page: {}", e), None),
         };
         match page {
-             Some(item) => {
-                 match serde_dynamo::from_item::<_, TicketWithOnlySubject>(item) {
+            Some(item) => {
+                match serde_dynamo::from_item::<_, TicketWithOnlySubject>(item) {
                     Ok(tn) => ticket_numbers.push(tn.ticket_number),
                     Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject: {}", e), None),
                 }
-             },
-             None => break,
+            },
+            None => break,
         }
     }
 
     if ticket_numbers.is_empty() {
-         return success_response(200, "[]");
+        return success_response(200, "[]");
     }
 
     // Batch Get full tickets from ticket numbers
@@ -317,8 +317,8 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Response<Body> {
             let mut tickets_nocust = Vec::new();
             for item in items {
                 match serde_dynamo::from_item(item) {
-                     Ok(t) => tickets_nocust.push(t),
-                     Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
+                    Ok(t) => tickets_nocust.push(t),
+                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
                 }
             }
             let tickets = match batch_fetch_and_merge_customers(tickets_nocust, client).await {
@@ -380,19 +380,19 @@ pub async fn handle_create_ticket(
     let mut txn_builder = client.transact_write_items();
 
     let put_ticket = match Put::builder()
-                .table_name("Tickets")
-                .item("ticket_number", AttributeValue::N(ticket_number.clone()))
-                .item("gsi_pk", AttributeValue::S("ALL".to_string())) // Added for TicketNumberIndex
-                .item("subject", AttributeValue::S(subject.clone())) // Stored with original casing
-                .item("customer_id", AttributeValue::S(customer_id.clone()))
-                .item("status", AttributeValue::S("Diagnosing".to_string()))
-                .item("password", AttributeValue::S(password.unwrap_or_default()))
-                .item("created_at", AttributeValue::N(now.clone()))
-                .item("last_updated", AttributeValue::N(now.clone()))
-                .build() {
-                    Ok(p) => p,
-                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for Tickets: {}", e), None),
-                };
+        .table_name("Tickets")
+        .item("ticket_number", AttributeValue::N(ticket_number.clone()))
+        .item("gsi_pk", AttributeValue::S("ALL".to_string())) // Added for TicketNumberIndex
+        .item("subject", AttributeValue::S(subject.clone())) // Stored with original casing
+        .item("customer_id", AttributeValue::S(customer_id.clone()))
+        .item("status", AttributeValue::S("Diagnosing".to_string()))
+        .item("password", AttributeValue::S(password.unwrap_or_default()))
+        .item("created_at", AttributeValue::N(now.clone()))
+        .item("last_updated", AttributeValue::N(now.clone()))
+        .build() {
+            Ok(p) => p,
+            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for Tickets: {}", e), None),
+        };
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -402,14 +402,14 @@ pub async fn handle_create_ticket(
 
     // TicketSubjects: Lowercase subject, standard fields for search
     let put_subject = match Put::builder()
-                .table_name("TicketSubjects")
-                .item("ticket_number", AttributeValue::N(ticket_number.clone()))
-                .item("gsi_pk", AttributeValue::S("ALL".to_string()))
-                .item("subject_lc", AttributeValue::S(subject.to_lowercase())) // Lowercase for search
-                .build() {
-                    Ok(p) => p,
-                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for TicketSubjects: {}", e), None),
-                };
+        .table_name("TicketSubjects")
+        .item("ticket_number", AttributeValue::N(ticket_number.clone()))
+        .item("gsi_pk", AttributeValue::S("ALL".to_string()))
+        .item("subject_lc", AttributeValue::S(subject.to_lowercase())) // Lowercase for search
+        .build() {
+            Ok(p) => p,
+            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for TicketSubjects: {}", e), None),
+        };
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -421,7 +421,7 @@ pub async fn handle_create_ticket(
 
     match txn_res {
         Ok(_) => {
-             success_response(200, &json!({ "ticket_number": ticket_number }).to_string())
+            success_response(200, &json!({ "ticket_number": ticket_number }).to_string())
         },
         Err(e) => error_response(500, "Failed to create ticket", &e.to_string(), None),
     }
@@ -618,8 +618,8 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
             let mut json_items = Vec::new();
             for item in customers {
                 match serde_dynamo::from_item(item) {
-                     Ok(json) => json_items.push(json),
-                     Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
+                    Ok(json) => json_items.push(json),
+                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
                 }
             }
             success_response(200, &serde_json::Value::Array(json_items).to_string())
@@ -679,11 +679,11 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         };
 
         if let Some(item) = item_opt {
-             if let Some(id) = item.get("customer_id").and_then(|v| v.as_s().ok()) {
-                  customer_ids.push(id.clone());
-             } else {
-                 return error_response(500, "Data Error", "Missing or invalid customer_id in search result", None);
-             }
+            if let Some(id) = item.get("customer_id").and_then(|v| v.as_s().ok()) {
+                customer_ids.push(id.clone());
+            } else {
+                return error_response(500, "Data Error", "Missing or invalid customer_id in search result", None);
+            }
         } else {
             break;
         }
@@ -721,8 +721,8 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
             let mut json_items = Vec::new();
             for item in items {
                 match serde_dynamo::from_item(item) {
-                     Ok(json) => json_items.push(json),
-                     Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
+                    Ok(json) => json_items.push(json),
+                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
                 }
             }
             json_items
@@ -745,18 +745,18 @@ pub async fn handle_create_customer(
     let mut txn_builder = client.transact_write_items();
 
     let put_customer = match Put::builder()
-                .table_name("Customers")
-                .item("customer_id", AttributeValue::S(customer_id.clone()))
-                .item("full_name", AttributeValue::S(full_name.clone())) // Stored with original casing
-                .item("email", AttributeValue::S(email.clone()))
+        .table_name("Customers")
+        .item("customer_id", AttributeValue::S(customer_id.clone()))
+        .item("full_name", AttributeValue::S(full_name.clone())) // Stored with original casing
+        .item("email", AttributeValue::S(email.clone()))
 
-                .item("phone_numbers", AttributeValue::L(phone_numbers.iter().map(|p| AttributeValue::S(p.clone())).collect()))
-                .item("created_at", AttributeValue::N(now.clone()))
-                .item("last_updated", AttributeValue::N(now.clone()))
-                .build() {
-                    Ok(p) => p,
-                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for Customers: {}", e), None),
-                };
+        .item("phone_numbers", AttributeValue::L(phone_numbers.iter().map(|p| AttributeValue::S(p.clone())).collect()))
+        .item("created_at", AttributeValue::N(now.clone()))
+        .item("last_updated", AttributeValue::N(now.clone()))
+        .build() {
+            Ok(p) => p,
+            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for Customers: {}", e), None),
+        };
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -765,13 +765,13 @@ pub async fn handle_create_customer(
     );
 
     let put_name = match Put::builder()
-                .table_name("CustomerNames")
-                .item("customer_id", AttributeValue::S(customer_id.clone()))
-                .item("full_name_lc", AttributeValue::S(full_name.to_lowercase())) // Lowercase for search
-                .build() {
-                    Ok(p) => p,
-                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for CustomerNames: {}", e), None),
-                };
+        .table_name("CustomerNames")
+        .item("customer_id", AttributeValue::S(customer_id.clone()))
+        .item("full_name_lc", AttributeValue::S(full_name.to_lowercase())) // Lowercase for search
+        .build() {
+            Ok(p) => p,
+            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for CustomerNames: {}", e), None),
+        };
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -821,25 +821,25 @@ pub async fn handle_update_customer(
         let old_phones: Vec<String> = match current_res {
             Ok(output) => {
                 if let Some(item) = output.item {
-                     if let Some(list_av) = item.get("phone_numbers") {
-                          if let Ok(list) = list_av.as_l() {
-                               let mut phones = Vec::new();
-                               for av in list {
-                                   match av.as_s() {
-                                       Ok(s) => phones.push(s.to_string()),
-                                       Err(_) => return error_response(500, "Data Integrity Error", "Non-string phone number found", None),
-                                   }
-                               }
-                               phones
-                          } else {
-                               return error_response(500, "Data Integrity Error", "phone_numbers is not a list", None);
-                          }
-                     } else {
-                         Vec::new()
-                     }
+                    if let Some(list_av) = item.get("phone_numbers") {
+                        if let Ok(list) = list_av.as_l() {
+                            let mut phones = Vec::new();
+                            for av in list {
+                                match av.as_s() {
+                                    Ok(s) => phones.push(s.to_string()),
+                                    Err(_) => return error_response(500, "Data Integrity Error", "Non-string phone number found", None),
+                                }
+                            }
+                            phones
+                        } else {
+                            return error_response(500, "Data Integrity Error", "phone_numbers is not a list", None);
+                        }
+                    } else {
+                        Vec::new()
+                    }
                 } else {
                     Vec::new()
-               }
+                }
             },
             Err(e) => return error_response(500, "Failed to get current customer", &format!("{}", e), None),
         };
@@ -878,7 +878,7 @@ pub async fn handle_update_customer(
             .key("customer_id", AttributeValue::S(customer_id.clone()))
             .update_expression("SET full_name_lc = :fn")
             .expression_attribute_values(":fn", AttributeValue::S(fn_val.to_lowercase())); // Lowercase for search
-            
+
         let update = match update_builder.build() {
             Ok(u) => u,
             Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Update for CustomerNames: {}", e), None),
@@ -1005,21 +1005,21 @@ async fn batch_fetch_and_merge_customers(
     let mut customer_map: HashMap<String, Customer> = HashMap::new();
     for item in customer_items {
         if let Ok(cust) = serde_dynamo::from_item::<_, Customer>(item) {
-             customer_map.insert(cust.customer_id.clone(), cust);
+            customer_map.insert(cust.customer_id.clone(), cust);
         }
     }
 
     let tickets: Vec<Ticket> = tickets_nocust.into_iter().map(|details| {
         let customer = customer_map.get(&details.customer_id).cloned().unwrap_or_else(|| {
-             // Fallback if customer missing
-             Customer {
-                 customer_id: details.customer_id.clone(),
-                 full_name: "Unknown".to_string(),
-                 email: "".to_string(),
-                 phone_numbers: Vec::new(),
-                 created_at: 0,
-                 last_updated: 0,
-             }
+            // Fallback if customer missing
+            Customer {
+                customer_id: details.customer_id.clone(),
+                full_name: "Unknown".to_string(),
+                email: "".to_string(),
+                phone_numbers: Vec::new(),
+                created_at: 0,
+                last_updated: 0,
+            }
         });
         Ticket {
             details,
