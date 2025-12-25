@@ -21,23 +21,8 @@ use handlers::{
 };
 use http::{error_response, handle_options};
 
-const TARGET_URL: &str = "https://Cacell.repairshopr.com/api/v1";
-
 /// Handle the Lambda event
 async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_client: &S3Client) -> Response<Body> {
-    // Get API key from environment
-    let _api_key = match std::env::var("REPAIRSHOPR_API_KEY") {
-        Ok(v) => v,
-        Err(_) => {
-            return error_response(
-                500,
-                "Configuration error",
-                "REPAIRSHOPR_API_KEY environment variable not set",
-                None,
-            )
-        }
-    };
-
     let method = event.method().as_str();
     let path = event.uri().path();
 
@@ -207,26 +192,15 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => val,
                 Err(resp) => return resp,
             };
-            let customer_full_name: String = match get_value_in_json(&body, "customer_full_name") {
-                Ok(val) => val,
-                Err(resp) => return resp,
-            };
             let subject: String = match get_value_in_json(&body, "subject") {
                 Ok(val) => val,
                 Err(resp) => return resp,
             };
-            let details: String = match get_value_in_json(&body, "details") {
-                Ok(val) => val,
-                Err(resp) => return resp,
-            };
-            let primary_phone: String = match get_value_in_json(&body, "primary_phone") {
-                Ok(val) => val,
-                Err(resp) => return resp,
-            };
-            let password: Option<String> = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let estimated_time: Option<String> = body.get("estimated_time").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-            handle_create_ticket(customer_id, customer_full_name, primary_phone, subject, details, password, estimated_time, &dynamodb_client).await
+            let password: Option<String> = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+
+            handle_create_ticket(customer_id, subject, password, &dynamodb_client).await
         }
         ("/ticket", "PUT") => {
             let ticket_number: String = match event.query_string_parameters().first("number") {
@@ -239,15 +213,13 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => return resp,
             };
 
-            let customer_full_name = body.get("customer_full_name").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let primary_phone = body.get("primary_phone").and_then(|v| v.as_str()).map(|s| s.to_string());
             let subject = body.get("subject").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let details = body.get("details").and_then(|v| v.as_str()).map(|s| s.to_string());
+
             let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
             let password = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let estimated_time = body.get("estimated_time").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-            handle_update_ticket(ticket_number, customer_full_name, primary_phone, subject, details, status, password, estimated_time, &dynamodb_client).await
+
+            handle_update_ticket(ticket_number, subject, status, password, &dynamodb_client).await
         }
         ("/ticket/comment", "POST") => {
             let ticket_number: String = match event.query_string_parameters().first("ticket_number") {

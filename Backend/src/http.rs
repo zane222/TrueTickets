@@ -2,8 +2,6 @@
 
 use lambda_http::{Body, Response};
 use serde_json::{json};
-use aws_sdk_dynamodb::types::AttributeValue;
-use std::collections::HashMap;
 
 /// CORS origin header for all responses
 pub fn get_cors_origin_header() -> (&'static str, &'static str) {

@@ -1,7 +1,6 @@
 //! Handler modules for Lambda function
 
 pub mod attachments;
-pub mod proxy;
 pub mod user_management;
 pub mod database_management;
 
