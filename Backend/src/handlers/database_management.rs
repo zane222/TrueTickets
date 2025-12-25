@@ -226,10 +226,22 @@ pub async fn handle_search_tickets_by_subject(
 
     // collect the ticket numbers into a Vec
     let mut ticket_numbers: Vec<String> = Vec::new();
-    while let Some(item) = paginator.try_next().await.unwrap_or(None) && ticket_numbers.len() < 15 {
-        match serde_dynamo::from_item::<_, TicketWithOnlySubject>(item) {
-            Ok(tn) => ticket_numbers.push(tn.ticket_number),
-            Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject: {}", e), None),
+    loop {
+        if ticket_numbers.len() >= 15 {
+            break;
+        }
+        let page = match paginator.try_next().await {
+            Ok(p) => p,
+            Err(e) => return error_response(500, "Pagination Error", &format!("Failed to get next page: {}", e), None),
+        };
+        match page {
+             Some(item) => {
+                 match serde_dynamo::from_item::<_, TicketWithOnlySubject>(item) {
+                    Ok(tn) => ticket_numbers.push(tn.ticket_number),
+                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject: {}", e), None),
+                }
+             },
+             None => break,
         }
     }
 
@@ -367,9 +379,7 @@ pub async fn handle_create_ticket(
 
     let mut txn_builder = client.transact_write_items();
 
-    txn_builder = txn_builder.transact_items(
-        TransactWriteItem::builder()
-            .put(Put::builder()
+    let put_ticket = match Put::builder()
                 .table_name("Tickets")
                 .item("ticket_number", AttributeValue::N(ticket_number.clone()))
                 .item("gsi_pk", AttributeValue::S("ALL".to_string())) // Added for TicketNumberIndex
@@ -379,21 +389,31 @@ pub async fn handle_create_ticket(
                 .item("password", AttributeValue::S(password.unwrap_or_default()))
                 .item("created_at", AttributeValue::N(now.clone()))
                 .item("last_updated", AttributeValue::N(now.clone()))
-                .build()
-                .expect("Failed to build Put item for Tickets"))
+                .build() {
+                    Ok(p) => p,
+                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for Tickets: {}", e), None),
+                };
+
+    txn_builder = txn_builder.transact_items(
+        TransactWriteItem::builder()
+            .put(put_ticket)
             .build()
     );
 
     // TicketSubjects: Lowercase subject, standard fields for search
-    txn_builder = txn_builder.transact_items(
-        TransactWriteItem::builder()
-            .put(Put::builder()
+    let put_subject = match Put::builder()
                 .table_name("TicketSubjects")
                 .item("ticket_number", AttributeValue::N(ticket_number.clone()))
                 .item("gsi_pk", AttributeValue::S("ALL".to_string()))
                 .item("subject_lc", AttributeValue::S(subject.to_lowercase())) // Lowercase for search
-                .build()
-                .expect("Failed to build Put item for TicketSubjects"))
+                .build() {
+                    Ok(p) => p,
+                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for TicketSubjects: {}", e), None),
+                };
+
+    txn_builder = txn_builder.transact_items(
+        TransactWriteItem::builder()
+            .put(put_subject)
             .build()
     );
 
@@ -423,7 +443,10 @@ pub async fn handle_update_ticket(
             .update_expression("SET subject_lc = :s")
             .expression_attribute_values(":s", AttributeValue::S(s.to_lowercase())); // Lowercase
 
-        let update = update_builder.build().expect("Failed to build Update for TicketSubjects");
+        let update = match update_builder.build() {
+            Ok(u) => u,
+            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Update for TicketSubjects: {}", e), None),
+        };
         txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
     }
 
@@ -547,14 +570,15 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
 
     let customer_ids: Vec<String> = match index_res {
         Ok(output) => {
-            output.items.unwrap_or_default()
-                .iter()
-                .filter_map(|item| {
-                    item.get("customer_id")
-                        .and_then(|v| v.as_s().ok())
-                        .map(|s| s.to_string())
-                })
-                .collect()
+            let items = output.items.unwrap_or_default();
+            let mut ids = Vec::new();
+            for item in items {
+                match item.get("customer_id").and_then(|v| v.as_s().ok()) {
+                    Some(s) => ids.push(s.to_string()),
+                    None => return error_response(500, "Data Integrity Error", "Missing or invalid customer_id in phone index", None),
+                }
+            }
+            ids
         },
         Err(e) => return error_response(500, "Failed to query phone index", &format!("{}", e), None),
     };
@@ -645,9 +669,23 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         .items()
         .send();
 
-    while let Some(item) = paginator.try_next().await.unwrap_or(None) && customer_ids.len() < 15 {
-        if let Some(id) = item.get("customer_id").and_then(|v| v.as_s().ok()) {
-             customer_ids.push(id.clone());
+    loop {
+        if customer_ids.len() >= 15 {
+            break;
+        }
+        let item_opt = match paginator.try_next().await {
+            Ok(opt) => opt,
+            Err(e) => return error_response(500, "Pagination Error", &format!("Failed to scan customers: {}", e), None),
+        };
+
+        if let Some(item) = item_opt {
+             if let Some(id) = item.get("customer_id").and_then(|v| v.as_s().ok()) {
+                  customer_ids.push(id.clone());
+             } else {
+                 return error_response(500, "Data Error", "Missing or invalid customer_id in search result", None);
+             }
+        } else {
+            break;
         }
     }
 
@@ -664,10 +702,12 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         })
         .collect();
 
-    let ka = KeysAndAttributes::builder()
+    let ka = match KeysAndAttributes::builder()
         .set_keys(Some(keys))
-        .build()
-        .unwrap();
+        .build() {
+            Ok(k) => k,
+            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build KeysAndAttributes: {}", e), None),
+        };
 
     let batch_res = client.batch_get_item()
         .request_items("Customers", ka)
@@ -704,9 +744,7 @@ pub async fn handle_create_customer(
 
     let mut txn_builder = client.transact_write_items();
 
-    txn_builder = txn_builder.transact_items(
-        TransactWriteItem::builder()
-            .put(Put::builder()
+    let put_customer = match Put::builder()
                 .table_name("Customers")
                 .item("customer_id", AttributeValue::S(customer_id.clone()))
                 .item("full_name", AttributeValue::S(full_name.clone())) // Stored with original casing
@@ -715,29 +753,41 @@ pub async fn handle_create_customer(
                 .item("phone_numbers", AttributeValue::L(phone_numbers.iter().map(|p| AttributeValue::S(p.clone())).collect()))
                 .item("created_at", AttributeValue::N(now.clone()))
                 .item("last_updated", AttributeValue::N(now.clone()))
-                .build()
-                .expect("Failed to build Put item for Customers"))
-            .build()
-    );
+                .build() {
+                    Ok(p) => p,
+                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for Customers: {}", e), None),
+                };
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
-            .put(Put::builder()
+            .put(put_customer)
+            .build()
+    );
+
+    let put_name = match Put::builder()
                 .table_name("CustomerNames")
                 .item("customer_id", AttributeValue::S(customer_id.clone()))
                 .item("full_name_lc", AttributeValue::S(full_name.to_lowercase())) // Lowercase for search
-                .build()
-                .expect("Failed to build Put item for CustomerNames"))
+                .build() {
+                    Ok(p) => p,
+                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for CustomerNames: {}", e), None),
+                };
+
+    txn_builder = txn_builder.transact_items(
+        TransactWriteItem::builder()
+            .put(put_name)
             .build()
     );
 
     for phone in &phone_numbers {
-        let phone_put = Put::builder()
+        let phone_put = match Put::builder()
             .table_name("CustomerPhoneIndex")
             .item("phone_number", AttributeValue::S(phone.clone()))
             .item("customer_id", AttributeValue::S(customer_id.clone()))
-            .build()
-            .expect("Failed to build Put item for CustomerPhoneIndex");
+            .build() {
+                Ok(p) => p,
+                Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for CustomerPhoneIndex: {}", e), None),
+            };
         txn_builder = txn_builder.transact_items(TransactWriteItem::builder().put(phone_put).build());
     }
 
@@ -770,51 +820,69 @@ pub async fn handle_update_customer(
 
         let old_phones: Vec<String> = match current_res {
             Ok(output) => {
-                output.item
-                    .and_then(|item| item.get("phone_numbers").cloned())
-                    .and_then(|v| v.as_l().ok().cloned())
-                    .map(|list| {
-                        list.iter()
-                            .filter_map(|av| av.as_s().ok().map(|s| s.to_string()))
-                            .collect()
-                    })
-                    .unwrap_or_default()
+                if let Some(item) = output.item {
+                     if let Some(list_av) = item.get("phone_numbers") {
+                          if let Ok(list) = list_av.as_l() {
+                               let mut phones = Vec::new();
+                               for av in list {
+                                   match av.as_s() {
+                                       Ok(s) => phones.push(s.to_string()),
+                                       Err(_) => return error_response(500, "Data Integrity Error", "Non-string phone number found", None),
+                                   }
+                               }
+                               phones
+                          } else {
+                               return error_response(500, "Data Integrity Error", "phone_numbers is not a list", None);
+                          }
+                     } else {
+                         Vec::new()
+                     }
+                } else {
+                    Vec::new()
+               }
             },
             Err(e) => return error_response(500, "Failed to get current customer", &format!("{}", e), None),
         };
 
         // Delete old phone index entries
         for phone in &old_phones {
-            let delete = Delete::builder()
+            let delete = match Delete::builder()
                 .table_name("CustomerPhoneIndex")
                 .key("phone_number", AttributeValue::S(phone.clone()))
                 .key("customer_id", AttributeValue::S(customer_id.clone()))
-                .build()
-                .expect("Failed to build Delete item for CustomerPhoneIndex");
+                .build() {
+                    Ok(d) => d,
+                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Delete item for CustomerPhoneIndex: {}", e), None),
+                };
             txn_builder = txn_builder.transact_items(TransactWriteItem::builder().delete(delete).build());
         }
 
         // Add new phone index entries
         for phone in new_phones {
-            let put = Put::builder()
+            let put = match Put::builder()
                 .table_name("CustomerPhoneIndex")
                 .item("phone_number", AttributeValue::S(phone.clone()))
                 .item("customer_id", AttributeValue::S(customer_id.clone()))
-                .build()
-                .expect("Failed to build Put item for CustomerPhoneIndex");
+                .build() {
+                    Ok(p) => p,
+                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for CustomerPhoneIndex: {}", e), None),
+                };
             txn_builder = txn_builder.transact_items(TransactWriteItem::builder().put(put).build());
         }
     }
 
     // 2. Update CustomerNames (if full_name changed)
     if let Some(ref fn_val) = full_name {
-        let update = aws_sdk_dynamodb::types::Update::builder()
+        let update_builder = aws_sdk_dynamodb::types::Update::builder()
             .table_name("CustomerNames")
             .key("customer_id", AttributeValue::S(customer_id.clone()))
             .update_expression("SET full_name_lc = :fn")
-            .expression_attribute_values(":fn", AttributeValue::S(fn_val.to_lowercase())) // Lowercase for search
-            .build()
-            .expect("Failed to build Update for CustomerNames");
+            .expression_attribute_values(":fn", AttributeValue::S(fn_val.to_lowercase())); // Lowercase for search
+            
+        let update = match update_builder.build() {
+            Ok(u) => u,
+            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Update for CustomerNames: {}", e), None),
+        };
         txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
     }
 
@@ -853,7 +921,10 @@ pub async fn handle_update_customer(
         update_builder = update_builder.expression_attribute_values(k, v);
     }
 
-    let update = update_builder.build().expect("Failed to build Update for Customers");
+    let update = match update_builder.build() {
+        Ok(u) => u,
+        Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Update for Customers: {}", e), None),
+    };
     txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
 
     // Execute Transaction
