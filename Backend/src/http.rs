@@ -1,7 +1,8 @@
 //! HTTP utilities for request/response handling and CORS
 
 use lambda_http::{Body, Response};
-use serde_json::{json};
+use serde_json::{json, Value};
+use serde::de::DeserializeOwned;
 use rand::Rng;
 use rand::distr::Alphanumeric;
 
@@ -79,4 +80,35 @@ pub fn handle_options() -> Response<Body> {
         .header("Content-Type", "application/json")
         .body(Body::Empty)
         .expect("Couldn't handle CORS request")
+}
+
+pub fn parse_json_body(body: &Body) -> Result<Value, Response<Body>> {
+    let body_str = match body {
+        Body::Empty => "{}",
+        Body::Text(s) => s,
+        Body::Binary(b) => {
+            match std::str::from_utf8(b) {
+                Ok(s) => s,
+                Err(_) => return Err(error_response(400, "Invalid request body", "Could not parse request body as UTF-8", None)),
+            }
+        },
+        _ => "{}",
+    };
+
+    let json: Value = match serde_json::from_str(body_str) {
+        Ok(v) => v,
+        Err(_) => return Err(error_response(400, "Invalid JSON", "Could not parse request body as JSON", None))
+    };
+
+    Ok(json)
+}
+
+pub fn get_value_in_json<T>(body: &Value, key: &str) -> Result<T, Response<Body>>
+where
+    T: DeserializeOwned,
+{
+    match body.get(key) {
+        Some(v) => serde_json::from_value(v.clone()).map_err(|_| error_response(400, "Invalid parameter", &format!("{} is not a valid value", key), None)),
+        None => Err(error_response(400, "Missing parameter", &format!("{} is required", key), None)),
+    }
 }

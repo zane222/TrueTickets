@@ -2,9 +2,11 @@
 
 pub mod attachments;
 pub mod user_management;
-pub mod database_management;
+pub mod tickets;
+pub mod customers;
 
 // Re-export handler functions for convenience
 pub use attachments::handle_upload_attachment;
 pub use user_management::{handle_user_invitation, handle_list_users, handle_update_user_group};
-pub use database_management::*;
+pub use tickets::*;
+pub use customers::*;

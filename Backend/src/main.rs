@@ -1,6 +1,7 @@
 mod auth;
 mod handlers;
 mod http;
+mod models;
 
 use lambda_http::{run, service_fn, Body, Request, Response, RequestExt};
 use serde_json::Value;
@@ -17,9 +18,10 @@ use handlers::{
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
     handle_get_ticket_last_updated, handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_customer_last_updated, handle_get_tickets_by_customer_id,
-    handle_search_customers_by_name, handle_get_customer_by_id, PhoneNumber
+    handle_search_customers_by_name, handle_get_customer_by_id
 };
-use http::{error_response, handle_options, success_response};
+use models::PhoneNumber;
+use http::{error_response, handle_options, success_response, parse_json_body, get_value_in_json};
 
 /// Handle the Lambda event
 async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_client: &S3Client) -> Response<Body> {
@@ -338,36 +340,6 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
     }
 }
 
-fn parse_json_body(body: &Body) -> Result<Value, Response<Body>> {
-    let body_str = match body {
-        Body::Empty => "{}",
-        Body::Text(s) => s,
-        Body::Binary(b) => {
-            match std::str::from_utf8(b) {
-                Ok(s) => s,
-                Err(_) => return Err(error_response(400, "Invalid request body", "Could not parse request body as UTF-8", None)),
-            }
-        },
-        _ => "{}",
-    };
-
-    let json: Value = match serde_json::from_str(body_str) {
-        Ok(v) => v,
-        Err(_) => return Err(error_response(400, "Invalid JSON", "Could not parse request body as JSON", None))
-    };
-
-    Ok(json)
-}
-
-fn get_value_in_json<T>(body: &Value, key: &str) -> Result<T, Response<Body>>
-where
-    T: DeserializeOwned,
-{
-    match body.get(key) {
-        Some(v) => serde_json::from_value(v.clone()).map_err(|_| error_response(400, "Invalid parameter", &format!("{} is not a valid value", key), None)),
-        None => Err(error_response(400, "Missing parameter", &format!("{} is required", key), None)),
-    }
-}
 
 /// Main Lambda handler function
 async fn function_handler(event: Request) -> Result<Response<Body>, lambda_http::Error> {
