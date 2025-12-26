@@ -1,6 +1,7 @@
 //! Authorization and permission checking utilities
 
 use lambda_http::{Request, RequestExt};
+use rand::Rng;
 
 /// Extract user groups from the Cognito authorizer context
 pub fn get_user_groups_from_event(event: &Request) -> Vec<String> {
@@ -48,7 +49,6 @@ pub fn can_manage_users(user_groups: &[String]) -> bool {
 
 /// Generate a secure temporary password that meets Cognito requirements
 pub fn generate_temp_password() -> String {
-    use rand::Rng;
     let mut rng = rand::rng();
 
     // Generate 6 random digits

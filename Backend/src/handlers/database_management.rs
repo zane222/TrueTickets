@@ -743,7 +743,7 @@ pub async fn handle_update_customer(
     }
 
     // 2. Update CustomerNames (if full_name changed)
-    if let Some(ref fn_val) = full_name {
+    if let Some(fn_val) = &full_name {
         let update = aws_sdk_dynamodb::types::Update::builder()
             .table_name("CustomerNames")
             .key("customer_id", AttributeValue::S(customer_id.clone()))
@@ -762,7 +762,7 @@ pub async fn handle_update_customer(
     let mut expr_vals = HashMap::new();
     expr_vals.insert(":lu".to_string(), AttributeValue::N(Utc::now().timestamp().to_string()));
 
-    if let Some(ref new_phones) = phone_numbers {
+    if let Some(new_phones) = &phone_numbers {
         update_parts.push("phone_numbers = :phones".to_string());
         expr_vals.insert(":phones".to_string(), AttributeValue::L(
             new_phones.iter().map(|p| {
@@ -886,12 +886,7 @@ async fn batch_fetch_and_merge_customers(
                 });
             }
             None => {
-                return Err(error_response(
-                    500,
-                    "Data Integrity Error",
-                    &format!("Ticket {} refers to missing customer_id {}", details.ticket_number, details.customer_id),
-                    None
-                ));
+                return Err(error_response(500, "Data Integrity Error", &format!("Ticket {} refers to missing customer_id {}", details.ticket_number, details.customer_id), None));
             }
         }
     }

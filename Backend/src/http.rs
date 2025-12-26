@@ -63,7 +63,7 @@ pub fn success_response(status: u16, body: &str) -> Response<Body> {
         .status(status)
         .header(key, value)
         .header("Content-Type", "application/json")
-        .body(body.to_string().into())
+        .body(body.into())
         .expect("Couldn't create success response")
 }
 

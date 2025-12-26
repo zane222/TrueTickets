@@ -40,12 +40,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
     // Validate HTTP method
     if !matches!(method, "GET" | "POST" | "PUT") {
-        return error_response(
-            400,
-            "Invalid HTTP method",
-            &format!("Method '{}' is not supported", method),
-            Some("Ensure you are calling this Lambda via API Gateway"),
-        );
+        return error_response(400, "Invalid HTTP method", &format!("Method '{}' is not supported", method), Some("Ensure you are calling this Lambda via API Gateway"));
     }
 
 
@@ -73,12 +68,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !can_invite_users(&user_groups) {
-                return error_response(
-                    403,
-                    "Insufficient permissions",
-                    "You do not have permission to invite users",
-                    Some("Only ApplicationAdmin, Owner, and Manager can invite users"),
-                );
+                return error_response(403, "Insufficient permissions", "You do not have permission to invite users", Some("Only ApplicationAdmin, Owner, and Manager can invite users"));
             }
 
             match handle_user_invitation(&email, &first_name, cognito_client).await {
@@ -110,12 +100,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !can_manage_users(&user_groups) {
-                return error_response(
-                    403,
-                    "Insufficient permissions",
-                    "You do not have permission to manage users",
-                    Some("Only ApplicationAdmin and Owner can manage users"),
-                );
+                return error_response(403, "Insufficient permissions", "You do not have permission to manage users", Some("Only ApplicationAdmin and Owner can manage users"));
             }
 
             match handle_update_user_group(&username, &new_group, cognito_client).await {
@@ -144,14 +129,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 // Format: data:image/png;base64,xxxx
                 match image_data.split(',').next_back() {
                     Some(data) => data,
-                    None => {
-                        return error_response(
-                            400,
-                            "Invalid data URL",
-                            "Could not extract base64 from data URL",
-                            None,
-                        )
-                    }
+                    None => return error_response(400, "Invalid data URL", "Could not extract base64 from data URL", None),
                 }
             } else {
                 &image_data
@@ -178,12 +156,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 if parts.len() == 2 && parts[0] == "tickets" {
                     handle_get_ticket_by_number(parts[1], &dynamodb_client).await
                 } else {
-                    return error_response(
-                        400,
-                        "Missing query parameter",
-                        "Provide 'number', 'query', 'customer_id', or use /tickets/{id}",
-                        None,
-                    );
+                    return error_response(400, "Missing query parameter", "Provide 'number', 'query', 'customer_id', or use /tickets/{id}", None);
                 }
             };
 
@@ -361,15 +334,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        _ => {
-            // Method not allowed for other paths
-            error_response(
-                405,
-                "Method not allowed",
-                path,
-                Some("You're sending a request that doesn't exist."),
-            )
-        }
+        _ => error_response(405, "Method not allowed", path, Some("You're sending a request that doesn't exist.")),
     }
 }
 
@@ -380,14 +345,7 @@ fn parse_json_body(body: &Body) -> Result<Value, Response<Body>> {
         Body::Binary(b) => {
             match std::str::from_utf8(b) {
                 Ok(s) => s,
-                Err(_) => {
-                    return Err(error_response(
-                        400,
-                        "Invalid request body",
-                        "Could not parse request body as UTF-8",
-                        None,
-                    ))
-                }
+                Err(_) => return Err(error_response(400, "Invalid request body", "Could not parse request body as UTF-8", None)),
             }
         },
         _ => "{}",
@@ -395,14 +353,7 @@ fn parse_json_body(body: &Body) -> Result<Value, Response<Body>> {
 
     let json: Value = match serde_json::from_str(body_str) {
         Ok(v) => v,
-        Err(_) => {
-            return Err(error_response(
-                400,
-                "Invalid JSON",
-                "Could not parse request body as JSON",
-                None,
-            ))
-        }
+        Err(_) => return Err(error_response(400, "Invalid JSON", "Could not parse request body as JSON", None))
     };
 
     Ok(json)
