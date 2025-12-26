@@ -6,7 +6,7 @@ use aws_sdk_dynamodb::{
     types::{AttributeValue, Put, Delete, TransactWriteItem, ReturnValue, KeysAndAttributes},
 };
 use std::collections::{HashMap, HashSet};
-use crate::http::{error_response, success_response};
+use crate::http::{error_response, generate_short_id};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -43,6 +43,9 @@ pub struct TicketWithoutCustomer {
 
     #[serde(default)]
     pub comments: Vec<Comment>,
+
+    #[serde(default)]
+    pub attachments: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -96,52 +99,34 @@ pub struct CustomerPhonesOnly {
 pub async fn handle_get_ticket_by_number(
     ticket_number: &str,
     client: &Client,
-) -> Response<Body> {
+) -> Result<Value, Response<Body>> {
     // 1. Get Ticket
-    let res = client.get_item()
+    let output = client.get_item()
         .table_name("Tickets")
         .key("ticket_number", AttributeValue::N(ticket_number.to_string()))
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket: {}", e), None))?;
 
-    let ticket_item = match res {
-        Ok(output) => {
-            if let Some(item) = output.item {
-                item
-            } else {
-                return error_response(404, "Ticket not found", "No ticket with that number", None);
-            }
-        }
-        Err(e) => return error_response(500, "DynamoDB error", &format!("{}", e), None),
-    };
+    let ticket_item = output.item
+        .ok_or_else(|| error_response(404, "Ticket Not Found", "No ticket with that number", None))?;
 
-    let ticket_nocust: TicketWithoutCustomer = match serde_dynamo::from_item(ticket_item) {
-        Ok(t) => t,
-        Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
-    };
+    let ticket_nocust: TicketWithoutCustomer = serde_dynamo::from_item(ticket_item)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None))?;
 
     // 2. Get Customer
-    let cust_res = client.get_item()
+    let cust_output = client.get_item()
         .table_name("Customers")
         .key("customer_id", AttributeValue::S(ticket_nocust.customer_id.clone()))
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {}", e), None))?;
 
-    let customer: Customer = match cust_res {
-        Ok(output) => {
-            if let Some(item) = output.item {
-                match serde_dynamo::from_item(item) {
-                    Ok(c) => c,
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
-                }
-            } else {
-                // If customer is missing, that's a data integrity issue, but we still need to return something or error.
-                // Let's error.
-                return error_response(404, "Customer not found", "Ticket exists but linked customer is missing", None);
-            }
-        },
-        Err(e) => return error_response(500, "DynamoDB error", &format!("{}", e), None),
-    };
+    let customer_item = cust_output.item
+        .ok_or_else(|| error_response(404, "Customer Not Found", "Ticket exists but linked customer is missing", None))?;
+
+    let customer: Customer = serde_dynamo::from_item(customer_item)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None))?;
 
     // 3. Compose response
     let full_ticket = Ticket {
@@ -149,73 +134,51 @@ pub async fn handle_get_ticket_by_number(
         customer,
     };
 
-    match serde_json::to_string(&full_ticket) {
-        Ok(json) => success_response(200, &json),
-        Err(e) => error_response(500, "Serialization Error", &format!("{}", e), None),
-    }
+    serde_json::to_value(&full_ticket)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize ticket: {}", e), None))
 }
 
-pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Client) -> Response<Body> {
+pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Client) -> Result<Value, Response<Body>> {
     // Fetch Customer details first so they can be attached to each ticket
-    let customer_res = client.get_item()
+    let customer_output = client.get_item()
         .table_name("Customers")
         .key("customer_id", AttributeValue::S(customer_id.clone()))
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {}", e), None))?;
 
-    let customer: Customer = match customer_res {
-        Ok(out) => {
-            if let Some(item) = out.item {
-                match serde_dynamo::from_item(item) {
-                    Ok(c) => c,
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
-                }
-            } else {
-                return error_response(404, "Customer not found", "No customer with that ID", None);
-            }
-        },
-        Err(e) => return error_response(500, "Failed to get customer", &format!("{}", e), None),
-    };
+    let customer_item = customer_output.item
+        .ok_or_else(|| error_response(404, "Customer Not Found", "No customer with that ID", None))?;
+
+    let customer: Customer = serde_dynamo::from_item(customer_item)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None))?;
 
     // Query Tickets by customer id
-    let res = client.query()
+    let output = client.query()
         .table_name("Tickets")
         .index_name("CustomerIdIndex")
         .key_condition_expression("customer_id = :cid")
         .expression_attribute_values(":cid", AttributeValue::S(customer_id))
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query tickets for customer: {}", e), None))?;
 
-    let tickets = match res {
-        Ok(output) => {
-            let mut tickets_nocust = Vec::new();
-            for item in output.items.unwrap_or_default() {
-                match serde_dynamo::from_item(item) {
-                    Ok(t) => tickets_nocust.push(t),
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
-                }
-            }
+    let tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(output.items.unwrap_or_else(Vec::new))
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {}", e), None))?;
 
-            let tickets: Vec<Ticket> = tickets_nocust.into_iter().map(|details| Ticket {
-                details,
-                customer: customer.clone(),
-            }).collect();
+    let tickets: Vec<Ticket> = tickets_nocust.into_iter().map(|details| Ticket {
+        details,
+        customer: customer.clone(),
+    }).collect();
 
-            tickets
-        }
-        Err(e) => return error_response(500, "Failed to get tickets for customer", &format!("{}", e), None),
-    };
-
-    match serde_json::to_string(&tickets) {
-        Ok(json) => success_response(200, &json),
-        Err(e) => error_response(500, "Serialization Error", &format!("{}", e), None),
-    }
+    serde_json::to_value(&tickets)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize tickets: {}", e), None))
 }
 
 pub async fn handle_search_tickets_by_subject(
     query: &str,
     client: &Client,
-) -> Response<Body> {
+) -> Result<Value, Response<Body>> {
     // Search TicketSubjects (lowercase)
     // BatchGet Tickets
     let mut filter_exprs = Vec::new();
@@ -229,7 +192,7 @@ pub async fn handle_search_tickets_by_subject(
     }
 
     if filter_exprs.is_empty() {
-        return success_response(200, "[]");
+        return Ok(json!([]));
     }
 
     let filter_expression = filter_exprs.join(" AND ");
@@ -257,16 +220,13 @@ pub async fn handle_search_tickets_by_subject(
         if ticket_numbers.len() >= 15 {
             break;
         }
-        let page = match paginator.try_next().await {
-            Ok(p) => p,
-            Err(e) => return error_response(500, "Pagination Error", &format!("Failed to get next page: {}", e), None),
-        };
+        let page = paginator.try_next().await
+            .map_err(|e| error_response(500, "Pagination Error", &format!("Failed to get next page of ticket subjects: {}", e), None))?;
+
         match page {
             Some(item) => {
-                let tn: TicketNumberOnly = match serde_dynamo::from_item(item) {
-                    Ok(val) => val,
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject: {}", e), None),
-                };
+                let tn: TicketNumberOnly = serde_dynamo::from_item(item)
+                    .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject search result: {}", e), None))?;
                 ticket_numbers.push(tn.ticket_number);
             },
             None => break,
@@ -274,7 +234,7 @@ pub async fn handle_search_tickets_by_subject(
     }
 
     if ticket_numbers.is_empty() {
-        return success_response(200, "[]");
+        return Ok(json!([]));
     }
 
     // Batch Get full tickets from ticket numbers
@@ -286,50 +246,40 @@ pub async fn handle_search_tickets_by_subject(
         })
         .collect();
 
-    let ka = match KeysAndAttributes::builder()
+    let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
-        .build() {
-            Ok(res) => res,
-            Err(e) => return error_response(500, "Batch key build error", &format!("There could be an issue with the server configuration. Error: {}", e), None),
-        };
+        .build()
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {}", e), None))?;
 
-    let batch_res = client.batch_get_item()
+    let output = client.batch_get_item()
         .request_items("Tickets", ka)
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {}", e), None))?;
 
-    match batch_res {
-        Ok(output) => {
-            let mut tickets_nocust = Vec::<TicketWithoutCustomer>::new();
-            for item in output.responses.unwrap_or_default().remove("Tickets").unwrap_or_default() {
-                match serde_dynamo::from_item(item) {
-                    Ok(t) => tickets_nocust.push(t),
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
-                }
-            }
-
-            // BatchGetItem doesn't guarantee order results in the same order as the requests so sorting is needed
-            tickets_nocust.sort_by_key(|ticket| ticket.ticket_number);
-
-            let tickets = match batch_fetch_and_merge_customers(tickets_nocust, client).await {
-                Ok(t) => t,
-                Err(e) => return e,
-            };
-
-            match serde_json::to_string(&tickets) {
-                Ok(json) => success_response(200, &json),
-                Err(e) => error_response(500, "Serialization Error", &format!("{}", e), None),
-            }
-        }
-        Err(e) => error_response(500, "Failed to get ticket details", &format!("{}", e), None),
+    if let Some(unprocessed) = output.unprocessed_keys && !unprocessed.is_empty() {
+        return Err(error_response(503, "Partial Batch Success", "Some ticket details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the search")));
     }
+
+    let responses = output.responses.unwrap_or_else(HashMap::new);
+    let ticket_items = responses.get("Tickets").cloned().unwrap_or_else(Vec::new);
+    let mut tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {}", e), None))?;
+
+    // BatchGetItem doesn't guarantee order results in the same order as the requests so sorting is needed
+    tickets_nocust.sort_by_key(|ticket| ticket.ticket_number);
+
+    let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
+
+    serde_json::to_value(&tickets)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {}", e), None))
 }
 
-pub async fn handle_get_recent_tickets(client: &Client) -> Response<Body> {
+pub async fn handle_get_recent_tickets(client: &Client) -> Result<Value, Response<Body>> {
     // Query "Tickets" table directly using GSI "TicketNumberIndex" (pk="ALL")
     // Tickets now has gsi_pk = "ALL"
 
-    let res = client.query()
+    let output = client.query()
         .table_name("Tickets")
         .index_name("TicketNumberIndex")
         .key_condition_expression("gsi_pk = :pk")
@@ -337,30 +287,16 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Response<Body> {
         .scan_index_forward(false)
         .limit(30)
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query recent tickets: {}", e), None))?;
 
-    match res {
-        Ok(output) => {
-            let items = output.items.unwrap_or_default();
-            let mut tickets_nocust = Vec::new();
-            for item in items {
-                match serde_dynamo::from_item(item) {
-                    Ok(t) => tickets_nocust.push(t),
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
-                }
-            }
-            let tickets = match batch_fetch_and_merge_customers(tickets_nocust, client).await {
-                Ok(t) => t,
-                Err(e) => return e,
-            };
+    let tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(output.items.unwrap_or_else(Vec::new))
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {}", e), None))?;
 
-            match serde_json::to_string(&tickets) {
-                Ok(json) => success_response(200, &json),
-                Err(e) => error_response(500, "Serialization Error", &format!("{}", e), None),
-            }
-        }
-        Err(e) => error_response(500, "Failed to get recent tickets", &format!("{}", e), None),
-    }
+    let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
+
+    serde_json::to_value(&tickets)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize recent tickets: {}", e), None))
 }
 
 pub async fn handle_create_ticket(
@@ -368,9 +304,9 @@ pub async fn handle_create_ticket(
     subject: String,
     password: String,
     client: &Client,
-) -> Response<Body> {
+) -> Result<Value, Response<Body>> {
     // Atomically get next ticket number
-    let counter_res = client.update_item()
+    let counter_output = client.update_item()
         .table_name("Counters")
         .key("counter_name", AttributeValue::S("ticket_number".to_string()))
         .update_expression("SET counter_value = if_not_exists(counter_value, :zero) + :inc")
@@ -378,36 +314,20 @@ pub async fn handle_create_ticket(
         .expression_attribute_values(":zero", AttributeValue::N("0".to_string()))
         .return_values(ReturnValue::UpdatedNew)
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to increment ticket number: {}", e), None))?;
 
-    let CounterValue { counter_value: ticket_number } = {
-        let output = match counter_res {
-            Ok(o) => o,
-            Err(e) => {
-                return error_response(500, "Failed to get ticket number", &e.to_string(), None)
-            }
-        };
+    let attrs = counter_output.attributes
+        .ok_or_else(|| error_response(500, "Data Error", "Counter update returned no attributes", None))?;
 
-        let attrs = match output.attributes {
-            Some(a) => a,
-            None => {
-                return error_response(500, "Failed to get ticket number", "Update returned no attributes", None)
-            }
-        };
-
-        match serde_dynamo::from_item(attrs) {
-            Ok(v) => v,
-            Err(e) => {
-                return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket number value: {}", e), None)
-            }
-        }
-    };
+    let CounterValue { counter_value: ticket_number } = serde_dynamo::from_item(attrs)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket number: {}", e), None))?;
 
     let now = Utc::now().timestamp().to_string();
 
     let mut txn_builder = client.transact_write_items();
 
-    let put_ticket = match Put::builder()
+    let put_ticket = Put::builder()
         .table_name("Tickets")
         .item("ticket_number", AttributeValue::N(ticket_number.clone()))
         .item("gsi_pk", AttributeValue::S("ALL".to_string())) // Added for TicketNumberIndex
@@ -417,10 +337,8 @@ pub async fn handle_create_ticket(
         .item("password", AttributeValue::S(password.clone()))
         .item("created_at", AttributeValue::N(now.clone()))
         .item("last_updated", AttributeValue::N(now.clone()))
-        .build() {
-            Ok(p) => p,
-            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for Tickets: {}", e), None),
-        };
+        .build()
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {}", e), None))?;
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -429,15 +347,13 @@ pub async fn handle_create_ticket(
     );
 
     // TicketSubjects: Lowercase subject, standard fields for search
-    let put_subject = match Put::builder()
+    let put_subject = Put::builder()
         .table_name("TicketSubjects")
         .item("ticket_number", AttributeValue::N(ticket_number.clone()))
         .item("gsi_pk", AttributeValue::S("ALL".to_string()))
         .item("subject_lc", AttributeValue::S(subject.to_lowercase())) // Lowercase for search
-        .build() {
-            Ok(p) => p,
-            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for TicketSubjects: {}", e), None),
-        };
+        .build()
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {}", e), None))?;
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -445,14 +361,10 @@ pub async fn handle_create_ticket(
             .build()
     );
 
-    let txn_res = txn_builder.send().await;
+    txn_builder.send().await
+        .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute create ticket transaction: {}", e), None))?;
 
-    match txn_res {
-        Ok(_) => {
-            success_response(200, &json!({ "ticket_number": ticket_number }).to_string())
-        },
-        Err(e) => error_response(500, "Failed to create ticket", &e.to_string(), None),
-    }
+    Ok(json!({ "ticket_number": ticket_number }))
 }
 
 pub async fn handle_update_ticket(
@@ -461,20 +373,18 @@ pub async fn handle_update_ticket(
     status: Option<String>,
     password: Option<String>,
     client: &Client,
-) -> Response<Body> {
+) -> Result<Value, Response<Body>> {
     let mut txn_builder = client.transact_write_items();
 
     if let Some(s) = &subject {
-        let update_builder = aws_sdk_dynamodb::types::Update::builder()
+        let update = aws_sdk_dynamodb::types::Update::builder()
             .table_name("TicketSubjects")
             .key("ticket_number", AttributeValue::N(ticket_number.clone()))
             .update_expression("SET subject_lc = :s")
-            .expression_attribute_values(":s", AttributeValue::S(s.to_lowercase())); // Lowercase
+            .expression_attribute_values(":s", AttributeValue::S(s.to_lowercase())) // Lowercase
+            .build()
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket subjects: {}", e), None))?;
 
-        let update = match update_builder.build() {
-            Ok(u) => u,
-            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Update for TicketSubjects: {}", e), None),
-        };
         txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
     }
 
@@ -508,18 +418,15 @@ pub async fn handle_update_ticket(
         update_builder = update_builder.expression_attribute_values(k, v);
     }
 
-    let update = match update_builder.build() {
-        Ok(u) => u,
-        Err(e) => return error_response(500, "Failed to build Update for Tickets", &format!("Error: {}", e), None),
-    };
+    let update = update_builder.build()
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket: {}", e), None))?;
+
     txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
 
-    let res = txn_builder.send().await;
+    txn_builder.send().await
+        .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute update ticket transaction: {}", e), None))?;
 
-    match res {
-        Ok(_) => success_response(200, &json!({"ticket_number": ticket_number}).to_string()),
-        Err(e) => error_response(500, "Failed to update ticket", &format!("{}", e), None),
-    }
+    Ok(json!({"ticket_number": ticket_number}))
 }
 
 pub async fn handle_add_ticket_comment(
@@ -527,7 +434,7 @@ pub async fn handle_add_ticket_comment(
     comment_body: String,
     tech_name: String,
     client: &Client,
-) -> Response<Body> {
+) -> Result<Value, Response<Body>> {
     let comment = AttributeValue::M(
         vec![
             ("comment_body".to_string(), AttributeValue::S(comment_body)),
@@ -537,7 +444,7 @@ pub async fn handle_add_ticket_comment(
         .into_iter().collect()
     );
 
-    let res = client.update_item()
+    client.update_item()
         .table_name("Tickets")
         .key("ticket_number", AttributeValue::N(ticket_number.clone()))
         .update_expression("SET comments = list_append(if_not_exists(comments, :empty), :c), last_updated = :lu")
@@ -545,68 +452,57 @@ pub async fn handle_add_ticket_comment(
         .expression_attribute_values(":empty", AttributeValue::L(vec![]))
         .expression_attribute_values(":lu", AttributeValue::N(Utc::now().timestamp().to_string()))
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to add comment to ticket {}: {}", ticket_number, e), None))?;
 
-    match res {
-        Ok(_) => success_response(200, &json!({"ticket_number": ticket_number}).to_string()),
-        Err(e) => error_response(500, "Failed to add comment", &format!("{}", e), None),
-    }
+    Ok(json!({"ticket_number": ticket_number}))
 }
 
-pub async fn handle_get_ticket_last_updated(ticket_number: String, client: &Client) -> Response<Body> {
-    let res = client.get_item()
+pub async fn handle_get_ticket_last_updated(ticket_number: String, client: &Client) -> Result<Value, Response<Body>> {
+    let output = client.get_item()
         .table_name("Tickets")
         .key("ticket_number", AttributeValue::N(ticket_number.clone()))
         .projection_expression("last_updated")
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket last_updated: {}", e), None))?;
 
-    match res {
-        Ok(output) => {
-            if let Some(item) = output.item {
-                let lu: TicketLastUpdated = match serde_dynamo::from_item(item) {
-                    Ok(val) => val,
-                    Err(_) => return error_response(500, "Invalid data", "last_updated missing or invalid", None),
-                };
-                success_response(200, &json!({ "last_updated": lu.last_updated }).to_string())
-            } else {
-                error_response(404, "Ticket not found", "No ticket with that number", None)
-            }
-        },
-        Err(e) => error_response(500, "Failed to get ticket last_updated", &format!("{}", e), None),
-    }
+    let item = output.item
+        .ok_or_else(|| error_response(404, "Ticket Not Found", "No ticket with that number", None))?;
+
+    let lu: TicketLastUpdated = serde_dynamo::from_item(item)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket last_updated: {}", e), None))?;
+
+    Ok(json!({ "last_updated": lu.last_updated }))
 }
 
 // --------------------------
 // CUSTOMERS
 // --------------------------
 
-pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client) -> Response<Body> {
+pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client) -> Result<Value, Response<Body>> {
     // First query the phone index to get customer IDs
-    let index_res = client.query()
+    let index_output = client.query()
         .table_name("CustomerPhoneIndex")
         .key_condition_expression("phone_number = :p")
         .expression_attribute_values(":p", AttributeValue::S(phone_number))
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query phone index: {}", e), None))?;
 
-    let customer_ids: Vec<String> = match index_res {
-        Ok(output) => {
-            let items = output.items.unwrap_or_default();
-            let mut ids = Vec::new();
-            for item in items {
-                let cid: CustomerIdOnly = match serde_dynamo::from_item(item) {
-                     Ok(val) => val,
-                     Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize phone number index: {}", e), None),
-                };
-                ids.push(cid.customer_id);
-            }
-            ids
-        },
-        Err(e) => return error_response(500, "Failed to query phone index", &format!("{}", e), None),
-    };
+    let items = index_output.items.unwrap_or_else(Vec::new);
+    let mut customer_ids = Vec::new();
+    for item in items {
+        let cid: CustomerIdOnly = serde_dynamo::from_item(item)
+            .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize phone number index entry: {}", e), None))?;
+        customer_ids.push(cid.customer_id);
+    }
 
     // Batch get full customer details from Customers table
+    if customer_ids.is_empty() {
+        return Ok(json!([]));
+    }
+
     let keys: Vec<HashMap<String, AttributeValue>> = customer_ids.into_iter()
         .map(|id| {
             let mut key = HashMap::new();
@@ -615,70 +511,48 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
         })
         .collect();
 
-    if keys.is_empty() {
-        return success_response(200, "[]");
-    }
-
-    let ka_customers = match KeysAndAttributes::builder()
+    let ka_customers = KeysAndAttributes::builder()
         .set_keys(Some(keys))
-        // projection_expression is optional, if we want everything we can omit it.
-        // User asked for: "id, full_name, and primary_phone"
         .projection_expression("customer_id, full_name, phone_numbers")
-        .build() {
-            Ok(ka) => ka,
-            Err(e) => return error_response(500, "Failed to build batch get customers", &format!("{}", e), None),
-        };
+        .build()
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {}", e), None))?;
 
-    let batch_res = client.batch_get_item()
+    let batch_output = client.batch_get_item()
         .request_items("Customers", ka_customers)
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customer details: {}", e), None))?;
 
-    match batch_res {
-        Ok(output) => {
-            let responses = output.responses.unwrap_or_default();
-            let customers = responses.get("Customers").cloned().unwrap_or_default();
-            let mut json_items = Vec::new();
-            for item in customers {
-                match serde_dynamo::from_item(item) {
-                    Ok(json) => json_items.push(json),
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None),
-                }
-            }
-            success_response(200, &serde_json::Value::Array(json_items).to_string())
-        }
-        Err(e) => error_response(500, "Failed to get customer details", &format!("{}", e), None),
+    if let Some(unprocessed) = &batch_output.unprocessed_keys && !unprocessed.is_empty() {
+        return Err(error_response(530, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
     }
+
+    let responses = batch_output.responses.unwrap_or_else(HashMap::new);
+    let customers = responses.get("Customers").cloned().unwrap_or_else(Vec::new);
+    let json_items: Vec<Value> = serde_dynamo::from_items(customers)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer details: {}", e), None))?;
+    Ok(Value::Array(json_items))
 }
 
-pub async fn handle_get_customer_by_id(customer_id: String, client: &Client) -> Response<Body> {
-    let res = client.get_item()
+pub async fn handle_get_customer_by_id(customer_id: String, client: &Client) -> Result<Value, Response<Body>> {
+    let output = client.get_item()
         .table_name("Customers")
         .key("customer_id", AttributeValue::S(customer_id))
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {}", e), None))?;
 
-    let customer: Customer = match res {
-        Ok(output) => {
-            if let Some(item) = output.item {
-                match serde_dynamo::from_item(item) {
-                    Ok(customer) => customer,
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
-                }
-            } else {
-                return error_response(404, "Customer not found", "No customer with that ID", None)
-            }
-        }
-        Err(e) => return error_response(500, "Failed to get customer", &format!("{}", e), None),
-    };
+    let item = output.item
+        .ok_or_else(|| error_response(404, "Customer Not Found", "No customer with that ID", None))?;
 
-    match serde_json::to_string(&customer) {
-        Ok(json) => success_response(200, &json),
-        Err(e) => error_response(500, "Serialization Error", &format!("{}", e), None),
-    }
+    let customer: Customer = serde_dynamo::from_item(item)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None))?;
+
+    serde_json::to_value(&customer)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize customer: {}", e), None))
 }
 
-pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Response<Body> {
+pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Result<Value, Response<Body>> {
     // Search CustomerNames (lowercase)
     let query_lower = query.to_lowercase();
 
@@ -696,16 +570,12 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         if customer_ids.len() >= 15 {
             break;
         }
-        let item_opt = match paginator.try_next().await {
-            Ok(opt) => opt,
-            Err(e) => return error_response(500, "Pagination Error", &format!("Failed to scan customers: {}", e), None),
-        };
+        let item_opt = paginator.try_next().await
+            .map_err(|e| error_response(500, "Pagination Error", &format!("Failed to scan customer names: {}", e), None))?;
 
         if let Some(item) = item_opt {
-             let cid: CustomerIdOnly = match serde_dynamo::from_item(item) {
-                 Ok(val) => val,
-                 Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer search result: {}", e), None),
-             };
+             let cid: CustomerIdOnly = serde_dynamo::from_item(item)
+                 .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer search result: {}", e), None))?;
              customer_ids.push(cid.customer_id);
         } else {
             break;
@@ -713,7 +583,7 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
     }
 
     if customer_ids.is_empty() {
-        return success_response(200, "[]");
+        return Ok(json!([]));
     }
 
     // Batch Get full customers
@@ -725,35 +595,27 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         })
         .collect();
 
-    let ka = match KeysAndAttributes::builder()
+    let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
-        .build() {
-            Ok(k) => k,
-            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build KeysAndAttributes: {}", e), None),
-        };
+        .build()
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {}", e), None))?;
 
-    let batch_res = client.batch_get_item()
+    let batch_output = client.batch_get_item()
         .request_items("Customers", ka)
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customer details: {}", e), None))?;
 
-    let json_items = match batch_res {
-        Ok(output) => {
-            let responses = output.responses.unwrap_or_default();
-            let items = responses.get("Customers").cloned().unwrap_or_default();
-            let mut json_items = Vec::new();
-            for item in items {
-                match serde_dynamo::from_item(item) {
-                    Ok(json) => json_items.push(json),
-                    Err(e) => return error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None),
-                }
-            }
-            json_items
-        }
-        Err(e) => return error_response(500, "Failed to get customer details", &format!("{}", e), None),
-    };
+    if let Some(unprocessed) = &batch_output.unprocessed_keys && !unprocessed.is_empty() {
+        return Err(error_response(503, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the search")));
+    }
 
-    success_response(200, &serde_json::Value::Array(json_items).to_string())
+    let responses = batch_output.responses.unwrap_or_else(HashMap::new);
+    let items = responses.get("Customers").cloned().unwrap_or_else(Vec::new);
+    let json_items: Vec<Value> = serde_dynamo::from_items(items)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer details: {}", e), None))?;
+
+    Ok(Value::Array(json_items))
 }
 
 pub async fn handle_create_customer(
@@ -761,18 +623,18 @@ pub async fn handle_create_customer(
     email: String,
     phone_numbers: Vec<PhoneNumber>,
     client: &Client,
-) -> Response<Body> {
-    let customer_id = uuid::Uuid::new_v4().to_string();
+) -> Result<Value, Response<Body>> {
+    let customer_id = generate_short_id(10);
     let now = Utc::now().timestamp().to_string();
 
     let mut txn_builder = client.transact_write_items();
 
-    let put_customer = match Put::builder()
+    let put_customer = Put::builder()
         .table_name("Customers")
+        .condition_expression("attribute_not_exists(customer_id)")
         .item("customer_id", AttributeValue::S(customer_id.clone()))
         .item("full_name", AttributeValue::S(full_name.clone())) // Stored with original casing
         .item("email", AttributeValue::S(email.clone()))
-
         .item("phone_numbers", AttributeValue::L(
             phone_numbers.iter().map(|p| {
                 AttributeValue::M(
@@ -786,10 +648,8 @@ pub async fn handle_create_customer(
         ))
         .item("created_at", AttributeValue::N(now.clone()))
         .item("last_updated", AttributeValue::N(now.clone()))
-        .build() {
-            Ok(p) => p,
-            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for Customers: {}", e), None),
-        };
+        .build()
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer Put item: {}", e), None))?;
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -797,14 +657,12 @@ pub async fn handle_create_customer(
             .build()
     );
 
-    let put_name = match Put::builder()
+    let put_name = Put::builder()
         .table_name("CustomerNames")
         .item("customer_id", AttributeValue::S(customer_id.clone()))
         .item("full_name_lc", AttributeValue::S(full_name.to_lowercase())) // Lowercase for search
-        .build() {
-            Ok(p) => p,
-            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for CustomerNames: {}", e), None),
-        };
+        .build()
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer name Put item: {}", e), None))?;
 
     txn_builder = txn_builder.transact_items(
         TransactWriteItem::builder()
@@ -813,23 +671,24 @@ pub async fn handle_create_customer(
     );
 
     for phone in &phone_numbers {
-        let phone_put = match Put::builder()
+        let phone_put = Put::builder()
             .table_name("CustomerPhoneIndex")
             .item("phone_number", AttributeValue::S(phone.number.clone()))
             .item("customer_id", AttributeValue::S(customer_id.clone()))
-            .build() {
-                Ok(p) => p,
-                Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for CustomerPhoneIndex: {}", e), None),
-            };
+            .build()
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer phone Put item for {}: {}", phone.number, e), None))?;
         txn_builder = txn_builder.transact_items(TransactWriteItem::builder().put(phone_put).build());
     }
 
-    let txn_res = txn_builder.send().await;
+    txn_builder.send().await
+        .map_err(|e| {
+            if let Some(service_err) = e.as_service_error() && service_err.is_transaction_canceled_exception() {
+                return error_response(409, "Conflict", "Customer ID collision detected. This is extremely rare, but please try again.", None);
+            }
+            error_response(500, "Transaction Error", &format!("Failed to execute create customer transaction: {}", e), None)
+        })?;
 
-    match txn_res {
-        Ok(_) => success_response(200, &json!({ "customer_id": customer_id }).to_string()),
-        Err(e) => error_response(500, "Failed to create customer", &format!("{}", e), None),
-    }
+    Ok(json!({ "customer_id": customer_id }))
 }
 
 pub async fn handle_update_customer(
@@ -838,73 +697,60 @@ pub async fn handle_update_customer(
     email: Option<String>,
     phone_numbers: Option<Vec<PhoneNumber>>,
     client: &Client,
-) -> Response<Body> {
+) -> Result<Value, Response<Body>> {
     let mut txn_builder = client.transact_write_items();
 
     // 1. Handle Phone Changes (Index management)
     if let Some(ref new_phones) = phone_numbers {
         // First, get the current customer to find old phone numbers
-        let current_res = client.get_item()
+        let current_output = client.get_item()
             .table_name("Customers")
             .key("customer_id", AttributeValue::S(customer_id.clone()))
             .projection_expression("phone_numbers")
             .send()
-            .await;
+            .await
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get current customer to update phones: {}", e), None))?;
 
-        let old_phones: Vec<String> = match current_res {
-            Ok(output) => {
-                if let Some(item) = output.item {
-                    let res: CustomerPhonesOnly = match serde_dynamo::from_item(item) {
-                        Ok(val) => val,
-                        Err(e) => return error_response(500, "Data Integrity Error", &format!("Failed to parse phone number to update it: {}", e), None),
-                    };
-                    res.phone_numbers.into_iter().map(|p| p.number).collect()
-                } else {
-                    Vec::new()
-                }
-            },
-            Err(e) => return error_response(500, "Failed to get current customer", &format!("{}", e), None),
+        let old_phones: Vec<String> = if let Some(item) = current_output.item {
+            let res: CustomerPhonesOnly = serde_dynamo::from_item(item)
+                .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse current phone numbers: {}", e), None))?;
+            res.phone_numbers.into_iter().map(|p| p.number).collect()
+        } else {
+            Vec::new()
         };
 
         // Delete old phone index entries
         for phone in &old_phones {
-            let delete = match Delete::builder()
+            let delete = Delete::builder()
                 .table_name("CustomerPhoneIndex")
                 .key("phone_number", AttributeValue::S(phone.clone()))
                 .key("customer_id", AttributeValue::S(customer_id.clone()))
-                .build() {
-                    Ok(d) => d,
-                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Delete item for CustomerPhoneIndex: {}", e), None),
-                };
+                .build()
+                .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build delete item for phone {}: {}", phone, e), None))?;
             txn_builder = txn_builder.transact_items(TransactWriteItem::builder().delete(delete).build());
         }
 
         // Add new phone index entries
         for phone in new_phones {
-            let put = match Put::builder()
+            let put = Put::builder()
                 .table_name("CustomerPhoneIndex")
                 .item("phone_number", AttributeValue::S(phone.number.clone()))
                 .item("customer_id", AttributeValue::S(customer_id.clone()))
-                .build() {
-                    Ok(p) => p,
-                    Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Put item for CustomerPhoneIndex: {}", e), None),
-                };
+                .build()
+                .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build Put item for phone {}: {}", phone.number, e), None))?;
             txn_builder = txn_builder.transact_items(TransactWriteItem::builder().put(put).build());
         }
     }
 
     // 2. Update CustomerNames (if full_name changed)
     if let Some(ref fn_val) = full_name {
-        let update_builder = aws_sdk_dynamodb::types::Update::builder()
+        let update = aws_sdk_dynamodb::types::Update::builder()
             .table_name("CustomerNames")
             .key("customer_id", AttributeValue::S(customer_id.clone()))
             .update_expression("SET full_name_lc = :fn")
-            .expression_attribute_values(":fn", AttributeValue::S(fn_val.to_lowercase())); // Lowercase for search
-
-        let update = match update_builder.build() {
-            Ok(u) => u,
-            Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Update for CustomerNames: {}", e), None),
-        };
+            .expression_attribute_values(":fn", AttributeValue::S(fn_val.to_lowercase())) // Lowercase for search
+            .build()
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for customer names: {}", e), None))?;
         txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
     }
 
@@ -953,43 +799,32 @@ pub async fn handle_update_customer(
         update_builder = update_builder.expression_attribute_values(k, v);
     }
 
-    let update = match update_builder.build() {
-        Ok(u) => u,
-        Err(e) => return error_response(500, "Builder Error", &format!("Failed to build Update for Customers: {}", e), None),
-    };
+    let update = update_builder.build()
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for customer: {}", e), None))?;
     txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
 
     // Execute Transaction
-    let txn_res = txn_builder.send().await;
+    txn_builder.send().await
+        .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute update customer transaction: {}", e), None))?;
 
-    match txn_res {
-        Ok(_) => success_response(200, &json!({ "customer_id": customer_id }).to_string()),
-        Err(e) => error_response(500, "Failed to update customer", &format!("{}", e), None),
-    }
+    Ok(json!({ "customer_id": customer_id }))
 }
 
-pub async fn handle_get_customer_last_updated(customer_id: String, client: &Client) -> Response<Body> {
-    let res = client.get_item()
+pub async fn handle_get_customer_last_updated(customer_id: String, client: &Client) -> Result<Value, Response<Body>> {
+    let item = client.get_item()
         .table_name("Customers")
-        .key("customer_id", AttributeValue::S(customer_id.clone()))
+        .key("customer_id", AttributeValue::S(customer_id))
         .projection_expression("last_updated")
         .send()
-        .await;
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {}", e), None))?
+        .item
+        .ok_or_else(|| error_response(404, "Customer Not Found", "No customer with that ID", None))?;
 
-    match res {
-        Ok(output) => {
-            if let Some(item) = output.item {
-                let lu: TicketLastUpdated = match serde_dynamo::from_item(item) {
-                    Ok(val) => val,
-                    Err(_) => return error_response(500, "Invalid data", "last_updated missing or invalid", None),
-                };
-                success_response(200, &json!({ "last_updated": lu.last_updated }).to_string())
-            } else {
-                error_response(404, "Customer not found", "No customer with that ID", None)
-            }
-        },
-        Err(e) => error_response(500, "Failed to get customer last_updated", &format!("{}", e), None),
-    }
+    let lu: TicketLastUpdated = serde_dynamo::from_item(item)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer last_updated: {}", e), None))?;
+
+    Ok(json!({ "last_updated": lu.last_updated }))
 }
 
 async fn batch_fetch_and_merge_customers(
@@ -1018,23 +853,27 @@ async fn batch_fetch_and_merge_customers(
         .set_keys(Some(keys))
         .projection_expression("customer_id, full_name, email, phone_numbers, created_at, last_updated") // Fetch full customer
         .build()
-        .map_err(|e| error_response(500, "Failed to build keys", &format!("{}", e), None))?;
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {}", e), None))?;
 
-    let batch_res = client.batch_get_item()
+    let batch_output = client.batch_get_item()
         .request_items("Customers", ka)
         .send()
         .await
-        .map_err(|e| error_response(500, "Failed to batch get customers", &format!("{}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customers: {}", e), None))?;
 
-    let responses = batch_res.responses.unwrap_or_default();
-    let customer_items = responses.get("Customers").cloned().unwrap_or_default();
-
-    let mut customer_map: HashMap<String, Customer> = HashMap::new();
-    for item in customer_items {
-        if let Ok(cust) = serde_dynamo::from_item::<_, Customer>(item) {
-            customer_map.insert(cust.customer_id.clone(), cust);
-        }
+    if let Some(unprocessed) = batch_output.unprocessed_keys && !unprocessed.is_empty() {
+        return Err(error_response(503, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Merge failed.", Some("Check throughput and retry")));
     }
+
+    let responses = batch_output.responses.unwrap_or_else(HashMap::new);
+    let customer_items = responses.get("Customers").cloned().unwrap_or_else(Vec::new);
+
+    let customers_vec: Vec<Customer> = serde_dynamo::from_items(customer_items)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customers in batch: {}", e), None))?;
+
+    let customer_map: HashMap<String, Customer> = customers_vec.into_iter()
+        .map(|c| (c.customer_id.clone(), c))
+        .collect();
 
     let mut tickets = Vec::new();
     for details in tickets_nocust {

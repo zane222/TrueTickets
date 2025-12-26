@@ -2,6 +2,8 @@
 
 use lambda_http::{Body, Response};
 use serde_json::{json};
+use rand::Rng;
+use rand::distr::Alphanumeric;
 
 /// CORS origin header for all responses
 pub fn get_cors_origin_header() -> (&'static str, &'static str) {
@@ -44,6 +46,14 @@ pub fn error_response(
         .header("Content-Type", "application/json")
         .body(body.to_string().into())
         .expect("Couldn't create error response")
+}
+
+pub fn generate_short_id(len: usize) -> String {
+    rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
 }
 
 /// Build a successful response with CORS headers

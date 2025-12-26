@@ -26,8 +26,6 @@ rand = "0.9"
 aws-sdk-dynamodb = "1.101.0"
 chrono = "0.4.42"
 serde_dynamo = { version = "4.3.0", features = ["aws-sdk-dynamodb+1"] }
-uuid = { version = "1.0", features = ["v4"] }
-
 
 [profile.release]
 strip = true
