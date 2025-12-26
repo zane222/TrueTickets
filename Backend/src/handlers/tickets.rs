@@ -3,12 +3,12 @@ use serde_json::{json, Value};
 use lambda_http::{Body, Response};
 use aws_sdk_dynamodb::{
     Client,
-    types::{AttributeValue, Put, TransactWriteItem, ReturnValue, KeysAndAttributes},
+    types::{AttributeValue, Put, TransactWriteItem, KeysAndAttributes},
 };
 use std::collections::{HashMap, HashSet};
 use crate::http::error_response;
 use crate::models::{
-    TicketWithoutCustomer, Ticket, Customer, CounterValue, 
+    TicketWithoutCustomer, Ticket, Customer, CounterValue,
     TicketNumberOnly, TicketLastUpdated
 };
 
@@ -22,7 +22,7 @@ pub async fn handle_get_ticket_by_number(
         .key("ticket_number", AttributeValue::N(ticket_number.to_string()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{}', probably there's no ticket under that number: {}", ticket_number.to_string(), e), None))?;
 
     let ticket_item = output.item
         .ok_or_else(|| error_response(404, "Ticket Not Found", "No ticket with that number", None))?;
@@ -403,7 +403,7 @@ pub async fn handle_get_ticket_last_updated(ticket_number: String, client: &Clie
         .projection_expression("last_updated")
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket last_updated: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{}', probably there's no ticket under that number: {}", ticket_number.clone(), e), None))?;
 
     let item = output.item
         .ok_or_else(|| error_response(404, "Ticket Not Found", "No ticket with that number", None))?;
