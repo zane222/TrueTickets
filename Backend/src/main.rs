@@ -4,8 +4,6 @@ mod http;
 mod models;
 
 use lambda_http::{run, service_fn, Body, Request, Response, RequestExt};
-use serde_json::Value;
-use serde::de::DeserializeOwned;
 use aws_config::BehaviorVersion;
 use aws_sdk_cognitoidentityprovider::Client as CognitoClient;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
@@ -18,7 +16,7 @@ use handlers::{
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
     handle_get_ticket_last_updated, handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_customer_last_updated, handle_get_tickets_by_customer_id,
-    handle_search_customers_by_name, handle_get_customer_by_id
+    handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix
 };
 use models::PhoneNumber;
 use http::{error_response, handle_options, success_response, parse_json_body, get_value_in_json};
@@ -146,20 +144,17 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         // TICKETS
         // -------------------------
         ("/tickets", "GET") => {
-            let result = if let Some(number) = event.query_string_parameters().first("number") {
-                handle_get_ticket_by_number(number, &dynamodb_client).await
-            } else if let Some(query) = event.query_string_parameters().first("subject_query").or(event.query_string_parameters().first("query")) {
-                handle_search_tickets_by_subject(query, &dynamodb_client).await
-            } else if let Some(customer_id) = event.query_string_parameters().first("customer_id") {
-                handle_get_tickets_by_customer_id(customer_id.to_string(), &dynamodb_client).await
-            } else {
-                // Check if path is /tickets/{id}
-                let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-                if parts.len() == 2 && parts[0] == "tickets" {
-                    handle_get_ticket_by_number(parts[1], &dynamodb_client).await
-                } else {
-                    return error_response(400, "Missing query parameter", "Provide 'number', 'query', 'customer_id', or use /tickets/{id}", None);
-                }
+            let (first_parameter, value) = match event.query_string_parameters().iter().next() {
+                Some((k, v)) => (k.to_string(), v.to_string()),
+                None => return error_response(400, "Missing query parameter", "Provide a query parameter or use /tickets/{id}", None),
+            };
+
+            let result = match first_parameter.as_str() {
+                "number" => handle_get_ticket_by_number(&value, &dynamodb_client).await,
+                "ticket_number_last_3_digits" => handle_get_tickets_by_suffix(&value, &dynamodb_client).await,
+                "subject_query" => handle_search_tickets_by_subject(&value, &dynamodb_client).await,
+                "customer_id" => handle_get_tickets_by_customer_id(value.to_string(), &dynamodb_client).await,
+                _ => return error_response(400, "Unknown query parameter", &format!("Unsupported query parameter: {}", first_parameter), None),
             };
 
             match result {
@@ -172,6 +167,37 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
+        }
+        ("/query_all", "GET") => {
+            let query = match event.query_string_parameters().first("query") {
+                Some(q) => q.to_string(),
+                None => return error_response(400, "Missing query parameter", "Query parameter 'query' is required", None),
+            };
+
+            // Execute both searches concurrently
+            let (tickets_result, customers_result) = tokio::join!(
+                handle_search_tickets_by_subject(&query, &dynamodb_client),
+                handle_search_customers_by_name(&query, &dynamodb_client)
+            );
+
+            // Handle results
+            let tickets = match tickets_result {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
+
+            let customers = match customers_result {
+                Ok(val) => val,
+                Err(resp) => return resp,
+            };
+
+            // Combine into single response
+            let response = serde_json::json!({
+                "tickets": tickets,
+                "customers": customers
+            });
+
+            success_response(200, &response.to_string())
         }
         ("/ticket", "POST") => {
             let body = match parse_json_body(event.body()) {

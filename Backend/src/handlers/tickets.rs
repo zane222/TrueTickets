@@ -218,66 +218,88 @@ pub async fn handle_create_ticket(
     password: String,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
-    // Atomically get next ticket number
-    let counter_output = client.update_item()
-        .table_name("Counters")
-        .key("counter_name", AttributeValue::S("ticket_number".to_string()))
-        .update_expression("SET counter_value = if_not_exists(counter_value, :zero) + :inc")
-        .expression_attribute_values(":inc", AttributeValue::N("1".to_string()))
-        .expression_attribute_values(":zero", AttributeValue::N("0".to_string()))
-        .return_values(ReturnValue::UpdatedNew)
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to increment ticket number: {}", e), None))?;
+    let mut retry_count = 0;
+    const MAX_RETRIES: u32 = 5;
 
-    let attrs = counter_output.attributes
-        .ok_or_else(|| error_response(500, "Data Error", "Counter update returned no attributes", None))?;
+    loop {
+        // 1. Get current counter value
+        let counter_get = client.get_item()
+            .table_name("Counters")
+            .key("counter_name", AttributeValue::S("ticket_number".to_string()))
+            .consistent_read(true)
+            .send()
+            .await
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to read ticket counter: {}", e), None))?;
 
-    let CounterValue { counter_value: ticket_number } = serde_dynamo::from_item(attrs)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket number: {}", e), None))?;
+        let current_val: i64 = match counter_get.item {
+            Some(item) => {
+                let cv: CounterValue = serde_dynamo::from_item(item)
+                    .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse ticket counter: {}", e), None))?;
+                cv.counter_value.parse::<i64>().map_err(|e| error_response(500, "Data Integrity Error", &format!("Ticket counter value '{}' is not a valid number: {}", cv.counter_value, e), None))?
+            }
+            None => return Err(error_response(500, "Data Integrity Error", "Ticket counter not found in database. Please initialize the counter.", None)),
+        };
 
-    let now = Utc::now().timestamp().to_string();
+        let next_val = current_val + 1;
+        let ticket_number = next_val.to_string();
+        let now = Utc::now().timestamp().to_string();
 
-    let mut txn_builder = client.transact_write_items();
-
-    let put_ticket = Put::builder()
-        .table_name("Tickets")
-        .item("ticket_number", AttributeValue::N(ticket_number.clone()))
-        .item("gsi_pk", AttributeValue::S("ALL".to_string())) // Added for TicketNumberIndex
-        .item("subject", AttributeValue::S(subject.clone())) // Stored with original casing
-        .item("customer_id", AttributeValue::S(customer_id.clone()))
-        .item("status", AttributeValue::S("Diagnosing".to_string()))
-        .item("password", AttributeValue::S(password.clone()))
-        .item("created_at", AttributeValue::N(now.clone()))
-        .item("last_updated", AttributeValue::N(now.clone()))
-        .build()
-        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {}", e), None))?;
-
-    txn_builder = txn_builder.transact_items(
-        TransactWriteItem::builder()
-            .put(put_ticket)
+        // 2. Transact: Atomic increment (if matches current) + Puts
+        let update_counter = aws_sdk_dynamodb::types::Update::builder()
+            .table_name("Counters")
+            .key("counter_name", AttributeValue::S("ticket_number".to_string()))
+            .update_expression("SET counter_value = :new")
+            .condition_expression("counter_value = :old OR attribute_not_exists(counter_value)")
+            .expression_attribute_values(":new", AttributeValue::N(next_val.to_string()))
+            .expression_attribute_values(":old", AttributeValue::N(current_val.to_string()))
             .build()
-    );
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build counter update: {}", e), None))?;
 
-    // TicketSubjects: Lowercase subject, standard fields for search
-    let put_subject = Put::builder()
-        .table_name("TicketSubjects")
-        .item("ticket_number", AttributeValue::N(ticket_number.clone()))
-        .item("gsi_pk", AttributeValue::S("ALL".to_string()))
-        .item("subject_lc", AttributeValue::S(subject.to_lowercase())) // Lowercase for search
-        .build()
-        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {}", e), None))?;
-
-    txn_builder = txn_builder.transact_items(
-        TransactWriteItem::builder()
-            .put(put_subject)
+        let put_ticket = Put::builder()
+            .table_name("Tickets")
+            .item("ticket_number", AttributeValue::N(ticket_number.clone()))
+            .item("gsi_pk", AttributeValue::S("ALL".to_string()))
+            .item("subject", AttributeValue::S(subject.clone()))
+            .item("customer_id", AttributeValue::S(customer_id.clone()))
+            .item("status", AttributeValue::S("Diagnosing".to_string()))
+            .item("password", AttributeValue::S(password.clone()))
+            .item("created_at", AttributeValue::N(now.clone()))
+            .item("last_updated", AttributeValue::N(now.clone()))
             .build()
-    );
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {}", e), None))?;
 
-    txn_builder.send().await
-        .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute create ticket transaction: {}", e), None))?;
+        let put_subject = Put::builder()
+            .table_name("TicketSubjects")
+            .item("ticket_number", AttributeValue::N(ticket_number.clone()))
+            .item("gsi_pk", AttributeValue::S("ALL".to_string()))
+            .item("subject_lc", AttributeValue::S(subject.to_lowercase()))
+            .build()
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {}", e), None))?;
 
-    Ok(json!({ "ticket_number": ticket_number }))
+        let result = client.transact_write_items()
+            .transact_items(TransactWriteItem::builder().update(update_counter).build())
+            .transact_items(TransactWriteItem::builder().put(put_ticket).build())
+            .transact_items(TransactWriteItem::builder().put(put_subject).build())
+            .send()
+            .await;
+
+        match result {
+            Ok(_) => return Ok(json!({ "ticket_number": ticket_number })),
+            Err(e) => {
+                if let Some(service_err) = e.as_service_error() {
+                    if service_err.is_transaction_canceled_exception() {
+                        // Check if it's a condition failure (concurrent update)
+                        if retry_count < MAX_RETRIES {
+                            retry_count += 1;
+                            // Small backoff could be added here
+                            continue;
+                        }
+                    }
+                }
+                return Err(error_response(500, "Transaction Error", &format!("Failed to execute create ticket transaction: {}", e), None));
+            }
+        }
+    }
 }
 
 pub async fn handle_update_ticket(
@@ -287,7 +309,7 @@ pub async fn handle_update_ticket(
     password: Option<String>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
-    let mut txn_builder = client.transact_write_items();
+    let mut txn_items = Vec::new();
 
     if let Some(s) = &subject {
         let update = aws_sdk_dynamodb::types::Update::builder()
@@ -298,7 +320,7 @@ pub async fn handle_update_ticket(
             .build()
             .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket subjects: {}", e), None))?;
 
-        txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
+        txn_items.push(TransactWriteItem::builder().update(update).build());
     }
 
     let mut update_parts = Vec::new();
@@ -334,9 +356,12 @@ pub async fn handle_update_ticket(
     let update = update_builder.build()
         .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket: {}", e), None))?;
 
-    txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
+    txn_items.push(TransactWriteItem::builder().update(update).build());
 
-    txn_builder.send().await
+    client.transact_write_items()
+        .set_transact_items(Some(txn_items))
+        .send()
+        .await
         .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute update ticket transaction: {}", e), None))?;
 
     Ok(json!({"ticket_number": ticket_number}))
@@ -387,6 +412,84 @@ pub async fn handle_get_ticket_last_updated(ticket_number: String, client: &Clie
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket last_updated: {}", e), None))?;
 
     Ok(json!({ "last_updated": lu.last_updated }))
+}
+
+pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Result<Value, Response<Body>> {
+    let suffix_val: i64 = suffix.parse::<i64>().map_err(|_| error_response(400, "Invalid Suffix", "Suffix must be a number", None))?;
+
+    // 1. Get current counter
+    let counter_output = client.get_item()
+        .table_name("Counters")
+        .key("counter_name", AttributeValue::S("ticket_number".to_string()))
+        .consistent_read(true)
+        .send()
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to read ticket counter: {}", e), None))?;
+
+    let current_counter: i64 = match counter_output.item {
+        Some(item) => {
+            let cv: CounterValue = serde_dynamo::from_item(item)
+                .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse ticket counter: {}", e), None))?;
+            cv.counter_value.parse::<i64>().map_err(|e| error_response(500, "Data Integrity Error", &format!("Ticket counter value '{}' is not a valid number: {}", cv.counter_value, e), None))?
+        },
+        None => return Err(error_response(500, "Data Integrity Error", "Ticket counter not found in database. Please initialize the counter.", None)),
+    };
+
+    // 2. Calculate potential ticket numbers
+    let mut ticket_numbers = Vec::new();
+    let mut current_base = (current_counter / 1000) * 1000 + suffix_val;
+    if current_base > current_counter { // if the query is 200 and the counter is 30150, then the base is 30200, which is too large, the queries should start at 1000 below that
+        current_base -= 1000;
+    }
+
+    while current_base > 0 && ticket_numbers.len() < 7 {
+        ticket_numbers.push(current_base.to_string());
+        current_base -= 1000;
+    }
+
+    if ticket_numbers.is_empty() {
+        return Ok(json!([]));
+    }
+
+    // 3. Batch Get Tickets
+    let keys: Vec<HashMap<String, AttributeValue>> = ticket_numbers.into_iter()
+        .map(|tn| {
+            let mut key = HashMap::new();
+            key.insert("ticket_number".to_string(), AttributeValue::N(tn));
+            key
+        })
+        .collect();
+
+    let ka = KeysAndAttributes::builder()
+        .set_keys(Some(keys))
+        .build()
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {}", e), None))?;
+
+    let output = client.batch_get_item()
+        .request_items("Tickets", ka)
+        .send()
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {}", e), None))?;
+
+    if let Some(unprocessed) = &output.unprocessed_keys {
+        if !unprocessed.is_empty() {
+            return Err(error_response(503, "Partial Batch Success", "Some ticket details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
+        }
+    }
+
+    let responses = output.responses.unwrap_or_else(HashMap::new);
+    let ticket_items = responses.get("Tickets").cloned().unwrap_or_else(Vec::new);
+    let mut tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {}", e), None))?;
+
+    // Sort descending by ticket number (most recent first)
+    tickets_nocust.sort_by(|a, b| b.ticket_number.cmp(&a.ticket_number));
+
+    // 4. Merge customers
+    let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
+
+    serde_json::to_value(&tickets)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {}", e), None))
 }
 
 async fn batch_fetch_and_merge_customers(

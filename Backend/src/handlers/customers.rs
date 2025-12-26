@@ -54,8 +54,10 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customer details: {}", e), None))?;
 
-    if let Some(unprocessed) = &batch_output.unprocessed_keys && !unprocessed.is_empty() {
-        return Err(error_response(530, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
+    if let Some(unprocessed) = &batch_output.unprocessed_keys {
+        if !unprocessed.is_empty() {
+            return Err(error_response(530, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
+        }
     }
 
     let responses = batch_output.responses.unwrap_or_else(HashMap::new);
@@ -84,18 +86,35 @@ pub async fn handle_get_customer_by_id(customer_id: String, client: &Client) -> 
 }
 
 pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Result<Value, Response<Body>> {
-    // Search CustomerNames (lowercase)
-    let query_lower = query.to_lowercase();
+    let mut filter_exprs = Vec::new();
+    let mut expr_vals = HashMap::new();
 
-    let mut customer_ids: Vec<String> = Vec::new();
+    for (i, word) in query.split_whitespace().map(|q| q.to_lowercase()).enumerate() {
+        let key = format!(":q{}", i);
+        filter_exprs.push(format!("contains(full_name_lc, {})", key));
+        expr_vals.insert(key, AttributeValue::S(word));
+    }
 
-    let mut paginator = client.scan()
+    if filter_exprs.is_empty() {
+        return Ok(json!([]));
+    }
+
+    let filter_expression = filter_exprs.join(" AND ");
+
+    let mut scan_builder = client.scan()
         .table_name("CustomerNames")
-        .filter_expression("contains(full_name_lc, :q)")
-        .expression_attribute_values(":q", AttributeValue::S(query_lower))
+        .filter_expression(filter_expression);
+
+    for (k, v) in expr_vals {
+        scan_builder = scan_builder.expression_attribute_values(k, v);
+    }
+
+    let mut paginator = scan_builder
         .into_paginator()
         .items()
         .send();
+
+    let mut customer_ids: Vec<String> = Vec::new();
 
     loop {
         if customer_ids.len() >= 15 {
@@ -106,7 +125,7 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
 
         if let Some(item) = item_opt {
              let cid: CustomerIdOnly = serde_dynamo::from_item(item)
-                 .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer search result: {}", e), None))?;
+                  .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer search result: {}", e), None))?;
              customer_ids.push(cid.customer_id);
         } else {
             break;
@@ -137,8 +156,10 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customer details: {}", e), None))?;
 
-    if let Some(unprocessed) = &batch_output.unprocessed_keys && !unprocessed.is_empty() {
-        return Err(error_response(503, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the search")));
+    if let Some(unprocessed) = &batch_output.unprocessed_keys {
+        if !unprocessed.is_empty() {
+            return Err(error_response(503, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the search")));
+        }
     }
 
     let responses = batch_output.responses.unwrap_or_else(HashMap::new);
@@ -158,7 +179,7 @@ pub async fn handle_create_customer(
     let customer_id = generate_short_id(10);
     let now = Utc::now().timestamp().to_string();
 
-    let mut txn_builder = client.transact_write_items();
+    let mut txn_items = Vec::new();
 
     let put_customer = Put::builder()
         .table_name("Customers")
@@ -182,11 +203,7 @@ pub async fn handle_create_customer(
         .build()
         .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer Put item: {}", e), None))?;
 
-    txn_builder = txn_builder.transact_items(
-        TransactWriteItem::builder()
-            .put(put_customer)
-            .build()
-    );
+    txn_items.push(TransactWriteItem::builder().put(put_customer).build());
 
     let put_name = Put::builder()
         .table_name("CustomerNames")
@@ -195,11 +212,7 @@ pub async fn handle_create_customer(
         .build()
         .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer name Put item: {}", e), None))?;
 
-    txn_builder = txn_builder.transact_items(
-        TransactWriteItem::builder()
-            .put(put_name)
-            .build()
-    );
+    txn_items.push(TransactWriteItem::builder().put(put_name).build());
 
     for phone in &phone_numbers {
         let phone_put = Put::builder()
@@ -208,13 +221,18 @@ pub async fn handle_create_customer(
             .item("customer_id", AttributeValue::S(customer_id.clone()))
             .build()
             .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer phone Put item for {}: {}", phone.number, e), None))?;
-        txn_builder = txn_builder.transact_items(TransactWriteItem::builder().put(phone_put).build());
+        txn_items.push(TransactWriteItem::builder().put(phone_put).build());
     }
 
-    txn_builder.send().await
+    client.transact_write_items()
+        .set_transact_items(Some(txn_items))
+        .send()
+        .await
         .map_err(|e| {
-            if let Some(service_err) = e.as_service_error() && service_err.is_transaction_canceled_exception() {
-                return error_response(409, "Conflict", "Customer ID collision detected. This is extremely rare, but please try again.", None);
+            if let Some(service_err) = e.as_service_error() {
+                if service_err.is_transaction_canceled_exception() {
+                    return error_response(409, "Conflict", "Customer ID collision detected. This is extremely rare, but please try again.", None);
+                }
             }
             error_response(500, "Transaction Error", &format!("Failed to execute create customer transaction: {}", e), None)
         })?;
@@ -229,7 +247,7 @@ pub async fn handle_update_customer(
     phone_numbers: Option<Vec<PhoneNumber>>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
-    let mut txn_builder = client.transact_write_items();
+    let mut txn_items = Vec::new();
 
     // 1. Handle Phone Changes (Index management)
     if let Some(ref new_phones) = phone_numbers {
@@ -258,7 +276,7 @@ pub async fn handle_update_customer(
                 .key("customer_id", AttributeValue::S(customer_id.clone()))
                 .build()
                 .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build delete item for phone {}: {}", phone, e), None))?;
-            txn_builder = txn_builder.transact_items(TransactWriteItem::builder().delete(delete).build());
+            txn_items.push(TransactWriteItem::builder().delete(delete).build());
         }
 
         // Add new phone index entries
@@ -269,7 +287,7 @@ pub async fn handle_update_customer(
                 .item("customer_id", AttributeValue::S(customer_id.clone()))
                 .build()
                 .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build Put item for phone {}: {}", phone.number, e), None))?;
-            txn_builder = txn_builder.transact_items(TransactWriteItem::builder().put(put).build());
+            txn_items.push(TransactWriteItem::builder().put(put).build());
         }
     }
 
@@ -282,7 +300,7 @@ pub async fn handle_update_customer(
             .expression_attribute_values(":fn", AttributeValue::S(fn_val.to_lowercase())) // Lowercase for search
             .build()
             .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for customer names: {}", e), None))?;
-        txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
+        txn_items.push(TransactWriteItem::builder().update(update).build());
     }
 
     // 3. Update Customers (email, phones, last_updated)
@@ -332,10 +350,13 @@ pub async fn handle_update_customer(
 
     let update = update_builder.build()
         .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for customer: {}", e), None))?;
-    txn_builder = txn_builder.transact_items(TransactWriteItem::builder().update(update).build());
+    txn_items.push(TransactWriteItem::builder().update(update).build());
 
     // Execute Transaction
-    txn_builder.send().await
+    client.transact_write_items()
+        .set_transact_items(Some(txn_items))
+        .send()
+        .await
         .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute update customer transaction: {}", e), None))?;
 
     Ok(json!({ "customer_id": customer_id }))
