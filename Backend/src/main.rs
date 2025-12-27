@@ -199,7 +199,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             success_response(200, &response.to_string())
         }
-        ("/ticket", "POST") => {
+        ("/tickets", "POST") => {
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
                 Err(resp) => return resp,
@@ -219,12 +219,20 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => return resp,
             };
 
-            match handle_create_ticket(customer_id, subject, password, &dynamodb_client).await {
+            let items_left: Vec<String> = match body.get("items_left") {
+                Some(v) => match serde_json::from_value(v.clone()) {
+                    Ok(vec) => vec,
+                    Err(_) => Vec::new(), // Default to empty if invalid
+                },
+                None => Vec::new(),
+            };
+
+            match handle_create_ticket(customer_id, subject, password, items_left, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
         }
-        ("/ticket", "PUT") => {
+        ("/tickets", "PUT") => {
             let ticket_number: String = match event.query_string_parameters().first("number") {
                 Some(n) => n.to_string(),
                 None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
@@ -239,14 +247,15 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
             let password = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let items_left = body.get("items_left").and_then(|v| serde_json::from_value(v.clone()).ok());
 
 
-            match handle_update_ticket(ticket_number, subject, status, password, &dynamodb_client).await {
+            match handle_update_ticket(ticket_number, subject, status, password, items_left, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
         }
-        ("/ticket/comment", "POST") => {
+        ("/tickets/comment", "POST") => {
             let ticket_number: String = match event.query_string_parameters().first("ticket_number") {
                 Some(n) => n.to_string(),
                 None => return error_response(400, "Missing ticket_number", "Query parameter 'ticket_number' is required", None),
@@ -271,7 +280,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/ticket_was_changed", "GET") => {
+        ("/tickets/last_updated", "GET") => {
             let ticket_number: String = match event.query_string_parameters().first("number") {
                 Some(n) => n.to_string(),
                 None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
@@ -305,7 +314,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/customer", "POST") => {
+        ("/customers", "POST") => {
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
                 Err(resp) => return resp,
@@ -332,7 +341,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/customer", "PUT") => {
+        ("/customers", "PUT") => {
             let customer_id: String = match event.query_string_parameters().first("customer_id") {
                 Some(c) => c.to_string(),
                 None => return error_response(400, "Missing customer_id", "Query parameter 'customer_id' is required", None),
@@ -352,7 +361,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/customer_was_changed", "GET") => {
+        ("/customers/last_updated", "GET") => {
             let customer_id: String = match event.query_string_parameters().first("customer_id") {
                 Some(c) => c.to_string(),
                 None => return error_response(400, "Missing customer_id", "Query parameter 'customer_id' is required", None),

@@ -48,7 +48,7 @@ export default function NewCustomer({
     hasChanged,
     startPolling,
     stopPolling,
-  } = useChangeDetection(customerId ? `/customer?id=${customerId}` : "");
+  } = useChangeDetection(customerId ? `/customers/last_updated?customer_id=${customerId}` : "");
 
   useEffect(() => {
     if (customerId) return;
@@ -109,25 +109,27 @@ export default function NewCustomer({
     let isMounted = true;
     (async () => {
       try {
-        const data = await api.get<{ customer: Customer }>(`/customer?id=${customerId}`);
+        const data = await api.get<{ customer: Customer }>(`/customers/${customerId}`);
         if (!isMounted) return;
         const customer = data.customer;
         startPolling(customer);
 
+        const firstPhone = customer.phone_numbers?.[0]?.number || "";
+
         setForm({
           full_name: customer.full_name || "",
-          phone: customer.primary_phone || "",
+          phone: firstPhone,
           email: customer.email || "",
         });
 
         const phones = customer.phone_numbers || [];
         if (phones.length > 0) {
-          const formatted = phones.map(n => formatPhoneLive(n));
+          const formatted = phones.map(p => formatPhoneLive(p.number));
           setAllPhones(formatted);
-          const pIdx = phones.indexOf(customer.primary_phone || "");
-          setPrimaryPhoneIndex(pIdx !== -1 ? pIdx : 0);
-        } else if (customer.primary_phone) {
-          setAllPhones([formatPhoneLive(customer.primary_phone)]);
+          // First one is always primary in our convention now
+          setPrimaryPhoneIndex(0);
+        } else {
+          setAllPhones([""]);
           setPrimaryPhoneIndex(0);
         }
       } catch (err) {
@@ -165,19 +167,32 @@ export default function NewCustomer({
 
     setSaving(true);
     try {
-      const primaryPhone = sanitizePhone(allPhones[primaryPhoneIndex]) || cleanPhones[0];
+      const primaryPhone = allPhones[primaryPhoneIndex] ? sanitizePhone(allPhones[primaryPhoneIndex]) : cleanPhones[0];
+
+      // Reorder: put primary phone first
+      const orderedPhones = [
+        primaryPhone,
+        ...cleanPhones.filter(p => p !== primaryPhone)
+      ].filter(Boolean); // remove duplicates/empty if any logic slipped
+
+      // Remove duplicates just in case
+      const uniquePhones = Array.from(new Set(orderedPhones));
+
       const payload: PostCustomer = {
         full_name: form.full_name,
-        primary_phone: primaryPhone,
         email: form.email,
-        phone_numbers: cleanPhones,
+        phone_numbers: uniquePhones.map(num => ({
+          number: num,
+          prefers_texting: false,
+          no_english: false
+        })),
       };
 
       if (customerId) {
-        const res = await api.put<{ customer_id: string }>(`/customer?customer_id=${customerId}`, payload);
+        const res = await api.put<{ customer_id: string }>(`/customers?customer_id=${customerId}`, payload);
         goTo(`/$${res.customer_id}`);
       } else {
-        const res = await api.post<{ customer_id: string }>("/customer", payload);
+        const res = await api.post<{ customer_id: string }>("/customers", payload);
         const goToUrl = `/$${res.customer_id}${window.location.search.includes("newticket") ? "?newticket" : ""}`;
         goTo(goToUrl);
       }

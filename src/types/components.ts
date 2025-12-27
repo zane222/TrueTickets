@@ -28,7 +28,7 @@ export interface ApiContextValue {
   setLambdaUrl: (url: string) => void;
   /**
    * Generic GET helper.
-   * Usage: const data = await api.get<{ tickets: SmallTicket[] }>(path);
+   * Usage: const data = await api.get<{ tickets: Ticket[] }>(path);
    */
   get: <T = unknown>(path: string) => Promise<T>;
   /**

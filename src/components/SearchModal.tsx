@@ -5,7 +5,7 @@ import { convertStatus } from "../constants/appConstants.js";
 import { useApi } from "../hooks/useApi";
 import NavigationButton from "./ui/NavigationButton";
 import { useHotkeys } from "../hooks/useHotkeys";
-import type { SmallTicket, Customer } from "../types/api";
+import type { Ticket, Customer } from "../types/api";
 
 function SearchModal({
   open,
@@ -18,15 +18,15 @@ function SearchModal({
 }) {
   const api = useApi();
   const [search, setSearch] = useState<string>("");
-  const [results, setResults] = useState<(SmallTicket | Customer)[]>([]);
+  const [results, setResults] = useState<(Ticket | Customer)[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [status, setStatus] = useState<"Enter a search query" | "No results found" | "">("Enter a search query");
   const [searchType, setSearchType] = useState<"tickets" | "customers">("tickets");
-  const [latestTicketNumber, setLatestTicketNumber] = useState<number | null>(null);
+
+  // Removed latestTicketNumber and its fetching logic as backend now handles suffix search.
+
   const pendingSubmit = useRef<boolean>(false);
-
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
-
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentSearchQueryRef = useRef<string>("");
 
@@ -139,85 +139,60 @@ function SearchModal({
     }
   }, [loading, results, searchType, onClose, goTo]);
 
-  useEffect(() => {
-    let isMounted = true;
-    if (open && !latestTicketNumber) {
-      const fetchLatestTicketNumber = async () => {
-        try {
-          const data = await api.get<{ tickets: SmallTicket[] }>(
-            "/tickets?page=1",
-          );
-          if (!isMounted) return;
-          const tickets = data.tickets || [];
-          if (tickets.length > 0) {
-            const highestNumber = Math.max(
-              ...tickets.map((t) => t.ticket_number || 0),
-            );
-            setLatestTicketNumber(highestNumber);
-          }
-        } catch (error) {
-          console.error("Failed to fetch latest ticket number:", error);
-        }
-      };
-      fetchLatestTicketNumber();
-    }
-    return () => { isMounted = false; };
-  }, [open, api, latestTicketNumber]);
-
   const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
   const isLikelyPhone = (digits: string) => digits.length >= 7 && digits.length <= 11;
   const canParse = (str: string) => /^\d/.test(str.trim()) && !isNaN(parseInt(str));
 
   const searchTicketNumber = React.useCallback(
     async (query: string, signal: AbortSignal) => {
-      const latest = latestTicketNumber;
-      if (!latest || query.length !== 3) {
-        const data = await api.get<{ tickets: SmallTicket[] }>(
-          `/tickets?number=${encodeURIComponent(query)}`,
-        );
-        if (!signal.aborted && currentSearchQueryRef.current === query) {
-          setResults(data.tickets || []);
-          setStatus(data.tickets?.length === 0 ? "No results found" : "");
-          setLoading(false);
-          if (pendingSubmit.current && data.tickets && data.tickets.length > 0) {
-            pendingSubmit.current = false;
-            onClose();
-            goTo(`/&${data.tickets[0].ticket_number}`);
+      // Use backend suffix search if query is 3 digits
+      if (query.length === 3) {
+        const url = `/tickets?ticket_number_last_3_digits=${encodeURIComponent(query)}`;
+        try {
+          const tickets = await api.get<Ticket[]>(url);
+          if (!signal.aborted && currentSearchQueryRef.current === query) {
+            setResults(tickets || []);
+            setStatus(tickets?.length === 0 ? "No results found" : "");
+            setLoading(false);
+            if (pendingSubmit.current && tickets && tickets.length > 0) {
+              pendingSubmit.current = false;
+              onClose();
+              goTo(`/&${tickets[0].ticket_number}`);
+            }
+          }
+        } catch (e) {
+          // Suffix search might return 404 or empty? Assuming empty array for no results typically, but if 404:
+          if (!signal.aborted) {
+            setResults([]);
+            setStatus("No results found");
+            setLoading(false);
           }
         }
-        return;
-      }
-
-      const latestTicketStr = latest.toString();
-      const latestNum = parseInt(latestTicketStr, 10);
-      let searchNumber = parseInt(latestTicketStr.slice(0, -3) + query, 10);
-      if (searchNumber > latestNum) searchNumber -= 1000;
-
-      const apiCalls: Promise<SmallTicket | null>[] = [];
-      for (let i = -1; i < 2; i++) {
-        const number = searchNumber - i * 1000;
-        if (number < 1) continue;
-        apiCalls.push(
-          api.get<SmallTicket[]>(`/tickets?number=${number}`)
-            .then(tickets => tickets?.length > 0 ? tickets[0] : null)
-            .catch(() => null)
-        );
-      }
-
-      const res = await Promise.all(apiCalls);
-      const valid = res.filter((t): t is SmallTicket => t !== null);
-
-      if (!signal.aborted && currentSearchQueryRef.current === query) {
-        setResults(valid);
-        setStatus(valid.length === 0 ? "No results found" : "");
-        setLoading(false);
-        if (pendingSubmit.current && valid.length > 0) {
-          pendingSubmit.current = false;
-          onClose();
-          goTo(`/&${valid[0].ticket_number}`);
+      } else {
+        const url = `/tickets?number=${encodeURIComponent(query)}`;
+        try {
+          const ticket = await api.get<Ticket>(url);
+          if (!signal.aborted && currentSearchQueryRef.current === query) {
+            const res = ticket ? [ticket] : [];
+            setResults(res);
+            setStatus(res.length === 0 ? "No results found" : "");
+            setLoading(false);
+            if (pendingSubmit.current && ticket) {
+              pendingSubmit.current = false;
+              onClose();
+              goTo(`/&${ticket.ticket_number}`);
+            }
+          }
+        } catch (e) {
+          // Specific number search likely returns 404 if not found
+          if (!signal.aborted) {
+            setResults([]);
+            setStatus("No results found");
+            setLoading(false);
+          }
         }
       }
-    }, [latestTicketNumber, api, onClose, goTo]
+    }, [api, onClose, goTo]
   );
 
   const performSearch = React.useCallback(
@@ -247,26 +222,15 @@ function SearchModal({
           return;
         } else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
           setSearchType("tickets");
-          const tickets = await api.get<SmallTicket[]>(
-            `/tickets?number=${encodeURIComponent(trimmedQuery)}`,
-          );
-          if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
-            setResults(tickets || []);
-            setStatus(tickets?.length === 0 ? "No results found" : "");
-            setLoading(false);
-            if (pendingSubmit.current && tickets && tickets.length > 0) {
-              pendingSubmit.current = false;
-              onClose();
-              goTo(`/&${tickets[0].ticket_number}`);
-            }
-          }
+          await searchTicketNumber(trimmedQuery, signal);
         } else {
-          const [customers, tickets] = await Promise.all([
-            api.get<Customer[]>(`/customers/autocomplete?query=${encodeURIComponent(trimmedQuery)}`),
-            api.get<SmallTicket[]>(`/tickets?query=${encodeURIComponent(trimmedQuery)}`),
-          ]);
+          // General query
+          // Check what /query_all returns: { tickets: [], customers: [] }
+          const queryResult = await api.get<{ tickets: Ticket[], customers: Customer[] }>(`/query_all?query=${encodeURIComponent(trimmedQuery)}`);
 
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
+            const customers = queryResult.customers || [];
+            const tickets = queryResult.tickets || [];
 
             if (customers.length > 0) {
               setSearchType("customers");
@@ -303,8 +267,11 @@ function SearchModal({
     }, [searchTicketNumber, api, onClose, goTo]
   );
 
-  const isCustomer = (item: SmallTicket | Customer): item is Customer => {
-    return 'customer_id' in item;
+  const isCustomer = (item: Ticket | Customer): item is Customer => {
+    // Check for property specific to Customer and NOT in Ticket.
+    // Ticket has 'customer' object. Customer does NOT have 'customer' object.
+    // Customer has 'full_name' at top level. Ticket has 'subject'.
+    return 'full_name' in item && !('subject' in item);
   };
 
   if (!open) return null;
@@ -392,13 +359,13 @@ function SearchModal({
                   <>
                     <div className="hidden sm:grid grid-cols-12 px-4 py-3">
                       <div className="col-span-5 truncate">{item.full_name}</div>
-                      <div className="col-span-3 truncate">{item.primary_phone ? formatPhone(item.primary_phone) : "—"}</div>
+                      <div className="col-span-3 truncate">{item.phone_numbers && item.phone_numbers.length > 0 ? formatPhone(item.phone_numbers[0].number) : "—"}</div>
                       <div className="col-span-4 truncate text-md">{fmtDate(item.created_at)}</div>
                     </div>
                     <div className="sm:hidden px-4 py-3 space-y-2">
                       <div className="text-md">{item.full_name}</div>
                       <div className="flex items-center justify-between text-md">
-                        {item.primary_phone && <span>{formatPhone(item.primary_phone)}</span>}
+                        {item.phone_numbers && item.phone_numbers.length > 0 && <span>{formatPhone(item.phone_numbers[0].number)}</span>}
                         <span className="text-md text-on-surface">{fmtDate(item.created_at)}</span>
                       </div>
                     </div>
@@ -409,7 +376,7 @@ function SearchModal({
                       <div className="col-span-1 truncate">#{item.ticket_number}</div>
                       <div className="col-span-7 truncate">{item.subject}</div>
                       <div className="col-span-2 truncate">{convertStatus(item.status || "")}</div>
-                      <div className="col-span-2 truncate">{item.customer_full_name}</div>
+                      <div className="col-span-2 truncate">{item.customer?.full_name}</div>
                     </div>
                     <div className="sm:hidden px-4 py-3 space-y-2">
                       <div className="flex items-center justify-between">
@@ -419,7 +386,7 @@ function SearchModal({
                         </div>
                       </div>
                       <div className="text-md truncate">{item.subject}</div>
-                      <div className="text-md truncate text-on-surface">{item.customer_full_name}</div>
+                      <div className="text-md truncate text-on-surface">{item.customer?.full_name}</div>
                     </div>
                   </>
                 )}

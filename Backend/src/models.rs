@@ -35,6 +35,9 @@ pub struct TicketWithoutCustomer {
 
     #[serde(default)]
     pub attachments: Vec<String>,
+
+    #[serde(default)]
+    pub items_left: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

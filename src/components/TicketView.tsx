@@ -31,7 +31,7 @@ import NavigationButton from "./ui/NavigationButton";
 import { TicketCard } from "./TicketCard";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import { InlineErrorMessage } from "./ui/InlineErrorMessage";
-import type { LargeTicket, Comment } from "../types/api";
+import type { Ticket, Comment } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketViewProps {
@@ -50,7 +50,7 @@ function TicketView({
     dataChanged: _dataChanged,
     error: _error,
   } = useAlertMethods();
-  const [ticket, setTicket] = useState<LargeTicket | null>(null);
+  const [ticket, setTicket] = useState<Ticket | null>(null);
 
   const [loading, setLoading] = useState(true);
   const ticketCardRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +74,7 @@ function TicketView({
     startPolling,
     stopPolling,
     resetPolling: _resetPolling,
-  } = useChangeDetection(`/tickets/${id}`);
+  } = useChangeDetection(`/tickets/last_updated?number=${id}`);
 
   const handleFileUpload = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -296,7 +296,7 @@ function TicketView({
   const fetchTicket = useCallback(async () => {
     setLoading(true);
     try {
-      const ticketData = await apiRef.current!.get<LargeTicket>(
+      const ticketData = await apiRef.current!.get<Ticket>(
         `/tickets/${id}`,
       );
       if (!fetchTicketRef.current.isMounted) return;
@@ -420,7 +420,9 @@ function TicketView({
       />
     );
 
-  const phone = formatPhone(ticket.primary_phone || "");
+  const phone = formatPhone(
+    ticket.customer?.phone_numbers?.[0]?.number || ""
+  );
 
   const generatePDF = async () => {
     if (!ticketCardRef.current) return;
@@ -519,9 +521,9 @@ function TicketView({
                       : "")
                   }
                   itemsLeft={formatItemsLeft(
-                    getTicketDeviceInfo(ticket).itemsLeft,
+                    (ticket.items_left && ticket.items_left.length > 0) ? ticket.items_left : getTicketDeviceInfo(ticket).itemsLeft,
                   )}
-                  name={ticket.customer_full_name}
+                  name={ticket.customer?.full_name || ""}
                   creationDate={fmtDateAndTime(ticket.created_at)}
                   phoneNumber={phone}
                 />
@@ -607,22 +609,25 @@ function TicketView({
 
               {/* Attachments grid */}
               <div className="grid grid-cols-1 gap-4">
-                {(ticket.attachments || []).map((attachment, index) => {
+                {(ticket.attachments || []).map((attachmentUrl, index) => {
+                  const fileName = attachmentUrl.split('/').pop() || "Attachment";
+                  const url = attachmentUrl;
+
                   return (
                     <div
                       key={index}
                       className="border border-outline rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow max-h-45"
                       onClick={() =>
                         setFullScreenAttachment({
-                          url: attachment.url,
-                          fileName: attachment.file_name,
+                          url: url,
+                          fileName: fileName,
                         })
                       }
                     >
-                      {attachment.url && (
+                      {url && (
                         <img
-                          src={attachment.url}
-                          alt={attachment.file_name}
+                          src={url}
+                          alt={fileName}
                           className="w-full h-auto max-h-64 object-cover"
                         />
                       )}
@@ -824,7 +829,7 @@ function CommentsBox({
         techName = currentUserName ?? "True Tickets";
       }
 
-      await api.post(`/ticket/comment?ticket_number=${ticketNumber}`, {
+      await api.post(`/tickets/comment?ticket_number=${ticketNumber}`, {
         comment_body: text,
         tech_name: techName,
       });

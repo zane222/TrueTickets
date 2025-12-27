@@ -82,12 +82,7 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
     let tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(output.items.unwrap_or_else(Vec::new))
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {}", e), None))?;
 
-    let tickets: Vec<Ticket> = tickets_nocust.into_iter().map(|details| Ticket {
-        details,
-        customer: customer.clone(),
-    }).collect();
-
-    serde_json::to_value(&tickets)
+    serde_json::to_value(&tickets_nocust)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize tickets: {}", e), None))
 }
 
@@ -103,7 +98,7 @@ pub async fn handle_search_tickets_by_subject(
 
     for (i, word) in query.split_whitespace().map(|q| q.to_lowercase()).enumerate() {
         let key = format!(":q{}", i);
-        filter_exprs.push(format!("contains(subject_lc, {})", key));
+        filter_exprs.push(format!("contains(s, {})", key));
         expr_vals.insert(key, AttributeValue::S(word));
     }
 
@@ -216,6 +211,7 @@ pub async fn handle_create_ticket(
     customer_id: String,
     subject: String,
     password: String,
+    items_left: Vec<String>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
     let mut retry_count = 0;
@@ -263,6 +259,7 @@ pub async fn handle_create_ticket(
             .item("customer_id", AttributeValue::S(customer_id.clone()))
             .item("status", AttributeValue::S("Diagnosing".to_string()))
             .item("password", AttributeValue::S(password.clone()))
+            .item("items_left", AttributeValue::L(items_left.iter().map(|s| AttributeValue::S(s.clone())).collect()))
             .item("created_at", AttributeValue::N(now.clone()))
             .item("last_updated", AttributeValue::N(now.clone()))
             .build()
@@ -272,7 +269,7 @@ pub async fn handle_create_ticket(
             .table_name("TicketSubjects")
             .item("ticket_number", AttributeValue::N(ticket_number.clone()))
             .item("gsi_pk", AttributeValue::S("ALL".to_string()))
-            .item("subject_lc", AttributeValue::S(subject.to_lowercase()))
+            .item("s", AttributeValue::S(subject.to_lowercase()))
             .build()
             .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {}", e), None))?;
 
@@ -307,6 +304,7 @@ pub async fn handle_update_ticket(
     subject: Option<String>,
     status: Option<String>,
     password: Option<String>,
+    items_left: Option<Vec<String>>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
     let mut txn_items = Vec::new();
@@ -315,7 +313,7 @@ pub async fn handle_update_ticket(
         let update = aws_sdk_dynamodb::types::Update::builder()
             .table_name("TicketSubjects")
             .key("ticket_number", AttributeValue::N(ticket_number.clone()))
-            .update_expression("SET subject_lc = :s")
+            .update_expression("SET s = :s")
             .expression_attribute_values(":s", AttributeValue::S(s.to_lowercase())) // Lowercase
             .build()
             .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket subjects: {}", e), None))?;
@@ -337,6 +335,10 @@ pub async fn handle_update_ticket(
     if let Some(pw) = password {
         update_parts.push("password = :pw".to_string());
         expr_vals.insert(":pw".to_string(), AttributeValue::S(pw));
+    }
+    if let Some(items) = items_left {
+        update_parts.push("items_left = :il".to_string());
+        expr_vals.insert(":il".to_string(), AttributeValue::L(items.iter().map(|s| AttributeValue::S(s.clone())).collect()));
     }
 
     update_parts.push("last_updated = :lu".to_string());

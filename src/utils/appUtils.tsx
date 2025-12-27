@@ -2,13 +2,13 @@
  * Utility functions for the True Tickets application
  *
  * This file contains helpers used across components. Several callers pass
- * in strongly-typed ticket objects (`SmallTicket` / `LargeTicket`) which
+ * in strongly-typed ticket objects (`Ticket`) which
  * are not indexable by default. To remain type-safe while still accepting
  * those objects, export functions accept those ticket types or a generic
  * record and perform internal guarded accesses.
  */
 
-import type { Ticket } from "../types/api";
+import type { Ticket, TicketWithoutCustomer } from "../types/api";
 
 /**
  * Class name utility function
@@ -20,9 +20,12 @@ export function cx(...xs: unknown[]): string {
 /**
  * Format date string to locale string
  */
-export function fmtDate(dateString: string): string {
+export function fmtDate(date: string | number): string {
   try {
-    return new Date(dateString).toLocaleString(undefined, {
+    const d = typeof date === 'number'
+      ? new Date(date < 10000000000 ? date * 1000 : date)
+      : new Date(date);
+    return d.toLocaleString(undefined, {
       year: "numeric",
       month: "numeric", // "Sep"
       day: "numeric",
@@ -31,16 +34,19 @@ export function fmtDate(dateString: string): string {
       second: undefined, // removes seconds
     });
   } catch {
-    return dateString;
+    return String(date);
   }
 }
 
 /**
  * Format time string to locale string
  */
-export function fmtTime(timeString: string): string {
+export function fmtTime(time: string | number): string {
   try {
-    return new Date(timeString).toLocaleString(undefined, {
+    const d = typeof time === 'number'
+      ? new Date(time < 10000000000 ? time * 1000 : time)
+      : new Date(time);
+    return d.toLocaleString(undefined, {
       year: undefined,
       month: undefined,
       day: undefined,
@@ -49,18 +55,18 @@ export function fmtTime(timeString: string): string {
       second: undefined, // removes seconds
     });
   } catch {
-    return timeString;
+    return String(time);
   }
 }
 
 /**
  * Format date and time string
  */
-export function fmtDateAndTime(dateTimeString: string): string {
+export function fmtDateAndTime(dateTime: string | number): string {
   try {
-    return fmtDate(dateTimeString) + " | " + fmtTime(dateTimeString);
+    return fmtDate(dateTime) + " | " + fmtTime(dateTime);
   } catch {
-    return dateTimeString;
+    return String(dateTime);
   }
 }
 
@@ -82,7 +88,7 @@ export function formatPhone(phoneNumber: string = ""): string {
  * property access so TypeScript remains happy and runtime behavior is the same.
  */
 export function getTicketPassword(
-  ticket: Ticket | Record<string, unknown>,
+  ticket: Ticket | TicketWithoutCustomer | Record<string, unknown>,
 ): string {
   try {
     const t = ticket as Record<string, unknown>;
@@ -174,7 +180,7 @@ export function getDeviceTypeFromSubject(subjectText: string): string | null {
  * internal `Model` vT JSON when present.
  */
 export function getTicketDeviceInfo(
-  ticket: Ticket | Record<string, unknown>,
+  ticket: Ticket | TicketWithoutCustomer | Record<string, unknown>,
 ): {
   device: string;
   itemsLeft: string[];

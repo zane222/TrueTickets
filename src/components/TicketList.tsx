@@ -6,12 +6,12 @@ import { cx, fmtDate, getTicketDeviceInfo } from "../utils/appUtils.jsx";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
-import type { SmallTicket, ApiContextValue } from "../types";
+import type { Ticket, ApiContextValue } from "../types";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 // Ticket list item component that can use hooks
 interface TicketListItemProps {
-  ticket: SmallTicket;
+  ticket: Ticket;
   goTo: (to: string) => void;
 }
 function TicketListItem({
@@ -48,7 +48,7 @@ function TicketListItem({
             {fmtDate(ticket.created_at)}
           </div>
           <div className="col-span-2 truncate">
-            {ticket.customer_full_name}
+            {ticket.customer?.full_name}
           </div>
         </div>
 
@@ -74,7 +74,7 @@ function TicketListItem({
             </div>
           </div>
           <div className="text-md truncate text-on-surface">
-            {ticket.customer_full_name}
+            {ticket.customer?.full_name}
           </div>
         </div>
       </NavigationButton>
@@ -112,9 +112,8 @@ export function TicketListView({
     return saved ? JSON.parse(saved) : true; // default: collapsed
   });
 
-  const [items, setItems] = useState<SmallTicket[]>([]);
+  const [items, setItems] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [page, setPage] = useState<number>(1);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   // Save state changes to localStorage
@@ -160,58 +159,23 @@ export function TicketListView({
     );
   };
 
-  // Refs to avoid putting changing state (items/page) into fetchTickets deps,
-  // which would recreate the callback and cause the effect to re-run repeatedly.
-  const itemsRef = useRef<SmallTicket[]>([]);
-  const pageRef = useRef<number>(1);
   // Guard to prevent overlapping / reentrant fetches
   const isFetchingRef = useRef<boolean>(false);
 
-  // Keep refs in sync with state
-  useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
-
-  useEffect(() => {
-    pageRef.current = page;
-  }, [page]);
-
   const fetchTickets = useCallback(
-    async (reset = false): Promise<void> => {
+    async (): Promise<void> => {
       // Prevent re-entrant calls — if a fetch is already in progress, skip.
       if (isFetchingRef.current) {
-        // Optionally log for debugging
-        // console.debug('fetchTickets skipped because another fetch is in progress');
         return;
       }
 
       isFetchingRef.current = true;
       setLoading(true);
       try {
-        const currentPage = reset ? 1 : pageRef.current + 1;
-        const tickets = await api.get<SmallTicket[]>(
-          `/tickets?page=${currentPage}`,
+        const tickets = await api.get<Ticket[]>(
+          `/recent_tickets_list`,
         );
-        if (reset) {
-          setItems(tickets);
-          setPage(1);
-          itemsRef.current = tickets;
-          pageRef.current = 1;
-        } else {
-          // Filter out any duplicates by ticket ID using the ref (stable)
-          const existingIds = new Set(itemsRef.current.map((item) => item.ticket_number));
-          const newTickets = tickets.filter(
-            (ticket) => !existingIds.has(ticket.ticket_number),
-          );
-          // Use functional update to avoid depending on `items` in closure
-          setItems((prev) => {
-            const merged = [...prev, ...newTickets];
-            itemsRef.current = merged;
-            return merged;
-          });
-          setPage(currentPage);
-          pageRef.current = currentPage;
-        }
+        setItems(tickets || []);
       } catch (error) {
         console.error(error);
       } finally {
@@ -225,7 +189,7 @@ export function TicketListView({
 
   useEffect(() => {
     // Run once on mount to load initial tickets.
-    fetchTickets(true);
+    fetchTickets();
     // Intentionally ignore fetchTickets in deps to avoid re-running if its identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -322,18 +286,7 @@ export function TicketListView({
                 (ticket) =>
                   !convertStatus(ticket.status || "") ||
                   !statusHidden.has(convertStatus(ticket.status || "")),
-              ) // filter out devices with a status that isn't selected
-              /*.filter((ticket) => { // TODO Needs to get the device type correctly from the model. If it's not there it needs to see
-                                      // if doing getDeviceTypeFromSubject(ticket.subject) will get a device type
-                                      // if not then it's other
-                // Default behavior: if none selected, show all
-                if (!selectedDevices || selectedDevices.size === 0) return true;
-                const deviceType = ticket.device_type || "";
-                let deviceIndex = DEVICES.length - 1; // other
-                if (DEVICES.includes(deviceType)) deviceIndex = DEVICES.indexOf(deviceType);
-                  else if(DEVICES.includes(deviceType))
-                return selectedDevices.has(deviceIndex);
-                })*/
+              )
               .map((ticket) => (
                 <TicketListItem key={ticket.ticket_number} ticket={ticket} goTo={goTo} />
               ))}
@@ -348,12 +301,7 @@ export function TicketListView({
       </div>
 
       <div className="flex justify-between items-center mt-6">
-        <button
-          onClick={() => fetchTickets(false)}
-          className="md-btn-surface elev-1"
-        >
-          Load more
-        </button>
+        {/* Load more button removed as /recent_tickets_list returns all relevant tickets */}
       </div>
     </div>
   );

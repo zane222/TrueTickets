@@ -11,8 +11,6 @@ export * from "./components";
 export type {
   Customer,
   Ticket,
-  LargeTicket,
-  SmallTicket,
   Comment,
   CognitoUser,
   PostTicket,

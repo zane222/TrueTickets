@@ -1,41 +1,39 @@
-// Simplified API types matching the DynamoDB backend schema strictly.
+export interface PhoneNumber {
+  number: string;
+  prefers_texting: boolean;
+  no_english: boolean;
+}
 
-export interface Ticket {
+export interface TicketWithoutCustomer {
   ticket_number: number;
-  customer_id: string;
-  customer_full_name: string;
-  primary_phone: string;
   subject: string;
-  details: string;
+  customer_id: string;
   status: string;
-  password?: string;
-  estimated_time?: string;
-  created_at: string;
-  last_updated: string;
-  comments?: Comment[];
-  attachments?: Attachment[];
+  password: string;
+  created_at: number;
+  last_updated: number;
+  comments: Comment[];
+  attachments: string[];
+  items_left: string[];
+}
+
+export interface Ticket extends TicketWithoutCustomer {
+  customer: Customer;
 }
 
 export interface Customer {
   customer_id: string;
   full_name: string;
   email: string;
-  primary_phone: string;
-  phone_numbers: string[];
-  created_at: string;
-  last_updated: string;
+  phone_numbers: PhoneNumber[];
+  created_at: number; // Backend is i64
+  last_updated: number; // Backend is i64
 }
 
 export interface Comment {
   comment_body: string;
   tech_name: string;
-  created_at: string;
-}
-
-export interface Attachment {
-  file_name: string;
-  url: string;
-  created_at: string;
+  created_at: number; // Backend is i64
 }
 
 export interface CognitoUser {
@@ -48,28 +46,18 @@ export interface CognitoUser {
   user_status: string;
 }
 
-// No wrapper types needed for simple lists
-
-export type SmallTicket = Ticket;
-export type LargeTicket = Ticket;
 
 export interface PostTicket {
   customer_id: string;
-  customer_full_name: string;
-  primary_phone: string;
   subject: string;
-  details: string;
-  status?: string;
   password?: string;
-  estimated_time?: string;
+  items_left?: string[];
 }
 
 export interface PostCustomer {
   full_name: string;
-  primary_phone: string;
   email: string;
-  phone_numbers: string[];
-  created_at?: string;
+  phone_numbers: PhoneNumber[];
 }
 
 export interface PostComment {

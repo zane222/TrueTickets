@@ -44,7 +44,7 @@ function TicketEditor({
   const subjectInputRef = useRef<HTMLInputElement>(null);
 
   const { hasChanged, startPolling, stopPolling } = useChangeDetection(
-    `/ticket?number=${ticketId}`,
+    `/tickets/last_updated?number=${ticketId}`,
   );
 
   useEffect(() => {
@@ -59,7 +59,7 @@ function TicketEditor({
     (async () => {
       try {
         const data = await api.get<{ ticket: Ticket }>(
-          `/ticket?number=${ticketId}`,
+          `/tickets?number=${ticketId}`,
         );
         if (!isMounted) return;
         const ticket = data.ticket;
@@ -67,16 +67,19 @@ function TicketEditor({
         startPolling(ticket);
 
         setSubject(ticket.subject || "");
-        setCustomerName(ticket.customer_full_name);
+        setCustomerName(ticket.customer?.full_name || "");
         setPassword(ticket.password || "");
-        setTimeEstimate(ticket.estimated_time || "");
+        // setTimeEstimate(ticket.estimated_time || ""); // Field removed
 
         const deviceInfo = getTicketDeviceInfo(ticket);
         if (deviceInfo.device) {
           const idx = DEVICES.indexOf(deviceInfo.device);
           if (idx !== -1) setDeviceIdx(idx);
         }
-        if (Array.isArray(deviceInfo.itemsLeft)) {
+        if (Array.isArray(ticket.items_left) && ticket.items_left.length > 0) {
+          setItemsLeft(ticket.items_left);
+        } else if (Array.isArray(deviceInfo.itemsLeft)) {
+          // Fallback for legacy tickets
           setItemsLeft(deviceInfo.itemsLeft);
         }
       } catch (error) {
@@ -95,8 +98,8 @@ function TicketEditor({
   }, [ticketId, stopPolling]);
 
   useEffect(() => {
-    if (previousTicket?.customer_full_name) {
-      setCustomerName(previousTicket.customer_full_name);
+    if (previousTicket?.customer?.full_name) {
+      setCustomerName(previousTicket.customer.full_name);
     } else if (!ticketId) {
       const params = new URLSearchParams(window.location.search);
       const name = params.get("customerName");
@@ -159,36 +162,30 @@ function TicketEditor({
   async function save() {
     setSaving(true);
     try {
+      /*
       const model = {
         device: (deviceIdx !== null && DEVICES[deviceIdx]) || "Other",
         itemsLeft,
         estimatedTime: timeEstimate,
       };
+      */
 
       if (ticketId) {
         const updateData = {
           subject,
-          customer_full_name: customerName,
           password,
-          estimated_time: timeEstimate,
-          details: "vT" + JSON.stringify(model),
+          items_left: itemsLeft,
         };
-        const res = await api.put<{ ticket_number: number }>(`/ticket?number=${ticketId}`, updateData);
+        const res = await api.put<{ ticket_number: number }>(`/tickets?number=${ticketId}`, updateData);
         goTo(`/&${res.ticket_number}`);
       } else {
-        const params = new URLSearchParams(window.location.search);
-        const phone = params.get("primaryPhone") || "";
         const payload: PostTicket = {
           customer_id: customerId || "",
-          customer_full_name: customerName,
-          primary_phone: phone,
           subject,
-          details: "vT" + JSON.stringify(model),
-          status: "New",
           password,
-          estimated_time: timeEstimate,
+          items_left: itemsLeft,
         };
-        const res = await api.post<{ ticket_number: number }>("/ticket", payload);
+        const res = await api.post<{ ticket_number: number }>("/tickets", payload);
         goTo(`/&${res.ticket_number}`);
       }
     } catch (error) {

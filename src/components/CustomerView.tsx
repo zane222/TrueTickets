@@ -14,8 +14,7 @@ import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
-import type { Customer, SmallTicket } from "../types/api";
-
+import type { Customer, TicketWithoutCustomer } from "../types/api";
 import { InlineErrorMessage } from "./ui/InlineErrorMessage";
 
 interface CustomerViewProps {
@@ -33,11 +32,8 @@ function CustomerView({
   const { warning: _warning, dataChanged: _dataChanged } = useAlertMethods();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [tickets, setTickets] = useState<SmallTicket[]>([]);
-  const [_tPage, setTPage] = useState<number>(1);
+  const [tickets, setTickets] = useState<TicketWithoutCustomer[]>([]);
   const [tLoading, setTLoading] = useState<boolean>(false);
-  const [_tHasMore, setTHasMore] = useState<boolean>(true);
-  const [allPhones, setAllPhones] = useState<string[]>([]);
 
   // Change detection
   const {
@@ -46,7 +42,7 @@ function CustomerView({
     startPolling,
     stopPolling,
     resetPolling: _resetPolling,
-  } = useChangeDetection(`/customers/${id}`);
+  } = useChangeDetection(`/customers/last_updated?customer_id=${id}`);
 
   // Keyboard shortcuts
   const customerViewKeybinds = useMemo(() => [
@@ -74,6 +70,12 @@ function CustomerView({
 
   useRegisterKeybinds(customerViewKeybinds);
 
+  // Helper to get primary phone safely
+  const getPrimaryPhone = (c: Customer | null): string => {
+    if (!c || !c.phone_numbers || c.phone_numbers.length === 0) return "";
+    return c.phone_numbers[0].number;
+  };
+
   useHotkeys(
     {
       h: () => goTo("/"),
@@ -86,7 +88,7 @@ function CustomerView({
       n: () => {
         const customerName = customer?.full_name || "";
         const encodedName = encodeURIComponent(customerName);
-        const primaryPhone = customer?.primary_phone || "";
+        const primaryPhone = getPrimaryPhone(customer);
         const encodedPhone = encodeURIComponent(primaryPhone);
         goTo(`/$${id}?newticket&customerName=${encodedName}&primaryPhone=${encodedPhone}`);
       },
@@ -134,9 +136,6 @@ function CustomerView({
         // Start change detection polling via ref
         if (startPollingRef.current) startPollingRef.current(customerData);
 
-        // Use phone_numbers directly from customer data
-        const numbers = customerData.phone_numbers || [];
-        setAllPhones(numbers);
       } catch (error) {
         console.error(error);
       } finally {
@@ -175,8 +174,6 @@ function CustomerView({
     // Immediately show loading state when ID changes
     setLoading(true);
     setTickets([]);
-    setTPage(1);
-    setTHasMore(true);
   }, [id, stopPolling]);
 
   // Cleanup polling when component unmounts
@@ -186,42 +183,21 @@ function CustomerView({
     };
   }, [stopPolling]);
 
-  // loadMoreTickets removed — replaced by loadAllTickets (which loads all pages).
-  // If you need incremental 'Load more' behavior, we can add it back in a safe form.
 
   const loadAllTickets = useCallback(
     async (isMounted: { current: boolean }) => {
       setTLoading(true);
-      setTHasMore(true);
 
       try {
-        let page = 1;
-        let allTickets: SmallTicket[] = [];
-        let hasMore = true;
-
-        const MAX_PAGES = 50;
-        while (hasMore && page <= MAX_PAGES) {
-          const tickets = await api.get<SmallTicket[]>(
-            `/tickets?customer_id=${encodeURIComponent(id)}&page=${page}`,
-          );
-          if (!isMounted.current) return;
-          if (!tickets || tickets.length === 0) {
-            hasMore = false;
-          } else {
-            allTickets = [...allTickets, ...tickets];
-            page += 1;
-          }
-        }
+        // Backend doesn't support pagination yet, so we just fetch once.
+        const tickets = await api.get<TicketWithoutCustomer[]>(
+          `/tickets?customer_id=${encodeURIComponent(id)}`,
+        );
 
         if (!isMounted.current) return;
-        setTickets(allTickets);
-        setTPage(page);
-        setTHasMore(false);
+        setTickets(tickets || []);
       } catch (error) {
         console.error(error);
-        if (isMounted.current) {
-          setTHasMore(false);
-        }
       } finally {
         if (isMounted.current) {
           setTLoading(false);
@@ -271,11 +247,11 @@ function CustomerView({
           onClick={() => {
             const customerName = customer?.full_name || "";
             const encodedName = encodeURIComponent(customerName);
-            const primaryPhone = customer?.primary_phone || "";
+            const primaryPhone = getPrimaryPhone(customer);
             const encodedPhone = encodeURIComponent(primaryPhone);
             goTo(`/$${id}?newticket&customerName=${encodedName}&primaryPhone=${encodedPhone}`);
           }}
-          targetUrl={`${window.location.origin}/$${id}?newticket&customerName=${encodeURIComponent(customer?.full_name || "")}&primaryPhone=${encodeURIComponent(customer?.primary_phone || "")}`}
+          targetUrl={`${window.location.origin}/$${id}?newticket&customerName=${encodeURIComponent(customer?.full_name || "")}&primaryPhone=${encodeURIComponent(getPrimaryPhone(customer))}`}
           className="md-btn-primary elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
           tabIndex={-1}
         >
@@ -295,11 +271,12 @@ function CustomerView({
               <span className="text-md font-normal">Joined: {fmtDate(customer.created_at)}</span>
             </div>
             <div className="space-y-1">
-              {allPhones.length > 0 ? (
-                allPhones.map((phone, index) => (
+              {customer.phone_numbers && customer.phone_numbers.length > 0 ? (
+                customer.phone_numbers.map((phone, index) => (
                   <div key={index} className="text-outline">
-                    {formatPhone(phone)}
-                    {index === 0 && allPhones.length > 1 && (
+                    {formatPhone(phone.number)}
+                    {/* Assume first is primary for display purposes essentially */}
+                    {index === 0 && customer.phone_numbers.length > 1 && (
                       <span className="ml-2 text-md font-medium">
                         (Primary)
                       </span>
@@ -382,7 +359,6 @@ function CustomerView({
                 </div>
               )}
             </div>
-            {/* Load more button removed - all tickets load automatically */}
           </div>
         </div>
         <div className="space-y-6">
@@ -398,13 +374,6 @@ function CustomerView({
               </div>
             </div>
           )}
-          {/* <div className="md-card p-6">
-                        <div className="text-lg font-semibold mb-4">Notes</div>
-                        <textarea
-                            className="md-textarea h-32"
-                            placeholder="Customer notes…"
-                        />
-                    </div> */}
         </div>
       </div>
     </div>

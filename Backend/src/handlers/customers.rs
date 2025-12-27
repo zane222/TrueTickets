@@ -91,7 +91,7 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
 
     for (i, word) in query.split_whitespace().map(|q| q.to_lowercase()).enumerate() {
         let key = format!(":q{}", i);
-        filter_exprs.push(format!("contains(full_name_lc, {})", key));
+        filter_exprs.push(format!("contains(n, {})", key));
         expr_vals.insert(key, AttributeValue::S(word));
     }
 
@@ -208,7 +208,7 @@ pub async fn handle_create_customer(
     let put_name = Put::builder()
         .table_name("CustomerNames")
         .item("customer_id", AttributeValue::S(customer_id.clone()))
-        .item("full_name_lc", AttributeValue::S(full_name.to_lowercase())) // Lowercase for search
+        .item("n", AttributeValue::S(full_name.to_lowercase())) // Lowercase for search
         .build()
         .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer name Put item: {}", e), None))?;
 
@@ -296,7 +296,7 @@ pub async fn handle_update_customer(
         let update = aws_sdk_dynamodb::types::Update::builder()
             .table_name("CustomerNames")
             .key("customer_id", AttributeValue::S(customer_id.clone()))
-            .update_expression("SET full_name_lc = :fn")
+            .update_expression("SET n = :fn")
             .expression_attribute_values(":fn", AttributeValue::S(fn_val.to_lowercase())) // Lowercase for search
             .build()
             .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for customer names: {}", e), None))?;
