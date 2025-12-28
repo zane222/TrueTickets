@@ -120,20 +120,8 @@ class ApiClient {
     const { method = "GET", body } = options;
     const isMultipart = body instanceof FormData;
 
-    // Define user management endpoints that should NOT get /api prefix
-    const userManagementEndpoints = [
-      "/invite-user",
-      "/users",
-      "/update-user-group",
-      "/upload-attachment",
-    ];
-
-    // Add /api prefix only for RepairShopr API calls, not for user management
-    const fullPath =
-      path.startsWith("/api") || userManagementEndpoints.includes(path)
-        ? path
-        : `/api${path}`;
-    const url = `${this.baseUrl}${fullPath}`;
+    // Use path directly without any automatic prefix
+    const url = `${this.baseUrl}${path}`;
 
     // Validate that we're using API Gateway, not Lambda function URL
     if (this.baseUrl.includes("lambda-url")) {

@@ -16,7 +16,8 @@ use handlers::{
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
     handle_get_ticket_last_updated, handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_customer_last_updated, handle_get_tickets_by_customer_id,
-    handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix
+    handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix,
+    handle_migrate_tickets
 };
 use models::PhoneNumber;
 use http::{error_response, handle_options, success_response, parse_json_body, get_value_in_json};
@@ -286,6 +287,31 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
             };
             match handle_get_ticket_last_updated(ticket_number, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        
+        // -------------------------
+        // MIGRATION
+        // -------------------------
+        ("/migrate-tickets", "GET") => {
+            let latest_ticket_number: i64 = match event.query_string_parameters().first("latest_ticket_number").and_then(|v| v.parse::<i64>().ok()) {
+                Some(n) => n,
+                None => return error_response(400, "Missing or invalid latest_ticket_number", "latest_ticket_number must be provided as a query parameter (number)", None),
+            };
+
+            let count: i64 = match event.query_string_parameters().first("count").and_then(|v| v.parse::<i64>().ok()) {
+                Some(c) => c,
+                None => return error_response(400, "Missing or invalid count", "count must be provided as a query parameter (number)", None),
+            };
+
+            let api_key = match std::env::var("MIGRATION_API_KEY") {
+                Ok(key) => key,
+                Err(_) => return error_response(500, "Configuration Error", "MIGRATION_API_KEY environment variable not set", None),
+            };
+
+            match handle_migrate_tickets(latest_ticket_number, count, api_key, &dynamodb_client, s3_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }

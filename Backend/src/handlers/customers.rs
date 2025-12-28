@@ -176,7 +176,7 @@ pub async fn handle_create_customer(
     phone_numbers: Vec<PhoneNumber>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
-    let customer_id = generate_short_id(10);
+    let customer_id = generate_short_id(8);
     let now = Utc::now().timestamp().to_string();
 
     let mut txn_items = Vec::new();

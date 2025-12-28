@@ -55,20 +55,6 @@ pub async fn handle_get_ticket_by_number(
 }
 
 pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Client) -> Result<Value, Response<Body>> {
-    // Fetch Customer details first so they can be attached to each ticket
-    let customer_output = client.get_item()
-        .table_name("Customers")
-        .key("customer_id", AttributeValue::S(customer_id.clone()))
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {}", e), None))?;
-
-    let customer_item = customer_output.item
-        .ok_or_else(|| error_response(404, "Customer Not Found", "No customer with that ID", None))?;
-
-    let customer: Customer = serde_dynamo::from_item(customer_item)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None))?;
-
     // Query Tickets by customer id
     let output = client.query()
         .table_name("Tickets")
