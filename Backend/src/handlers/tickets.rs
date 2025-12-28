@@ -193,11 +193,65 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Result<Value, Respons
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize recent tickets: {}", e), None))
 }
 
+pub async fn handle_get_recent_tickets_filtered(
+    device: String,
+    statuses: Vec<String>,
+    client: &Client,
+) -> Result<Value, Response<Body>> {
+    let mut tasks = Vec::new();
+
+    for status in statuses {
+        let status_device = format!("{}#{}", status, device);
+        // We need to clone client for each async move, usually client is cheap to clone (Arc internal)
+        let client_clone = client.clone();
+
+        let task = tokio::spawn(async move {
+            client_clone.query()
+                .table_name("Tickets")
+                .index_name("StatusDeviceIndex")
+                .key_condition_expression("status_device = :sd")
+                .expression_attribute_values(":sd", AttributeValue::S(status_device))
+                .scan_index_forward(false) // Newest first
+                .limit(20)
+                .send()
+                .await
+        });
+        tasks.push(task);
+    }
+
+    let mut all_tickets_nocust = Vec::new();
+
+    for task in tasks {
+        let items = task
+            .await
+            .map_err(|e| error_response(500, "Concurrency Error", &format!("Task join error: {}", e), None))?
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query tickets by status/device: {}", e), None))?
+            .items.unwrap_or_else(Vec::new);
+
+        if items.is_empty() { continue; }
+
+        let parsed: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(items)
+            .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse filtered tickets: {}", e), None))?;
+
+        all_tickets_nocust.extend(parsed);
+    }
+
+    // Sort merge results by ticket_number descending and take top 20
+    all_tickets_nocust.sort_by(|a, b| b.ticket_number.cmp(&a.ticket_number));
+    all_tickets_nocust.truncate(20);
+
+    let tickets = batch_fetch_and_merge_customers(all_tickets_nocust, client).await?;
+
+    serde_json::to_value(&tickets)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize filtered recent tickets: {}", e), None))
+}
+
 pub async fn handle_create_ticket(
     customer_id: String,
     subject: String,
     password: String,
     items_left: Vec<String>,
+    device: String,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
     let mut retry_count = 0;
@@ -225,6 +279,8 @@ pub async fn handle_create_ticket(
         let next_val = current_val + 1;
         let ticket_number = next_val.to_string();
         let now = Utc::now().timestamp().to_string();
+        let status = "Diagnosing".to_string();
+        let status_device = format!("{}#{}", status, device);
 
         // 2. Transact: Atomic increment (if matches current) + Puts
         let update_counter = aws_sdk_dynamodb::types::Update::builder()
@@ -243,7 +299,9 @@ pub async fn handle_create_ticket(
             .item("gsi_pk", AttributeValue::S("ALL".to_string()))
             .item("subject", AttributeValue::S(subject.clone()))
             .item("customer_id", AttributeValue::S(customer_id.clone()))
-            .item("status", AttributeValue::S("Diagnosing".to_string()))
+            .item("status", AttributeValue::S(status.clone()))
+            .item("device", AttributeValue::S(device.clone()))
+            .item("status_device", AttributeValue::S(status_device))
             .item("password", AttributeValue::S(password.clone()))
             .item("items_left", AttributeValue::L(items_left.iter().map(|s| AttributeValue::S(s.clone())).collect()))
             .item("created_at", AttributeValue::N(now.clone()))
@@ -291,9 +349,38 @@ pub async fn handle_update_ticket(
     status: Option<String>,
     password: Option<String>,
     items_left: Option<Vec<String>>,
+    device: Option<String>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
     let mut txn_items = Vec::new();
+
+    // If status or device is updated, we need to update the composite key status_device
+    // We need to know both values to construct it. If one is missing from the update, we must fetch the current value.
+    let mut new_status = status.clone();
+    let mut new_device = device.clone();
+
+    if status.is_some() || device.is_some() {
+        // We need to fetch current values if we don't have both
+        if status.is_none() || device.is_none() {
+            let output = client.get_item()
+                .table_name("Tickets")
+                .key("ticket_number", AttributeValue::N(ticket_number.clone()))
+                .projection_expression("#st, device")
+                .expression_attribute_names("#st", "status")
+                .send()
+                .await
+                .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch ticket for update: {}", e), None))?;
+
+            if let Some(item) = output.item {
+                if status.is_none() {
+                    new_status = item.get("status").and_then(|av| av.as_s().ok()).map(|s| s.clone());
+                }
+                if device.is_none() {
+                    new_device = item.get("device").and_then(|av| av.as_s().ok()).map(|s| s.clone());
+                }
+            }
+        }
+    }
 
     if let Some(s) = &subject {
         let update = aws_sdk_dynamodb::types::Update::builder()
@@ -309,14 +396,16 @@ pub async fn handle_update_ticket(
 
     let mut update_parts = Vec::new();
     let mut expr_vals = HashMap::new();
+    let mut expr_names = HashMap::new();
 
     if let Some(s) = subject {
         update_parts.push("subject = :s".to_string());
         expr_vals.insert(":s".to_string(), AttributeValue::S(s));
     }
     if let Some(st) = status {
-        update_parts.push("status = :st".to_string());
+        update_parts.push("#st = :st".to_string());
         expr_vals.insert(":st".to_string(), AttributeValue::S(st));
+        expr_names.insert("#st".to_string(), "status".to_string());
     }
     if let Some(pw) = password {
         update_parts.push("password = :pw".to_string());
@@ -325,6 +414,17 @@ pub async fn handle_update_ticket(
     if let Some(items) = items_left {
         update_parts.push("items_left = :il".to_string());
         expr_vals.insert(":il".to_string(), AttributeValue::L(items.iter().map(|s| AttributeValue::S(s.clone())).collect()));
+    }
+    if let Some(d) = device {
+        update_parts.push("device = :d".to_string());
+        expr_vals.insert(":d".to_string(), AttributeValue::S(d));
+    }
+
+    // Update status_device composite key if we have both parts
+    if let (Some(s), Some(d)) = (new_status, new_device) {
+        let status_device = format!("{}#{}", s, d);
+        update_parts.push("status_device = :sd".to_string());
+        expr_vals.insert(":sd".to_string(), AttributeValue::S(status_device));
     }
 
     update_parts.push("last_updated = :lu".to_string());
@@ -339,6 +439,13 @@ pub async fn handle_update_ticket(
 
     for (k, v) in expr_vals {
         update_builder = update_builder.expression_attribute_values(k, v);
+    }
+
+    // Add names if needed (for status which is reserved word)
+    if !expr_names.is_empty() {
+        for (k, v) in expr_names {
+            update_builder = update_builder.expression_attribute_names(k, v);
+        }
     }
 
     let update = update_builder.build()

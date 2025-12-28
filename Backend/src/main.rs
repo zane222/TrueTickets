@@ -13,7 +13,7 @@ use auth::{can_invite_users, can_manage_users, get_user_groups_from_event};
 use handlers::{
     handle_list_users, handle_update_user_group, handle_upload_attachment, handle_user_invitation,
     handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
-    handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
+    handle_create_ticket, handle_update_ticket, handle_add_ticket_comment, handle_get_recent_tickets_filtered,
     handle_get_ticket_last_updated, handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_customer_last_updated, handle_get_tickets_by_customer_id,
     handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix,
@@ -155,16 +155,24 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 "ticket_number_last_3_digits" => handle_get_tickets_by_suffix(&value, &dynamodb_client).await,
                 "subject_query" => handle_search_tickets_by_subject(&value, &dynamodb_client).await,
                 "customer_id" => handle_get_tickets_by_customer_id(value.to_string(), &dynamodb_client).await,
+                "get_recent" => {
+                    // Check for device and status filters
+                    let device = event.query_string_parameters().first("device").map(|s| s.to_string());
+                    let status_param = event.query_string_parameters().first("status").map(|s| s.to_string());
+
+                    if let (Some(d), Some(s)) = (device, status_param) {
+                        // Parse status pipe separated
+                        let statuses: Vec<String> = s.split('|').map(|st| st.trim().to_string()).collect();
+                        handle_get_recent_tickets_filtered(d, statuses, &dynamodb_client).await
+                    } else {
+                        // Global recent
+                        handle_get_recent_tickets(&dynamodb_client).await
+                    }
+                },
                 _ => return error_response(400, "Unknown query parameter", &format!("Unsupported query parameter: {}", first_parameter), None),
             };
 
             match result {
-                Ok(val) => success_response(200, &val.to_string()),
-                Err(resp) => resp,
-            }
-        }
-        ("/recent_tickets_list", "GET") => {
-            match handle_get_recent_tickets(&dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -228,7 +236,12 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 None => Vec::new(),
             };
 
-            match handle_create_ticket(customer_id, subject, password, items_left, &dynamodb_client).await {
+            let device: String = match get_value_in_json(&body, "device") {
+                Ok(val) => val,
+                Err(_) => "Other".to_string(), // Default to "Other" if not provided
+            };
+
+            match handle_create_ticket(customer_id, subject, password, items_left, device, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -249,9 +262,10 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
             let password = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
             let items_left = body.get("items_left").and_then(|v| serde_json::from_value(v.clone()).ok());
+            let device = body.get("device").and_then(|v| v.as_str()).map(|s| s.to_string());
 
 
-            match handle_update_ticket(ticket_number, subject, status, password, items_left, &dynamodb_client).await {
+            match handle_update_ticket(ticket_number, subject, status, password, items_left, device, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }

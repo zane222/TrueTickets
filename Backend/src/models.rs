@@ -23,6 +23,8 @@ pub struct TicketWithoutCustomer {
     pub customer_id: String,
     pub status: String,
     pub password: String,
+    #[serde(default = "default_device")]
+    pub device: String,
 
     #[serde(default)]
     pub created_at: i64,
@@ -83,4 +85,8 @@ pub struct TicketLastUpdated {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CustomerPhonesOnly {
     pub phone_numbers: Vec<PhoneNumber>,
+}
+
+fn default_device() -> String {
+    "Other".to_string()
 }
