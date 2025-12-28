@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useAlertMethods } from "./AlertSystem";
 import apiClient from "../../api/apiClient";
 import { USER_MANAGEMENT_ERRORS, USER_MANAGEMENT_SUCCESS } from "../../constants/authConstants";
+import type { PostInviteUser } from "../../types/api";
 
 interface InviteUserModalProps {
   isOpen: boolean;
@@ -25,10 +26,11 @@ export function InviteUserModal({
     setLoading(true);
 
     try {
-      await apiClient.post("/invite-user", {
+      const payload: PostInviteUser = {
         email,
         firstName,
-      });
+      };
+      await apiClient.post("/invite-user", payload);
 
       success(
         USER_MANAGEMENT_SUCCESS.USER_ADDED,

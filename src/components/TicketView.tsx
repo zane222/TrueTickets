@@ -31,7 +31,7 @@ import NavigationButton from "./ui/NavigationButton";
 import { TicketCard } from "./TicketCard";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import { InlineErrorMessage } from "./ui/InlineErrorMessage";
-import type { Ticket, Comment } from "../types/api";
+import type { Ticket, Comment, UpdateTicket, PostAttachment, PostComment } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketViewProps {
@@ -123,11 +123,11 @@ function TicketView({
         }
 
         try {
-          await api.post("/upload-attachment", {
+          const payload: PostAttachment = {
             ticket_id: id,
             image_data: fileContent,
-            file_name: file.name,
-          });
+          };
+          await api.post("/upload-attachment", payload);
           console.log(`File uploaded: ${file.name}`);
           uploadedCount++;
         } catch (err) {
@@ -352,9 +352,18 @@ function TicketView({
     try {
       // Convert the display status back to the original status before uploading
       const originalStatus = convertStatusToOriginal(status);
-      // Send the full ticket object with updated status
+
+      const updateData: UpdateTicket = {
+        status: originalStatus,
+        subject: null,
+        password: null,
+        items_left: null,
+        device: null,
+      };
+
+      await api.put(`/tickets?number=${ticket.ticket_number}`, updateData);
+
       const updatedTicket = { ...ticket, status: originalStatus };
-      await api.put(`/tickets/${ticket.ticket_number}`, updatedTicket);
       setTicket(updatedTicket);
 
       // Restart polling with the updated ticket data
@@ -709,7 +718,7 @@ function TicketView({
 
 interface CommentsBoxProps {
   ticketNumber: number;
-  comments?: Comment[];
+  comments?: Comment[] | null | undefined;
 }
 function CommentsBox({
   ticketNumber,
@@ -829,10 +838,11 @@ function CommentsBox({
         techName = currentUserName ?? "True Tickets";
       }
 
-      await api.post(`/tickets/comment?ticket_number=${ticketNumber}`, {
+      const payload: PostComment = {
         comment_body: text,
         tech_name: techName,
-      });
+      };
+      await api.post(`/tickets/comment?ticket_number=${ticketNumber}`, payload);
       setText("");
       // Trigger a refresh event to reload the ticket data
       window.dispatchEvent(new CustomEvent("refreshTicket"));

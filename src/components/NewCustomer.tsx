@@ -7,7 +7,7 @@ import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
-import type { Customer, PostCustomer } from "../types/api";
+import type { Customer, PostCustomer, UpdateCustomer } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface NewCustomerProps {
@@ -178,20 +178,28 @@ export default function NewCustomer({
       // Remove duplicates just in case
       const uniquePhones = Array.from(new Set(orderedPhones));
 
-      const payload: PostCustomer = {
-        full_name: form.full_name,
-        email: form.email,
-        phone_numbers: uniquePhones.map(num => ({
-          number: num,
-          prefers_texting: false,
-          no_english: false
-        })),
-      };
-
       if (customerId) {
+        const payload: UpdateCustomer = {
+          full_name: form.full_name,
+          email: form.email || null,
+          phone_numbers: uniquePhones.map(num => ({
+            number: num,
+            prefers_texting: false,
+            no_english: false
+          })),
+        };
         const res = await api.put<{ customer_id: string }>(`/customers?customer_id=${customerId}`, payload);
         goTo(`/$${res.customer_id}`);
       } else {
+        const payload: PostCustomer = {
+          full_name: form.full_name,
+          email: form.email || null,
+          phone_numbers: uniquePhones.map(num => ({
+            number: num,
+            prefers_texting: false,
+            no_english: false
+          })),
+        };
         const res = await api.post<{ customer_id: string }>("/customers", payload);
         const goToUrl = `/$${res.customer_id}${window.location.search.includes("newticket") ? "?newticket" : ""}`;
         goTo(goToUrl);

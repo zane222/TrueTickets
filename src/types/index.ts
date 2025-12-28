@@ -16,6 +16,11 @@ export type {
   PostTicket,
   PostCustomer,
   PostComment,
+  UpdateTicket,
+  UpdateCustomer,
+  PostInviteUser,
+  PostUpdateUserGroup,
+  PostAttachment,
 } from "./api";
 
 // Re-export commonly used component types

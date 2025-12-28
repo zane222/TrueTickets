@@ -38,7 +38,7 @@
     "strictBindCallApply": true,
     "strictPropertyInitialization": true,
     "noUncheckedIndexedAccess": false,
-    "exactOptionalPropertyTypes": false
+    "exactOptionalPropertyTypes": true
   },
   "include": [
     "src"

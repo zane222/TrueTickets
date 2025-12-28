@@ -12,7 +12,7 @@ import {
   USER_MANAGEMENT_SUCCESS,
 } from "../../constants/authConstants";
 import type { AmplifyAuthUser } from "../../types";
-import type { CognitoUser } from "../../types/api";
+import type { CognitoUser, PostUpdateUserGroup } from "../../types/api";
 
 interface ManageUsersModalProps {
   isOpen: boolean;
@@ -121,10 +121,11 @@ export function ManageUsersModal({
         }
       }
 
-      const result = (await apiClient.post("/update-user-group", {
+      const payload: PostUpdateUserGroup = {
         username,
         group: newGroup,
-      })) as { message: string; body?: string };
+      };
+      const result = (await apiClient.post("/update-user-group", payload)) as { message: string; body?: string };
 
       if (newGroup === "delete") {
         const message =

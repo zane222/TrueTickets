@@ -12,7 +12,7 @@ import {
   getDeviceTypeFromSubject,
 } from "../utils/appUtils.tsx";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
-import type { Ticket, PostTicket } from "../types/api";
+import type { Ticket, PostTicket, UpdateTicket } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketEditorProps {
@@ -171,10 +171,12 @@ function TicketEditor({
       */
 
       if (ticketId) {
-        const updateData = {
+        const updateData: UpdateTicket = {
           subject,
-          password,
-          items_left: itemsLeft,
+          password: password || null,
+          items_left: itemsLeft.length > 0 ? itemsLeft : null,
+          status: null, // Editor doesn't handle status change currently
+          device: deviceIdx !== null ? DEVICES[deviceIdx] : null,
         };
         const res = await api.put<{ ticket_number: number }>(`/tickets?number=${ticketId}`, updateData);
         goTo(`/&${res.ticket_number}`);
@@ -182,8 +184,9 @@ function TicketEditor({
         const payload: PostTicket = {
           customer_id: customerId || "",
           subject,
-          password,
-          items_left: itemsLeft,
+          password: password || null,
+          items_left: itemsLeft.length > 0 ? itemsLeft : null,
+          device: deviceIdx !== null ? DEVICES[deviceIdx] : "Other",
         };
         const res = await api.post<{ ticket_number: number }>("/tickets", payload);
         goTo(`/&${res.ticket_number}`);
