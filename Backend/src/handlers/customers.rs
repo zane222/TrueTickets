@@ -10,6 +10,7 @@ use crate::http::{error_response, generate_short_id};
 use crate::models::{
     Customer, CustomerIdOnly, TicketLastUpdated, CustomerPhonesOnly, PhoneNumber
 };
+use crate::db_utils::DynamoDbBuilderExt;
 
 pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client) -> Result<Value, Response<Body>> {
     // First query the phone index to get customer IDs
@@ -54,10 +55,8 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customer details: {}", e), None))?;
 
-    if let Some(unprocessed) = &batch_output.unprocessed_keys {
-        if !unprocessed.is_empty() {
-            return Err(error_response(530, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
-        }
+    if let Some(unprocessed) = &batch_output.unprocessed_keys && !unprocessed.is_empty() {
+        return Err(error_response(530, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
     }
 
     let responses = batch_output.responses.unwrap_or_else(HashMap::new);
@@ -156,10 +155,8 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customer details: {}", e), None))?;
 
-    if let Some(unprocessed) = &batch_output.unprocessed_keys {
-        if !unprocessed.is_empty() {
-            return Err(error_response(503, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the search")));
-        }
+    if let Some(unprocessed) = &batch_output.unprocessed_keys && !unprocessed.is_empty() {
+        return Err(error_response(503, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the search")));
     }
 
     let responses = batch_output.responses.unwrap_or_else(HashMap::new);
@@ -172,7 +169,7 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
 
 pub async fn handle_create_customer(
     full_name: String,
-    email: String,
+    email: Option<String>,
     phone_numbers: Vec<PhoneNumber>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
@@ -186,7 +183,7 @@ pub async fn handle_create_customer(
         .condition_expression("attribute_not_exists(customer_id)")
         .item("customer_id", AttributeValue::S(customer_id.clone()))
         .item("full_name", AttributeValue::S(full_name.clone())) // Stored with original casing
-        .item("email", AttributeValue::S(email.clone()))
+        .item_if_some("email", email.clone().map(AttributeValue::S))
         .item("phone_numbers", AttributeValue::L(
             phone_numbers.iter().map(|p| {
                 AttributeValue::M(
@@ -229,10 +226,8 @@ pub async fn handle_create_customer(
         .send()
         .await
         .map_err(|e| {
-            if let Some(service_err) = e.as_service_error() {
-                if service_err.is_transaction_canceled_exception() {
-                    return error_response(409, "Conflict", "Customer ID collision detected. This is extremely rare, but please try again.", None);
-                }
+            if let Some(service_err) = e.as_service_error() && service_err.is_transaction_canceled_exception() {
+                return error_response(409, "Conflict", "Customer ID collision detected. This is extremely rare, but please try again.", None);
             }
             error_response(500, "Transaction Error", &format!("Failed to execute create customer transaction: {}", e), None)
         })?;

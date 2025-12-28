@@ -2,6 +2,7 @@ mod auth;
 mod handlers;
 mod http;
 mod models;
+mod db_utils;
 
 use lambda_http::{run, service_fn, Body, Request, Response, RequestExt};
 use aws_config::BehaviorVersion;
@@ -19,7 +20,10 @@ use handlers::{
     handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix,
     handle_migrate_tickets
 };
-use models::PhoneNumber;
+use models::{
+    CreateTicketRequest, UpdateTicketRequest,
+    CreateCustomerRequest, UpdateCustomerRequest
+};
 use http::{error_response, handle_options, success_response, parse_json_body, get_value_in_json};
 
 /// Handle the Lambda event
@@ -54,16 +58,16 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         ("/invite-user", "POST") => {
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
             let email: String = match get_value_in_json(&body, "email") {
                 Ok(val) => val,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
             let first_name: String = match get_value_in_json(&body, "firstName") {
                 Ok(val) => val,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
             // Check user permissions
@@ -86,16 +90,16 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         ("/update-user-group", "POST") => {
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
             let username: String = match get_value_in_json(&body, "username") {
                 Ok(val) => val,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
             let new_group: String = match get_value_in_json(&body, "group") {
                 Ok(val) => val,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
             // Check user permissions
@@ -113,16 +117,16 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Extract and validate attachment data from request
             let body = match parse_json_body(event.body()) {
                 Ok(body) => body,
-                Err(response) => return response,
+                Err(response) => return *response,
             };
 
             let ticket_id: String = match get_value_in_json(&body, "ticket_id") {
                 Ok(val) => val,
-                Err(response) => return response,
+                Err(response) => return *response,
             };
             let image_data: String = match get_value_in_json(&body, "image_data") {
                 Ok(val) => val,
-                Err(response) => return response,
+                Err(response) => return *response,
             };
 
             // Extract base64 data from data URL if needed
@@ -211,37 +215,15 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         ("/tickets", "POST") => {
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
-            let customer_id: String = match get_value_in_json(&body, "customer_id") {
-                Ok(val) => val,
-                Err(resp) => return resp,
-            };
-            let subject: String = match get_value_in_json(&body, "subject") {
-                Ok(val) => val,
-                Err(resp) => return resp,
+            let req: CreateTicketRequest = match serde_json::from_value(body) {
+                Ok(r) => r,
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse ticket creation request: {}", e), None),
             };
 
-            let password: String = match get_value_in_json(&body, "password") {
-                Ok(val) => val,
-                Err(resp) => return resp,
-            };
-
-            let items_left: Vec<String> = match body.get("items_left") {
-                Some(v) => match serde_json::from_value(v.clone()) {
-                    Ok(vec) => vec,
-                    Err(_) => Vec::new(), // Default to empty if invalid
-                },
-                None => Vec::new(),
-            };
-
-            let device: String = match get_value_in_json(&body, "device") {
-                Ok(val) => val,
-                Err(_) => "Other".to_string(), // Default to "Other" if not provided
-            };
-
-            match handle_create_ticket(customer_id, subject, password, items_left, device, &dynamodb_client).await {
+            match handle_create_ticket(req.customer_id, req.subject, req.password, req.items_left, req.device, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -254,18 +236,20 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
-            let subject = body.get("subject").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let req: UpdateTicketRequest = match serde_json::from_value(body) {
+                Ok(r) => r,
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse ticket update request: {}", e), None),
+            };
 
-            let status = body.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let password = body.get("password").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let items_left = body.get("items_left").and_then(|v| serde_json::from_value(v.clone()).ok());
-            let device = body.get("device").and_then(|v| v.as_str()).map(|s| s.to_string());
+            // Validation: Ensure at least one field is not None
+            if req.subject.is_none() && req.status.is_none() && req.password.is_none() && req.items_left.is_none() && req.device.is_none() {
+                return error_response(400, "Empty Update", "At least one field must be provided for update", None);
+            }
 
-
-            match handle_update_ticket(ticket_number, subject, status, password, items_left, device, &dynamodb_client).await {
+            match handle_update_ticket(ticket_number, req.subject, req.status, req.password, req.items_left, req.device, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -278,16 +262,16 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
             let comment_body: String = match get_value_in_json(&body, "comment_body") {
                 Ok(val) => val,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
             let tech_name: String = match get_value_in_json(&body, "tech_name") {
                 Ok(val) => val,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
             match handle_add_ticket_comment(ticket_number, comment_body, tech_name, &dynamodb_client).await {
@@ -357,26 +341,20 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         ("/customers", "POST") => {
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
-            let full_name: String = match get_value_in_json(&body, "full_name") {
-                Ok(val) => val,
-                Err(resp) => return resp,
-            };
-            let email: String = match get_value_in_json(&body, "email") {
-                Ok(val) => val,
-                Err(resp) => return resp,
-            };
-            let phone_numbers: Vec<PhoneNumber> = match body.get("phone_numbers") {
-                Some(v) => match serde_json::from_value(v.clone()) {
-                    Ok(vec) => vec,
-                    Err(_) => return error_response(400, "Invalid phone_numbers", "phone_numbers must be an array of objects with 'number', 'prefers_texting', 'no_english'", None),
-                },
-                None => return error_response(400, "Missing phone_numbers", "phone_numbers array is required", None),
+            let req: CreateCustomerRequest = match serde_json::from_value(body) {
+                Ok(r) => r,
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse customer creation request: {}", e), None),
             };
 
-            match handle_create_customer(full_name, email, phone_numbers, &dynamodb_client).await {
+            // Validation: Ensure phone_numbers is not empty
+            if req.phone_numbers.is_empty() {
+                return error_response(400, "Validation Error", "At least one phone number is required", None);
+            }
+
+            match handle_create_customer(req.full_name, req.email, req.phone_numbers, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -389,14 +367,20 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             let body = match parse_json_body(event.body()) {
                 Ok(b) => b,
-                Err(resp) => return resp,
+                Err(resp) => return *resp,
             };
 
-            let full_name = body.get("full_name").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let email = body.get("email").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let phone_numbers = body.get("phone_numbers").and_then(|v| serde_json::from_value(v.clone()).ok());
+            let req: UpdateCustomerRequest = match serde_json::from_value(body) {
+                Ok(r) => r,
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse customer update request: {}", e), None),
+            };
 
-            match handle_update_customer(customer_id, full_name, email, phone_numbers, &dynamodb_client).await {
+            // Validation: Ensure at least one field is not None
+            if req.full_name.is_none() && req.email.is_none() && req.phone_numbers.is_none() {
+                return error_response(400, "Empty Update", "At least one field must be provided for update", None);
+            }
+
+            match handle_update_customer(customer_id, req.full_name, req.email, req.phone_numbers, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }

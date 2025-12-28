@@ -73,10 +73,10 @@ struct ApiCustomer {
 }
 
 /// Parse ISO 8601 timestamp to Unix timestamp
-fn parse_timestamp(iso_string: &str) -> Result<i64, Response<Body>> {
+fn parse_timestamp(iso_string: &str) -> Result<i64, Box<Response<Body>>> {
     chrono::DateTime::parse_from_rfc3339(iso_string)
         .map(|dt| dt.timestamp())
-        .map_err(|e| error_response(500, "Timestamp Parse Error", &format!("Failed to parse timestamp '{}': {}", iso_string, e), None))
+        .map_err(|e| Box::new(error_response(500, "Timestamp Parse Error", &format!("Failed to parse timestamp '{}': {}", iso_string, e), None)))
 }
 
 /// Extract password from ticket using the same logic as apiReference.ts
@@ -96,12 +96,10 @@ fn extract_password(ticket: &LargeTicket) -> String {
                     return pw.clone();
                 }
             }
-        } else if tid == 9801 {
-            if let Some(pw) = &ticket.properties.password_for_phone {
-                let normalized = normalize(pw);
-                if !normalized.is_empty() && !invalid_values.contains(&normalized.as_str()) {
-                    return pw.clone();
-                }
+        } else if tid == 9801 && let Some(pw) = &ticket.properties.password_for_phone {
+            let normalized = normalize(pw);
+            if !normalized.is_empty() && !invalid_values.contains(&normalized.as_str()) {
+                return pw.clone();
             }
         }
     }
@@ -179,7 +177,7 @@ async fn download_and_upload_attachment(
     url: &str,
     ticket_number: i64,
     s3_client: &S3Client,
-) -> Result<String, Response<Body>> {
+) -> Result<String, Box<Response<Body>>> {
     // Normalize URL (replace Unicode ampersand escapes if present)
     let normalized_url = url.replace("\\u0026", "&");
 
@@ -192,14 +190,14 @@ async fn download_and_upload_attachment(
         )
         .send()
         .await
-        .map_err(|e| error_response(500, "Download Failed", &format!("Failed to download attachment from {}: {}", url, e), None))?;
+        .map_err(|e| Box::new(error_response(500, "Download Failed", &format!("Failed to download attachment from {}: {}", url, e), None)))?;
 
     let file_bytes = response.bytes()
         .await
-        .map_err(|e| error_response(500, "Download Failed", &format!("Failed to read attachment bytes: {}", e), None))?;
+        .map_err(|e| Box::new(error_response(500, "Download Failed", &format!("Failed to read attachment bytes: {}", e), None)))?;
 
     let bucket_name = std::env::var("S3_BUCKET_NAME")
-        .map_err(|_| error_response(500, "Configuration Error", "S3_BUCKET_NAME environment variable not set", None))?;
+        .map_err(|_| Box::new(error_response(500, "Configuration Error", "S3_BUCKET_NAME environment variable not set", None)))?;
 
     let timestamp = Utc::now().timestamp();
     let file_id = generate_short_id(4);
@@ -213,7 +211,7 @@ async fn download_and_upload_attachment(
         .body(byte_stream)
         .send()
         .await
-        .map_err(|e| error_response(500, "S3 Upload Failed", &format!("Failed to upload attachment to S3: {}", e), Some("Check that the Lambda has S3 permissions and the bucket exists")))?;
+        .map_err(|e| Box::new(error_response(500, "S3 Upload Failed", &format!("Failed to upload attachment to S3: {}", e), Some("Check that the Lambda has S3 permissions and the bucket exists"))))?;
 
     Ok(format!("https://{}.s3.amazonaws.com/{}", bucket_name, s3_key))
 }
@@ -271,15 +269,15 @@ pub async fn handle_migrate_tickets(
         let password = extract_password(&ticket);
         let items_left = check_ac_charger(&ticket);
 
-        let created_at = parse_timestamp(&ticket.created_at)?;
-        let last_updated = parse_timestamp(&ticket.updated_at)?;
+        let created_at = parse_timestamp(&ticket.created_at).map_err(|e| *e)?;
+        let last_updated = parse_timestamp(&ticket.updated_at).map_err(|e| *e)?;
 
         // 1. Migrate Customer
         let api_cust = &ticket.customer;
         let cust_id = ticket.customer_id.to_string();
-        let cust_created_at = parse_timestamp(&api_cust.created_at)?;
+        let cust_created_at = parse_timestamp(&api_cust.created_at).map_err(|e| *e)?;
         let cust_last_updated = if let Some(ref cu) = api_cust.updated_at {
-             parse_timestamp(cu)?
+             parse_timestamp(cu).map_err(|e| *e)?
         } else {
              cust_created_at
         };
@@ -343,7 +341,7 @@ pub async fn handle_migrate_tickets(
         let mut attachment_urls = Vec::new();
         for attachment in &ticket.attachments {
             // We propagate errors here now
-            let s3_url = download_and_upload_attachment(&attachment.file.url, ticket.number, s3_client).await?;
+            let s3_url = download_and_upload_attachment(&attachment.file.url, ticket.number, s3_client).await.map_err(|e| *e)?;
             attachment_urls.push(s3_url);
         }
 
@@ -381,7 +379,7 @@ pub async fn handle_migrate_tickets(
 
         if !items_left.is_empty() {
             put_ticket_builder = put_ticket_builder.item("items_left", AttributeValue::L(
-                items_left.into_iter().map(|s| AttributeValue::S(s)).collect()
+                items_left.into_iter().map(AttributeValue::S).collect()
             ));
         }
 

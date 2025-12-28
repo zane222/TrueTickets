@@ -10,9 +10,7 @@ pub struct Comment {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PhoneNumber {
     pub number: String,
-    #[serde(default)]
     pub prefers_texting: bool,
-    #[serde(default)]
     pub no_english: bool,
 }
 
@@ -22,24 +20,13 @@ pub struct TicketWithoutCustomer {
     pub subject: String,
     pub customer_id: String,
     pub status: String,
-    pub password: String,
-    #[serde(default = "default_device")]
+    pub password: Option<String>,
     pub device: String,
-
-    #[serde(default)]
     pub created_at: i64,
-
-    #[serde(default)]
     pub last_updated: i64,
-
-    #[serde(default)]
-    pub comments: Vec<Comment>,
-
-    #[serde(default)]
-    pub attachments: Vec<String>,
-
-    #[serde(default)]
-    pub items_left: Vec<String>,
+    pub comments: Option<Vec<Comment>>,
+    pub attachments: Option<Vec<String>>,
+    pub items_left: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -53,12 +40,9 @@ pub struct Ticket {
 pub struct Customer {
     pub customer_id: String,
     pub full_name: String,
-    pub email: String,
+    pub email: Option<String>,
     pub phone_numbers: Vec<PhoneNumber>,
-
-    #[serde(default)]
     pub created_at: i64,
-    #[serde(default)]
     pub last_updated: i64,
 }
 
@@ -87,6 +71,36 @@ pub struct CustomerPhonesOnly {
     pub phone_numbers: Vec<PhoneNumber>,
 }
 
-fn default_device() -> String {
-    "Other".to_string()
+// Request Bodies
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CreateTicketRequest {
+    pub customer_id: String,
+    pub subject: String,
+    pub password: Option<String>,
+    pub items_left: Option<Vec<String>>,
+    pub device: String,
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateTicketRequest {
+    pub subject: Option<String>,
+    pub status: Option<String>,
+    pub password: Option<String>,
+    pub items_left: Option<Vec<String>>,
+    pub device: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CreateCustomerRequest {
+    pub full_name: String,
+    pub email: Option<String>,
+    pub phone_numbers: Vec<PhoneNumber>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateCustomerRequest {
+    pub full_name: Option<String>,
+    pub email: Option<String>,
+    pub phone_numbers: Option<Vec<PhoneNumber>>,
+}
+

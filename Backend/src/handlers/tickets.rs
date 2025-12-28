@@ -11,6 +11,7 @@ use crate::models::{
     TicketWithoutCustomer, Ticket, Customer, CounterValue,
     TicketNumberOnly, TicketLastUpdated
 };
+use crate::db_utils::DynamoDbBuilderExt;
 
 pub async fn handle_get_ticket_by_number(
     ticket_number: &str,
@@ -22,7 +23,7 @@ pub async fn handle_get_ticket_by_number(
         .key("ticket_number", AttributeValue::N(ticket_number.to_string()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{}', probably there's no ticket under that number: {}", ticket_number.to_string(), e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{}', probably there's no ticket under that number: {}", ticket_number, e), None))?;
 
     let ticket_item = output.item
         .ok_or_else(|| error_response(404, "Ticket Not Found", "No ticket with that number", None))?;
@@ -249,8 +250,8 @@ pub async fn handle_get_recent_tickets_filtered(
 pub async fn handle_create_ticket(
     customer_id: String,
     subject: String,
-    password: String,
-    items_left: Vec<String>,
+    password: Option<String>,
+    items_left: Option<Vec<String>>,
     device: String,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
@@ -302,8 +303,8 @@ pub async fn handle_create_ticket(
             .item("status", AttributeValue::S(status.clone()))
             .item("device", AttributeValue::S(device.clone()))
             .item("status_device", AttributeValue::S(status_device))
-            .item("password", AttributeValue::S(password.clone()))
-            .item("items_left", AttributeValue::L(items_left.iter().map(|s| AttributeValue::S(s.clone())).collect()))
+            .item_if_some("password", password.clone().map(AttributeValue::S))
+            .item_if_some("items_left", items_left.clone().map(|il| AttributeValue::L(il.into_iter().map(AttributeValue::S).collect())))
             .item("created_at", AttributeValue::N(now.clone()))
             .item("last_updated", AttributeValue::N(now.clone()))
             .build()
@@ -327,14 +328,12 @@ pub async fn handle_create_ticket(
         match result {
             Ok(_) => return Ok(json!({ "ticket_number": ticket_number })),
             Err(e) => {
-                if let Some(service_err) = e.as_service_error() {
-                    if service_err.is_transaction_canceled_exception() {
-                        // Check if it's a condition failure (concurrent update)
-                        if retry_count < MAX_RETRIES {
-                            retry_count += 1;
-                            // Small backoff could be added here
-                            continue;
-                        }
+                if let Some(service_err) = e.as_service_error() && service_err.is_transaction_canceled_exception() {
+                    // Check if it's a condition failure (concurrent update)
+                    if retry_count < MAX_RETRIES {
+                        retry_count += 1;
+                        // Small backoff could be added here
+                        continue;
                     }
                 }
                 return Err(error_response(500, "Transaction Error", &format!("Failed to execute create ticket transaction: {}", e), None));
@@ -373,10 +372,10 @@ pub async fn handle_update_ticket(
 
             if let Some(item) = output.item {
                 if status.is_none() {
-                    new_status = item.get("status").and_then(|av| av.as_s().ok()).map(|s| s.clone());
+                    new_status = item.get("status").and_then(|av| av.as_s().ok()).cloned();
                 }
                 if device.is_none() {
-                    new_device = item.get("device").and_then(|av| av.as_s().ok()).map(|s| s.clone());
+                    new_device = item.get("device").and_then(|av| av.as_s().ok()).cloned();
                 }
             }
         }
@@ -413,7 +412,7 @@ pub async fn handle_update_ticket(
     }
     if let Some(items) = items_left {
         update_parts.push("items_left = :il".to_string());
-        expr_vals.insert(":il".to_string(), AttributeValue::L(items.iter().map(|s| AttributeValue::S(s.clone())).collect()));
+        expr_vals.insert(":il".to_string(), AttributeValue::L(items.into_iter().map(AttributeValue::S).collect()));
     }
     if let Some(d) = device {
         update_parts.push("device = :d".to_string());
@@ -566,10 +565,8 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {}", e), None))?;
 
-    if let Some(unprocessed) = &output.unprocessed_keys {
-        if !unprocessed.is_empty() {
-            return Err(error_response(503, "Partial Batch Success", "Some ticket details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
-        }
+    if let Some(unprocessed) = &output.unprocessed_keys && !unprocessed.is_empty() {
+        return Err(error_response(503, "Partial Batch Success", "Some ticket details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
     }
 
     let responses = output.responses.unwrap_or_else(HashMap::new);
