@@ -1,4 +1,0 @@
-
-> truetickets@10.0 check
-> tsc --noEmit
-

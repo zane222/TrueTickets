@@ -18,14 +18,19 @@ pub struct PhoneNumber {
 pub struct TicketWithoutCustomer {
     pub ticket_number: i64,
     pub subject: String,
+    #[serde(skip_serializing)]
     pub customer_id: String,
     pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     pub device: String,
     pub created_at: i64,
     pub last_updated: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub comments: Option<Vec<Comment>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub items_left: Option<Vec<String>>,
 }
 
@@ -40,6 +45,7 @@ pub struct Ticket {
 pub struct Customer {
     pub customer_id: String,
     pub full_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     pub phone_numbers: Vec<PhoneNumber>,
     pub created_at: i64,
@@ -48,7 +54,7 @@ pub struct Customer {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CounterValue {
-    pub counter_value: String,
+    pub counter_value: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -58,13 +64,9 @@ pub struct CustomerIdOnly {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TicketNumberOnly {
-    pub ticket_number: String,
+    pub ticket_number: i64,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
-pub struct TicketLastUpdated {
-    pub last_updated: String,
-}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CustomerPhonesOnly {

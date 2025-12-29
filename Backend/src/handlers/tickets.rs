@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::http::error_response;
 use crate::models::{
     TicketWithoutCustomer, Ticket, Customer, CounterValue,
-    TicketNumberOnly, TicketLastUpdated
+    TicketNumberOnly
 };
 use crate::db_utils::DynamoDbBuilderExt;
 
@@ -125,7 +125,7 @@ pub async fn handle_search_tickets_by_subject(
             Some(item) => {
                 let tn: TicketNumberOnly = serde_dynamo::from_item(item)
                     .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject search result: {}", e), None))?;
-                ticket_numbers.push(tn.ticket_number);
+                ticket_numbers.push(tn.ticket_number.to_string());
             },
             None => break,
         }
@@ -272,7 +272,7 @@ pub async fn handle_create_ticket(
             Some(item) => {
                 let cv: CounterValue = serde_dynamo::from_item(item)
                     .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse ticket counter: {}", e), None))?;
-                cv.counter_value.parse::<i64>().map_err(|e| error_response(500, "Data Integrity Error", &format!("Ticket counter value '{}' is not a valid number: {}", cv.counter_value, e), None))?
+                cv.counter_value
             }
             None => return Err(error_response(500, "Data Integrity Error", "Ticket counter not found in database. Please initialize the counter.", None)),
         };
@@ -303,8 +303,8 @@ pub async fn handle_create_ticket(
             .item("status", AttributeValue::S(status.clone()))
             .item("device", AttributeValue::S(device.clone()))
             .item("status_device", AttributeValue::S(status_device))
-            .item_if_some("password", password.clone().map(AttributeValue::S))
-            .item_if_some("items_left", items_left.clone().map(|il| AttributeValue::L(il.into_iter().map(AttributeValue::S).collect())))
+            .item_if_not_empty("password", AttributeValue::S(password.clone().unwrap_or_default()))
+            .item_if_not_empty("items_left", AttributeValue::L(items_left.clone().unwrap_or_default().into_iter().map(AttributeValue::S).collect()))
             .item("created_at", AttributeValue::N(now.clone()))
             .item("last_updated", AttributeValue::N(now.clone()))
             .build()
@@ -490,24 +490,6 @@ pub async fn handle_add_ticket_comment(
     Ok(json!({"ticket_number": ticket_number}))
 }
 
-pub async fn handle_get_ticket_last_updated(ticket_number: String, client: &Client) -> Result<Value, Response<Body>> {
-    let output = client.get_item()
-        .table_name("Tickets")
-        .key("ticket_number", AttributeValue::N(ticket_number.clone()))
-        .projection_expression("last_updated")
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{}', probably there's no ticket under that number: {}", ticket_number.clone(), e), None))?;
-
-    let item = output.item
-        .ok_or_else(|| error_response(404, "Ticket Not Found", "No ticket with that number", None))?;
-
-    let lu: TicketLastUpdated = serde_dynamo::from_item(item)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket last_updated: {}", e), None))?;
-
-    Ok(json!({ "last_updated": lu.last_updated }))
-}
-
 pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Result<Value, Response<Body>> {
     let suffix_val: i64 = suffix.parse::<i64>().map_err(|_| error_response(400, "Invalid Suffix", "Suffix must be a number", None))?;
 
@@ -524,7 +506,7 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
         Some(item) => {
             let cv: CounterValue = serde_dynamo::from_item(item)
                 .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse ticket counter: {}", e), None))?;
-            cv.counter_value.parse::<i64>().map_err(|e| error_response(500, "Data Integrity Error", &format!("Ticket counter value '{}' is not a valid number: {}", cv.counter_value, e), None))?
+            cv.counter_value
         },
         None => return Err(error_response(500, "Data Integrity Error", "Ticket counter not found in database. Please initialize the counter.", None)),
     };

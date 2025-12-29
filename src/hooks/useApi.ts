@@ -2,10 +2,10 @@ import { useMemo } from "react";
 import apiClient from "../api/apiClient";
 
 interface ApiMethods {
-  get: <T = unknown>(path: string, headers?: Record<string, string>) => Promise<T>;
-  post: <T = unknown>(path: string, body?: unknown, headers?: Record<string, string>) => Promise<T>;
-  put: <T = unknown>(path: string, body?: unknown, headers?: Record<string, string>) => Promise<T>;
-  del: <T = unknown>(path: string) => Promise<T>;
+  get: <T = unknown>(path: string, config?: { headers?: Record<string, string>; silent?: boolean }) => Promise<T>;
+  post: <T = unknown>(path: string, body?: unknown, config?: { headers?: Record<string, string>; silent?: boolean }) => Promise<T>;
+  put: <T = unknown>(path: string, body?: unknown, config?: { headers?: Record<string, string>; silent?: boolean }) => Promise<T>;
+  del: <T = unknown>(path: string, config?: { headers?: Record<string, string>; silent?: boolean }) => Promise<T>;
 }
 
 /**
@@ -15,17 +15,17 @@ interface ApiMethods {
 export function useApi(): ApiMethods {
   const api = useMemo(
     () => ({
-      get: async <T = unknown>(path: string, headers?: Record<string, string>): Promise<T> => {
-        return await apiClient.get<T>(path, headers);
+      get: async <T = unknown>(path: string, config?: { headers?: Record<string, string>; silent?: boolean }): Promise<T> => {
+        return await apiClient.get<T>(path, config);
       },
-      post: async <T = unknown>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T> => {
-        return await apiClient.post<T>(path, body, headers);
+      post: async <T = unknown>(path: string, body?: unknown, config?: { headers?: Record<string, string>; silent?: boolean }): Promise<T> => {
+        return await apiClient.post<T>(path, body, config);
       },
-      put: async <T = unknown>(path: string, body?: unknown, headers?: Record<string, string>): Promise<T> => {
-        return await apiClient.put<T>(path, body, headers);
+      put: async <T = unknown>(path: string, body?: unknown, config?: { headers?: Record<string, string>; silent?: boolean }): Promise<T> => {
+        return await apiClient.put<T>(path, body, config);
       },
-      del: async <T = unknown>(path: string): Promise<T> => {
-        return await apiClient.del<T>(path);
+      del: async <T = unknown>(path: string, config?: { headers?: Record<string, string>; silent?: boolean }): Promise<T> => {
+        return await apiClient.del<T>(path, config);
       },
     }),
     [],

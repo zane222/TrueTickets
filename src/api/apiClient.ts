@@ -4,6 +4,12 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   headers?: Record<string, string>;
+  silent?: boolean;
+}
+
+export interface ApiRequestConfig {
+  headers?: Record<string, string>;
+  silent?: boolean;
 }
 
 interface ApiError extends Error {
@@ -21,8 +27,6 @@ class ApiClient {
     // this.cachedSession = null;
     // this.sessionExpiry = null;
   }
-
-
 
   async getAuthHeaders(isMultipart = false, forceRefresh = false): Promise<Record<string, string>> {
     try {
@@ -174,7 +178,7 @@ class ApiClient {
             message?: string;
           } | null;
           const errorMessage = errorBody?.details || errorBody?.message;
-          if (errorMessage) {
+          if (errorMessage && !options.silent) {
             // Dispatch a custom event for the UI to handle
             window.dispatchEvent(
               new CustomEvent("api-error", {
@@ -230,20 +234,36 @@ class ApiClient {
   }
 
   // API methods (generic)
-  async get<T = unknown>(path: string, customHeaders: Record<string, string> = {}): Promise<T> {
-    return this.request<T>(path, { method: "GET", headers: customHeaders });
+  async get<T = unknown>(path: string, config: ApiRequestConfig = {}): Promise<T> {
+    const options: RequestOptions = { method: "GET", silent: config.silent ?? false };
+    if (config.headers) {
+      options.headers = config.headers;
+    }
+    return this.request<T>(path, options);
   }
 
-  async post<T = unknown>(path: string, body?: unknown, customHeaders: Record<string, string> = {}): Promise<T> {
-    return this.request<T>(path, { method: "POST", body, headers: customHeaders });
+  async post<T = unknown>(path: string, body?: unknown, config: ApiRequestConfig = {}): Promise<T> {
+    const options: RequestOptions = { method: "POST", body, silent: config.silent ?? false };
+    if (config.headers) {
+      options.headers = config.headers;
+    }
+    return this.request<T>(path, options);
   }
 
-  async put<T = unknown>(path: string, body?: unknown, customHeaders: Record<string, string> = {}): Promise<T> {
-    return this.request<T>(path, { method: "PUT", body, headers: customHeaders });
+  async put<T = unknown>(path: string, body?: unknown, config: ApiRequestConfig = {}): Promise<T> {
+    const options: RequestOptions = { method: "PUT", body, silent: config.silent ?? false };
+    if (config.headers) {
+      options.headers = config.headers;
+    }
+    return this.request<T>(path, options);
   }
 
-  async del<T = unknown>(path: string): Promise<T> {
-    return this.request<T>(path, { method: "DELETE" });
+  async del<T = unknown>(path: string, config: ApiRequestConfig = {}): Promise<T> {
+    const options: RequestOptions = { method: "DELETE", silent: config.silent ?? false };
+    if (config.headers) {
+      options.headers = config.headers;
+    }
+    return this.request<T>(path, options);
   }
 }
 

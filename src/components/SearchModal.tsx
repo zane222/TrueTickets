@@ -20,7 +20,7 @@ function SearchModal({
   const [search, setSearch] = useState<string>("");
   const [results, setResults] = useState<(Ticket | Customer)[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [status, setStatus] = useState<"Enter a search query" | "No results found" | "">("Enter a search query");
+  const [status, setStatus] = useState<string>("Enter a search query");
   const [searchType, setSearchType] = useState<"tickets" | "customers">("tickets");
 
   // Removed latestTicketNumber and its fetching logic as backend now handles suffix search.
@@ -92,14 +92,15 @@ function SearchModal({
   }, [open]);
 
   useEffect(() => {
-    if (search.trim() === "") {
+    const trimmed = search.trim();
+    if (trimmed.length < 3) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
       currentSearchQueryRef.current = "";
       setResults([]);
-      setStatus("Enter a search query");
+      setStatus(trimmed.length === 0 ? "Enter a search query" : "Enter at least 3 characters");
       setLoading(false);
       return;
     }
@@ -149,7 +150,7 @@ function SearchModal({
       if (query.length === 3) {
         const url = `/tickets?ticket_number_last_3_digits=${encodeURIComponent(query)}`;
         try {
-          const tickets = await api.get<Ticket[]>(url);
+          const tickets = await api.get<Ticket[]>(url, { silent: true });
           if (!signal.aborted && currentSearchQueryRef.current === query) {
             setResults(tickets || []);
             setStatus(tickets?.length === 0 ? "No results found" : "");
@@ -171,7 +172,7 @@ function SearchModal({
       } else {
         const url = `/tickets?number=${encodeURIComponent(query)}`;
         try {
-          const ticket = await api.get<Ticket>(url);
+          const ticket = await api.get<Ticket>(url, { silent: true });
           if (!signal.aborted && currentSearchQueryRef.current === query) {
             const res = ticket ? [ticket] : [];
             setResults(res);
@@ -205,6 +206,7 @@ function SearchModal({
           setSearchType("customers");
           const customers = await api.get<Customer[]>(
             `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
+            { silent: true }
           );
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
             setResults(customers || []);
@@ -226,7 +228,7 @@ function SearchModal({
         } else {
           // General query
           // Check what /query_all returns: { tickets: [], customers: [] }
-          const queryResult = await api.get<{ tickets: Ticket[], customers: Customer[] }>(`/query_all?query=${encodeURIComponent(trimmedQuery)}`);
+          const queryResult = await api.get<{ tickets: Ticket[], customers: Customer[] }>(`/query_all?query=${encodeURIComponent(trimmedQuery)}`, { silent: true });
 
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
             const customers = queryResult.customers || [];

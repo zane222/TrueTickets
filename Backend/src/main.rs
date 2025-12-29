@@ -15,8 +15,8 @@ use handlers::{
     handle_list_users, handle_update_user_group, handle_upload_attachment, handle_user_invitation,
     handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment, handle_get_recent_tickets_filtered,
-    handle_get_ticket_last_updated, handle_get_customers_by_phone, handle_create_customer,
-    handle_update_customer, handle_get_customer_last_updated, handle_get_tickets_by_customer_id,
+    handle_get_customers_by_phone, handle_create_customer,
+    handle_update_customer, handle_get_tickets_by_customer_id,
     handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix,
     handle_migrate_tickets
 };
@@ -151,7 +151,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         ("/tickets", "GET") => {
             let (first_parameter, value) = match event.query_string_parameters().iter().next() {
                 Some((k, v)) => (k.to_string(), v.to_string()),
-                None => return error_response(400, "Missing query parameter", "Provide a query parameter or use /tickets/{id}", None),
+                None => return error_response(400, "Missing query parameter", "Provide a query parameter (e.g., ?number=123)", None),
             };
 
             let result = match first_parameter.as_str() {
@@ -279,17 +279,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/tickets/last_updated", "GET") => {
-            let ticket_number: String = match event.query_string_parameters().first("number") {
-                Some(n) => n.to_string(),
-                None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
-            };
-            match handle_get_ticket_last_updated(ticket_number, &dynamodb_client).await {
-                Ok(val) => success_response(200, &val.to_string()),
-                Err(resp) => resp,
-            }
-        }
-        
+
         // -------------------------
         // MIGRATION
         // -------------------------
@@ -323,14 +313,10 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 handle_get_customers_by_phone(phone.to_string(), &dynamodb_client).await
             } else if let Some(query) = event.query_string_parameters().first("query") {
                 handle_search_customers_by_name(query, &dynamodb_client).await
+            } else if let Some(id) = event.query_string_parameters().first("id") {
+                handle_get_customer_by_id(id.to_string(), &dynamodb_client).await
             } else {
-                // Check if path is /customers/{id}
-                let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-                if parts.len() == 2 && parts[0] == "customers" {
-                    handle_get_customer_by_id(parts[1].to_string(), &dynamodb_client).await
-                } else {
-                    return error_response(400, "Missing query parameter", "Provide either 'phone_number', 'query', or use /customers/{id}", None);
-                }
+                return error_response(400, "Missing query parameter", "Provide either 'phone_number', 'query', or 'id'", None);
             };
 
             match result {
@@ -381,16 +367,6 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             }
 
             match handle_update_customer(customer_id, req.full_name, req.email, req.phone_numbers, &dynamodb_client).await {
-                Ok(val) => success_response(200, &val.to_string()),
-                Err(resp) => resp,
-            }
-        }
-        ("/customers/last_updated", "GET") => {
-            let customer_id: String = match event.query_string_parameters().first("customer_id") {
-                Some(c) => c.to_string(),
-                None => return error_response(400, "Missing customer_id", "Query parameter 'customer_id' is required", None),
-            };
-            match handle_get_customer_last_updated(customer_id, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }

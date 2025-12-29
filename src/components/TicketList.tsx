@@ -173,7 +173,7 @@ export function TicketListView({
       setLoading(true);
       try {
         const tickets = await api.get<Ticket[]>(
-          `/recent_tickets_list`,
+          `/tickets?get_recent`,
         );
         setItems(tickets || []);
       } catch (error) {

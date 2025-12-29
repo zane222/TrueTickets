@@ -24,7 +24,6 @@ import {
 } from "../utils/appUtils.jsx";
 import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
-import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
@@ -68,6 +67,7 @@ function TicketView({
   const attachmentsRef = useRef<HTMLDivElement>(null);
 
   // Change detection
+  /*
   const {
     hasChanged,
     isPolling: _isPolling,
@@ -75,6 +75,11 @@ function TicketView({
     stopPolling,
     resetPolling: _resetPolling,
   } = useChangeDetection(`/tickets/last_updated?number=${id}`);
+  */
+  const hasChanged = false;
+  const stopPolling = useCallback(() => { }, []);
+  const startPolling = useCallback((_initialData: unknown) => { }, []);
+  const _resetPolling = useCallback((_newData: unknown) => { }, []);
 
   const handleFileUpload = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -263,7 +268,7 @@ function TicketView({
         const searchEvent = new CustomEvent("openSearch");
         window.dispatchEvent(searchEvent);
       },
-      c: () => goTo(`/$${ticket?.customer_id}`),
+      c: () => goTo(`/$${ticket?.customer?.customer_id}`),
       e: () => goTo(`/&${ticket?.ticket_number}?edit`),
       p: () => generatePDF(),
       // Status change shortcuts
@@ -297,7 +302,7 @@ function TicketView({
     setLoading(true);
     try {
       const ticketData = await apiRef.current!.get<Ticket>(
-        `/tickets/${id}`,
+        `/tickets?number=${id}`,
       );
       if (!fetchTicketRef.current.isMounted) return;
       setTicket(ticketData);
@@ -486,8 +491,8 @@ function TicketView({
       {/* Top Action Buttons */}
       <div className="flex flex-row justify-end gap-4 mb-6">
         <NavigationButton
-          onClick={() => goTo(`/$${ticket.customer_id}`)}
-          targetUrl={`${window.location.origin}/$${ticket.customer_id}`}
+          onClick={() => goTo(`/$${ticket.customer?.customer_id}`)}
+          targetUrl={`${window.location.origin}/$${ticket.customer?.customer_id}`}
           className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
           tabIndex={-1}
         >

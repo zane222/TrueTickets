@@ -7,7 +7,6 @@ export interface PhoneNumber {
 export interface TicketWithoutCustomer {
   ticket_number: number;
   subject: string;
-  customer_id: string;
   status: string;
   password?: string;
   created_at: number;

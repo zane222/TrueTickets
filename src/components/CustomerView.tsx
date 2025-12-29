@@ -9,7 +9,6 @@ import {
 } from "../utils/appUtils.jsx";
 import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
-import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
@@ -36,6 +35,7 @@ function CustomerView({
   const [tLoading, setTLoading] = useState<boolean>(false);
 
   // Change detection
+  /*
   const {
     hasChanged,
     isPolling: _isPolling,
@@ -43,6 +43,10 @@ function CustomerView({
     stopPolling,
     resetPolling: _resetPolling,
   } = useChangeDetection(`/customers/last_updated?customer_id=${id}`);
+  */
+  const hasChanged = false;
+  const stopPolling = useCallback(() => { }, []);
+  const startPolling = useCallback((_initialData: unknown) => { }, []);
 
   // Keyboard shortcuts
   const customerViewKeybinds = useMemo(() => [
@@ -128,7 +132,7 @@ function CustomerView({
     async (idParam: string, mountedRef: { current: boolean }) => {
       try {
         const customerData = await apiRef.current!.get<Customer>(
-          `/customers/${encodeURIComponent(idParam.toString())}`,
+          `/customers?id=${encodeURIComponent(idParam.toString())}`,
         );
         if (!mountedRef.current) return;
         setCustomer(customerData);

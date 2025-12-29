@@ -1,10 +1,9 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { DEVICES, ITEMS_LEFT } from "../constants/appConstants.js";
 import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
-import { useChangeDetection } from "../hooks/useChangeDetection";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import {
@@ -43,9 +42,14 @@ function TicketEditor({
 
   const subjectInputRef = useRef<HTMLInputElement>(null);
 
+  /*
   const { hasChanged, startPolling, stopPolling } = useChangeDetection(
     `/tickets/last_updated?number=${ticketId}`,
   );
+  */
+  const hasChanged = false;
+  const startPolling = useCallback((_initialData: unknown) => { }, []);
+  const stopPolling = useCallback(() => { }, []);
 
   useEffect(() => {
     if (!ticketId) {

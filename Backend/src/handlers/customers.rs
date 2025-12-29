@@ -8,7 +8,7 @@ use aws_sdk_dynamodb::{
 use std::collections::HashMap;
 use crate::http::{error_response, generate_short_id};
 use crate::models::{
-    Customer, CustomerIdOnly, TicketLastUpdated, CustomerPhonesOnly, PhoneNumber
+    Customer, CustomerIdOnly, CustomerPhonesOnly, PhoneNumber
 };
 use crate::db_utils::DynamoDbBuilderExt;
 
@@ -183,7 +183,7 @@ pub async fn handle_create_customer(
         .condition_expression("attribute_not_exists(customer_id)")
         .item("customer_id", AttributeValue::S(customer_id.clone()))
         .item("full_name", AttributeValue::S(full_name.clone())) // Stored with original casing
-        .item_if_some("email", email.clone().map(AttributeValue::S))
+        .item_if_not_empty("email", AttributeValue::S(email.unwrap_or_default()))
         .item("phone_numbers", AttributeValue::L(
             phone_numbers.iter().map(|p| {
                 AttributeValue::M(
@@ -355,21 +355,4 @@ pub async fn handle_update_customer(
         .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute update customer transaction: {}", e), None))?;
 
     Ok(json!({ "customer_id": customer_id }))
-}
-
-pub async fn handle_get_customer_last_updated(customer_id: String, client: &Client) -> Result<Value, Response<Body>> {
-    let item = client.get_item()
-        .table_name("Customers")
-        .key("customer_id", AttributeValue::S(customer_id))
-        .projection_expression("last_updated")
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {}", e), None))?
-        .item
-        .ok_or_else(|| error_response(404, "Customer Not Found", "No customer with that ID", None))?;
-
-    let lu: TicketLastUpdated = serde_dynamo::from_item(item)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer last_updated: {}", e), None))?;
-
-    Ok(json!({ "last_updated": lu.last_updated }))
 }

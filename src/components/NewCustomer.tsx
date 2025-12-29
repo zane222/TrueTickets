@@ -109,9 +109,8 @@ export default function NewCustomer({
     let isMounted = true;
     (async () => {
       try {
-        const data = await api.get<{ customer: Customer }>(`/customers/${customerId}`);
+        const customer = await api.get<Customer>(`/customers?id=${customerId}`);
         if (!isMounted) return;
-        const customer = data.customer;
         startPolling(customer);
 
         const firstPhone = customer.phone_numbers?.[0]?.number || "";
