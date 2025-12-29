@@ -162,11 +162,29 @@ function SearchModal({
             }
           }
         } catch (e) {
-          // Suffix search might return 404 or empty? Assuming empty array for no results typically, but if 404:
           if (!signal.aborted) {
-            setResults([]);
-            setStatus("No results found");
-            setLoading(false);
+            // Check if it's a 404 (not found) vs other errors
+            const is404 = e && typeof e === 'object' && 'status' in e && (e as any).status === 404;
+
+            if (is404) {
+              // Expected "not found" - just show no results
+              setResults([]);
+              setStatus("No results found");
+              setLoading(false);
+            } else {
+              // Unexpected error - dispatch error event manually
+              const errorMessage = e && typeof e === 'object' && 'message' in e
+                ? (e as Error).message
+                : 'An error occurred while searching';
+              window.dispatchEvent(
+                new CustomEvent("api-error", {
+                  detail: { message: errorMessage },
+                }),
+              );
+              setResults([]);
+              setStatus("No results found");
+              setLoading(false);
+            }
           }
         }
       } else {
@@ -185,11 +203,29 @@ function SearchModal({
             }
           }
         } catch (e) {
-          // Specific number search likely returns 404 if not found
           if (!signal.aborted) {
-            setResults([]);
-            setStatus("No results found");
-            setLoading(false);
+            // Check if it's a 404 (not found) vs other errors
+            const is404 = e && typeof e === 'object' && 'status' in e && (e as any).status === 404;
+
+            if (is404) {
+              // Expected "not found" - just show no results
+              setResults([]);
+              setStatus("No results found");
+              setLoading(false);
+            } else {
+              // Unexpected error - dispatch error event manually
+              const errorMessage = e && typeof e === 'object' && 'message' in e
+                ? (e as Error).message
+                : 'An error occurred while searching';
+              window.dispatchEvent(
+                new CustomEvent("api-error", {
+                  detail: { message: errorMessage },
+                }),
+              );
+              setResults([]);
+              setStatus("No results found");
+              setLoading(false);
+            }
           }
         }
       }
@@ -261,6 +297,21 @@ function SearchModal({
           console.error("Search error:", err);
         }
         if (!signal.aborted) {
+          // Check if it's a 404 (not found) vs other errors
+          const is404 = err && typeof err === 'object' && 'status' in err && (err as any).status === 404;
+
+          if (!is404 && !(err instanceof Error && err.name === "AbortError")) {
+            // Unexpected error - dispatch error event manually
+            const errorMessage = err && typeof err === 'object' && 'message' in err
+              ? (err as Error).message
+              : 'An error occurred while searching';
+            window.dispatchEvent(
+              new CustomEvent("api-error", {
+                detail: { message: errorMessage },
+              }),
+            );
+          }
+
           setResults([]);
           setStatus("No results found");
           setLoading(false);
@@ -376,7 +427,9 @@ function SearchModal({
                   <>
                     <div className="hidden sm:grid grid-cols-12 px-4 py-3">
                       <div className="col-span-1 truncate">#{item.ticket_number}</div>
-                      <div className="col-span-7 truncate">{item.subject}</div>
+                      <div className="col-span-7 truncate">
+                        <HighlightText text={item.subject} highlight={search} />
+                      </div>
                       <div className="col-span-2 truncate">{convertStatus(item.status || "")}</div>
                       <div className="col-span-2 truncate">{item.customer?.full_name}</div>
                     </div>
@@ -387,7 +440,9 @@ function SearchModal({
                           {convertStatus(item.status || "")}
                         </div>
                       </div>
-                      <div className="text-md truncate">{item.subject}</div>
+                      <div className="text-md truncate">
+                        <HighlightText text={item.subject} highlight={search} />
+                      </div>
                       <div className="text-md truncate text-on-surface">{item.customer?.full_name}</div>
                     </div>
                   </>
@@ -398,6 +453,43 @@ function SearchModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// Helper component for highlighting text
+function HighlightText({ text, highlight }: { text: string; highlight: string }) {
+  if (!highlight.trim()) {
+    return <span>{text}</span>;
+  }
+
+  // Split highlight string into words and filter empty strings
+  const words = highlight
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); // Escape regex chars
+
+  if (words.length === 0) {
+    return <span>{text}</span>;
+  }
+
+  // Create regex to match any of the words, case-insensitive
+  const regex = new RegExp(`(${words.join("|")})`, "gi");
+
+  // Split text by regex
+  const parts = text.split(regex);
+
+  return (
+    <span>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <span key={i} className="text-primary">
+            {part}
+          </span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </span>
   );
 }
 
