@@ -94,3 +94,6 @@ export const UI_CONSTANTS: Record<string, number> = {
   MAX_SEARCH_RESULTS: 50,
   MOBILE_BREAKPOINT: 640,
 };
+
+// Generic constants
+export const EMPTY_ARRAY: readonly any[] = Object.freeze([]);

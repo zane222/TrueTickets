@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { STATUSES, DEVICES, convertStatus } from "../constants/appConstants.js";
-import { cx, fmtDate, getTicketDeviceInfo } from "../utils/appUtils.jsx";
+import { STATUSES, DEVICES, convertStatus, EMPTY_ARRAY } from "../constants/appConstants.js";
+import { cx, fmtDate } from "../utils/appUtils.jsx";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
@@ -42,7 +42,7 @@ function TicketListItem({
             {convertStatus(ticket.status || "")}
           </div>
           <div className="col-span-1 truncate">
-            {getTicketDeviceInfo(ticket).device}
+            {ticket.device}
           </div>
           <div className="col-span-1 truncate">
             {fmtDate(ticket.created_at)}
@@ -70,7 +70,7 @@ function TicketListItem({
               {convertStatus(ticket.status || "")}
             </div>
             <div className="text-md truncate ml-2 text-outline">
-              {getTicketDeviceInfo(ticket).device}
+              {ticket.device}
             </div>
           </div>
           <div className="text-md truncate text-on-surface">
@@ -205,27 +205,20 @@ export function TicketListView({
       description: "Search",
       category: "Navigation",
     },
-    {
-      key: "N",
-      description: "New customer",
-      category: "Navigation",
-    },
   ], []);
 
-  useRegisterKeybinds(ticketListKeybinds);
+  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : ticketListKeybinds);
 
-  useHotkeys(
-    {
-      h: () => goTo("/"),
-      s: () => {
-        // Trigger search modal from parent
-        const searchEvent = new CustomEvent("openSearch");
-        window.dispatchEvent(searchEvent);
-      },
-      n: () => goTo("/newcustomer"),
+  const hotkeyMap = useMemo(() => ({
+    h: () => goTo("/"),
+    s: () => {
+      // Trigger search modal from parent
+      const searchEvent = new CustomEvent("openSearch");
+      window.dispatchEvent(searchEvent);
     },
-    showSearch,
-  );
+  }), [goTo]);
+
+  useHotkeys(hotkeyMap, showSearch);
 
   return (
     <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-6">

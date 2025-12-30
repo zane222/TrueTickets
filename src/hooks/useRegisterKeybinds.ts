@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useKeyBindsContext } from './useKeyBindsContext';
 import type { KeyBind } from '../components/ui/KeyBindsModal';
 
@@ -9,8 +9,22 @@ import type { KeyBind } from '../components/ui/KeyBindsModal';
  */
 export function useRegisterKeybinds(keybinds: KeyBind[]) {
   const { setKeybinds } = useKeyBindsContext();
+  const prevKeybindsRef = useRef<KeyBind[]>([]);
 
   useEffect(() => {
-    setKeybinds(keybinds);
+    // Check if keybinds actually changed to prevent infinite loops
+    const hasChanged = keybinds.length !== prevKeybindsRef.current.length ||
+      keybinds.some((kb, i) => kb.key !== prevKeybindsRef.current[i]?.key);
+
+    if (hasChanged) {
+      setKeybinds(keybinds);
+      prevKeybindsRef.current = keybinds;
+    }
+
+    // Cleanup when component unmounts or keybinds change
+    return () => {
+      // If we're unmounting, we might want to clear them, 
+      // but usually the next component will set its own.
+    };
   }, [keybinds, setKeybinds]);
 }

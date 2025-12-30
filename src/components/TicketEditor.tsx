@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import { DEVICES, ITEMS_LEFT } from "../constants/appConstants.js";
+import { DEVICES, ITEMS_LEFT, EMPTY_ARRAY } from "../constants/appConstants.js";
 import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import {
-  getTicketDeviceInfo,
   getDeviceTypeFromSubject,
+  parseEstimatedTime,
+  appendEstimatedTime,
 } from "../utils/appUtils.tsx";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Ticket, PostTicket, UpdateTicket } from "../types/api";
@@ -62,29 +63,25 @@ function TicketEditor({
     let isMounted = true;
     (async () => {
       try {
-        const data = await api.get<{ ticket: Ticket }>(
+        const ticket = await api.get<Ticket>(
           `/tickets?number=${ticketId}`,
         );
         if (!isMounted) return;
-        const ticket = data.ticket;
         setPreviousTicket(ticket);
         startPolling(ticket);
 
-        setSubject(ticket.subject || "");
+        const { baseSubject, time } = parseEstimatedTime(ticket.subject || "");
+        setSubject(baseSubject);
         setCustomerName(ticket.customer?.full_name || "");
         setPassword(ticket.password || "");
-        // setTimeEstimate(ticket.estimated_time || ""); // Field removed
+        setTimeEstimate(time);
 
-        const deviceInfo = getTicketDeviceInfo(ticket);
-        if (deviceInfo.device) {
-          const idx = DEVICES.indexOf(deviceInfo.device);
+        if (ticket.device) {
+          const idx = DEVICES.indexOf(ticket.device);
           if (idx !== -1) setDeviceIdx(idx);
         }
         if (Array.isArray(ticket.items_left) && ticket.items_left.length > 0) {
           setItemsLeft(ticket.items_left);
-        } else if (Array.isArray(deviceInfo.itemsLeft)) {
-          // Fallback for legacy tickets
-          setItemsLeft(deviceInfo.itemsLeft);
         }
       } catch (error) {
         console.error(error);
@@ -148,20 +145,19 @@ function TicketEditor({
     { key: "C", description: "Cancel", category: "Navigation" },
   ], []);
 
-  useRegisterKeybinds(keybinds);
+  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : keybinds);
 
-  useHotkeys(
-    {
-      h: () => goTo("/"),
-      s: () => window.dispatchEvent(new CustomEvent("openSearch")),
-      c: () => {
-        if (ticketId) goTo(`/&${ticketId}`);
-        else if (customerId) goTo(`/$${customerId}`);
-        else goTo("/");
-      },
+  const hotkeyMap = useMemo(() => ({
+    h: () => goTo("/"),
+    s: () => window.dispatchEvent(new CustomEvent("openSearch")),
+    c: () => {
+      if (ticketId) goTo(`/&${ticketId}`);
+      else if (customerId) goTo(`/$${customerId}`);
+      else goTo("/");
     },
-    showSearch,
-  );
+  }), [goTo, ticketId, customerId]);
+
+  useHotkeys(hotkeyMap, showSearch);
 
   async function save() {
     setSaving(true);
@@ -174,9 +170,11 @@ function TicketEditor({
       };
       */
 
+      const finalSubject = appendEstimatedTime(subject, timeEstimate);
+
       if (ticketId) {
         const updateData: UpdateTicket = {
-          subject,
+          subject: finalSubject,
           password: password || null,
           items_left: itemsLeft.length > 0 ? itemsLeft : null,
           status: null, // Editor doesn't handle status change currently
@@ -187,7 +185,7 @@ function TicketEditor({
       } else {
         const payload: PostTicket = {
           customer_id: customerId || "",
-          subject,
+          subject: finalSubject,
           password: password || null,
           items_left: itemsLeft.length > 0 ? itemsLeft : null,
           device: deviceIdx !== null ? DEVICES[deviceIdx] : "Other",

@@ -168,19 +168,7 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
     void fetchUserGroups();
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center material-surface">
-        <LoadingSpinner size="xl" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-  }
-
-  const refreshUserGroups = async (): Promise<string[]> => {
+  const refreshUserGroups = React.useCallback(async (): Promise<string[]> => {
     if (!user) return [];
     try {
       const session = await fetchAuthSession();
@@ -200,12 +188,32 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
       console.error("Error manually refreshing user groups:", err);
       return [];
     }
-  };
+  }, [user]);
+
+  const contextValue = React.useMemo(
+    () => ({
+      userGroups,
+      setUserGroups,
+      refreshUserGroups,
+      userName,
+    }),
+    [userGroups, refreshUserGroups, userName]
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center material-surface">
+        <LoadingSpinner size="xl" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
-    <UserGroupsContext.Provider
-      value={{ userGroups, setUserGroups, refreshUserGroups, userName }}
-    >
+    <UserGroupsContext.Provider value={contextValue}>
       <div className="min-h-screen material-surface">
         {/* Main content */}
         <div className="flex-1">{children}</div>

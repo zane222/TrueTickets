@@ -21,7 +21,7 @@ pub async fn handle_upload_attachment(
 ) -> Result<Value, Response<Body>> {
     // Decode base64 data to bytes
     let file_bytes = base64::engine::general_purpose::STANDARD.decode(base64_data)
-        .map_err(|e| error_response(400, "Invalid base64 data", &format!("Could not decode base64 data: {}", e), None))?;
+        .map_err(|e| error_response(400, "Invalid base64 data", &format!("Could not decode base64 data: {:?}", e), None))?;
 
     // Get S3 bucket name from environment
     let bucket_name = std::env::var("S3_BUCKET_NAME")
@@ -41,7 +41,7 @@ pub async fn handle_upload_attachment(
         .body(byte_stream)
         .send()
         .await
-        .map_err(|e| error_response(500, "S3 Upload Failed", &format!("Failed to upload file to S3: {}", e), Some("Check that the Lambda has S3 permissions and the bucket exists")))?;
+        .map_err(|e| error_response(500, "S3 Upload Failed", &format!("Failed to upload file to S3: {:?}", e), Some("Check that the Lambda has S3 permissions and the bucket exists")))?;
 
     // Get the public URL of the uploaded file
     let s3_url = format!("https://{}.s3.amazonaws.com/{}", bucket_name, s3_key);
@@ -56,7 +56,7 @@ pub async fn handle_upload_attachment(
         .expression_attribute_values(":lu", AttributeValue::N(Utc::now().timestamp().to_string()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to update ticket attachments: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to update ticket attachments: {:?}", e), None))?;
 
     Ok(json!({"ticket_number": ticket_number}))
 }

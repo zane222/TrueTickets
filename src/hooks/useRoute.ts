@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 interface UseRouteReturn {
   path: string;
@@ -18,8 +18,8 @@ export function useRoute(): UseRouteReturn {
     const updatePath = () =>
       setPath(
         window.location.pathname +
-          window.location.search +
-          window.location.hash,
+        window.location.search +
+        window.location.hash,
       );
     window.addEventListener("popstate", updatePath);
     window.addEventListener("hashchange", updatePath);
@@ -29,10 +29,10 @@ export function useRoute(): UseRouteReturn {
     };
   }, []);
 
-  const navigate = (to: string) => {
+  const navigate = useCallback((to: string) => {
     window.history.pushState({}, "", to);
     window.dispatchEvent(new Event("popstate"));
-  };
+  }, []);
 
-  return { path, navigate };
+  return useMemo(() => ({ path, navigate }), [path, navigate]);
 }

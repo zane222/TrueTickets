@@ -45,7 +45,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
     // Validate HTTP method
     if !matches!(method, "GET" | "POST" | "PUT") {
-        return error_response(400, "Invalid HTTP method", &format!("Method '{}' is not supported", method), Some("Ensure you are calling this Lambda via API Gateway"));
+        return error_response(400, "Invalid HTTP method", &format!("Method '{:?}' is not supported", method), Some("Ensure you are calling this Lambda via API Gateway"));
     }
 
 
@@ -155,7 +155,8 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             };
 
             let result = match first_parameter.as_str() {
-                "number" => handle_get_ticket_by_number(&value, &dynamodb_client).await,
+                "number" => handle_get_ticket_by_number(&value, false, &dynamodb_client).await,
+                "search_by_number" => handle_get_ticket_by_number(&value, true, &dynamodb_client).await,
                 "ticket_number_last_3_digits" => handle_get_tickets_by_suffix(&value, &dynamodb_client).await,
                 "subject_query" => handle_search_tickets_by_subject(&value, &dynamodb_client).await,
                 "customer_id" => handle_get_tickets_by_customer_id(value.to_string(), &dynamodb_client).await,
@@ -173,7 +174,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                         handle_get_recent_tickets(&dynamodb_client).await
                     }
                 },
-                _ => return error_response(400, "Unknown query parameter", &format!("Unsupported query parameter: {}", first_parameter), None),
+                _ => return error_response(400, "Unknown query parameter", &format!("Unsupported query parameter: {:?}", first_parameter), None),
             };
 
             match result {
@@ -220,7 +221,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             let req: CreateTicketRequest = match serde_json::from_value(body) {
                 Ok(r) => r,
-                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse ticket creation request: {}", e), None),
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse ticket creation request: {:?}", e), None),
             };
 
             match handle_create_ticket(req.customer_id, req.subject, req.password, req.items_left, req.device, &dynamodb_client).await {
@@ -241,7 +242,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             let req: UpdateTicketRequest = match serde_json::from_value(body) {
                 Ok(r) => r,
-                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse ticket update request: {}", e), None),
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse ticket update request: {:?}", e), None),
             };
 
             // Validation: Ensure at least one field is not None
@@ -332,7 +333,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             let req: CreateCustomerRequest = match serde_json::from_value(body) {
                 Ok(r) => r,
-                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse customer creation request: {}", e), None),
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse customer creation request: {:?}", e), None),
             };
 
             // Validation: Ensure phone_numbers is not empty
@@ -358,7 +359,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             let req: UpdateCustomerRequest = match serde_json::from_value(body) {
                 Ok(r) => r,
-                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse customer update request: {}", e), None),
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse customer update request: {:?}", e), None),
             };
 
             // Validation: Ensure at least one field is not None

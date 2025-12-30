@@ -108,7 +108,7 @@ where
     T: DeserializeOwned,
 {
     match body.get(key) {
-        Some(v) => serde_json::from_value(v.clone()).map_err(|_| Box::new(error_response(400, "Invalid parameter", &format!("{} is not a valid value", key), None))),
-        None => Err(Box::new(error_response(400, "Missing parameter", &format!("{} is required", key), None))),
+        Some(v) => serde_json::from_value(v.clone()).map_err(|_| Box::new(error_response(400, "Invalid parameter", &format!("{:?} is not a valid value", key), None))),
+        None => Err(Box::new(error_response(400, "Missing parameter", &format!("{:?} is required", key), None))),
     }
 }

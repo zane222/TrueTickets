@@ -12,11 +12,12 @@ import {
   STATUSES,
   convertStatus,
   convertStatusToOriginal,
+  EMPTY_ARRAY,
 } from "../constants/appConstants.js";
 import {
   formatPhone,
   getTicketPassword,
-  getTicketDeviceInfo,
+  parseEstimatedTime,
   formatItemsLeft,
   fmtDateAndTime,
   formatCommentWithLinks,
@@ -258,31 +259,9 @@ function TicketView({
     },
   ], []);
 
-  useRegisterKeybinds(ticketViewKeybinds);
+  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : ticketViewKeybinds);
 
-  useHotkeys(
-    {
-      h: () => goTo("/"),
-      s: () => {
-        // Trigger search modal from parent
-        const searchEvent = new CustomEvent("openSearch");
-        window.dispatchEvent(searchEvent);
-      },
-      c: () => goTo(`/$${ticket?.customer?.customer_id}`),
-      e: () => goTo(`/&${ticket?.ticket_number}?edit`),
-      p: () => generatePDF(),
-      // Status change shortcuts
-      d: () => updateTicketStatus(STATUSES[0]), // Diagnosing
-      f: () => updateTicketStatus(STATUSES[1]), // Finding Price
-      a: () => updateTicketStatus(STATUSES[2]), // Approval Needed
-      w: () => updateTicketStatus(STATUSES[3]), // Waiting for Parts
-      o: () => updateTicketStatus(STATUSES[4]), // Waiting (Other)
-      i: () => updateTicketStatus(STATUSES[5]), // In Progress
-      r: () => updateTicketStatus(STATUSES[6]), // Ready
-      x: () => updateTicketStatus(STATUSES[7]), // Resolved
-    },
-    showSearch,
-  );
+
 
   const fetchTicketRef = useRef<{ isMounted: boolean }>({ isMounted: true });
 
@@ -419,25 +398,6 @@ function TicketView({
     return () => window.removeEventListener("refreshTicket", handleRefresh);
   }, []);
 
-  if (loading)
-    return (
-      <LoadingSpinnerWithText
-        text="Loading ticket..."
-        className="mx-auto max-w-3xl px-3 py-10 text-center"
-      />
-    );
-  if (!ticket)
-    return (
-      <InlineErrorMessage
-        message="Ticket not found"
-        className="mx-auto max-w-3xl px-3 py-10 text-center"
-      />
-    );
-
-  const phone = formatPhone(
-    ticket.customer?.phone_numbers?.[0]?.number || ""
-  );
-
   const generatePDF = async () => {
     if (!ticketCardRef.current) return;
 
@@ -484,6 +444,60 @@ function TicketView({
     }
   };
 
+  const hotkeyMap = useMemo(
+    () => ({
+      h: () => goTo("/"),
+      s: () => {
+        // Trigger search modal from parent
+        const searchEvent = new CustomEvent("openSearch");
+        window.dispatchEvent(searchEvent);
+      },
+      c: () => goTo(`/$${ticket?.customer?.customer_id}`),
+      e: () => goTo(`/&${ticket?.ticket_number}?edit`),
+      p: () => generatePDF(),
+      // Status change shortcuts
+      d: () => updateTicketStatus(STATUSES[0]), // Diagnosing
+      f: () => updateTicketStatus(STATUSES[1]), // Finding Price
+      a: () => updateTicketStatus(STATUSES[2]), // Approval Needed
+      w: () => updateTicketStatus(STATUSES[3]), // Waiting for Parts
+      o: () => updateTicketStatus(STATUSES[4]), // Waiting (Other)
+      i: () => updateTicketStatus(STATUSES[5]), // In Progress
+      r: () => updateTicketStatus(STATUSES[6]), // Ready
+      x: () => updateTicketStatus(STATUSES[7]), // Resolved
+    }),
+    [
+      goTo,
+      ticket?.customer?.customer_id,
+      ticket?.ticket_number,
+      updateTicketStatus,
+      generatePDF,
+    ]
+  );
+
+  useHotkeys(hotkeyMap, showSearch);
+
+  if (loading)
+    return (
+      <LoadingSpinnerWithText
+        text="Loading ticket..."
+        className="mx-auto max-w-3xl px-3 py-10 text-center"
+      />
+    );
+  if (!ticket)
+    return (
+      <InlineErrorMessage
+        message="Ticket not found"
+        className="mx-auto max-w-3xl px-3 py-10 text-center"
+      />
+    );
+
+  const phone = formatPhone(
+    ticket.customer?.phone_numbers?.[0]?.number || ""
+  );
+
+
+
+
 
 
   return (
@@ -529,14 +543,12 @@ function TicketView({
                   password={getTicketPassword(ticket)}
                   ticketNumber={ticket.ticket_number}
                   subject={
-                    ticket.subject +
-                    (getTicketDeviceInfo(ticket).estimatedTime
-                      ? " [" + getTicketDeviceInfo(ticket).estimatedTime + "]"
+                    parseEstimatedTime(ticket.subject).baseSubject +
+                    (parseEstimatedTime(ticket.subject).time
+                      ? " [" + parseEstimatedTime(ticket.subject).time + "]"
                       : "")
                   }
-                  itemsLeft={formatItemsLeft(
-                    (ticket.items_left && ticket.items_left.length > 0) ? ticket.items_left : getTicketDeviceInfo(ticket).itemsLeft,
-                  )}
+                  itemsLeft={formatItemsLeft(ticket.items_left || [])}
                   name={ticket.customer?.full_name || ""}
                   creationDate={fmtDateAndTime(ticket.created_at)}
                   phoneNumber={phone}
@@ -725,10 +737,10 @@ interface CommentsBoxProps {
   ticketNumber: number;
   comments?: Comment[] | null | undefined;
 }
-function CommentsBox({
+const CommentsBox = React.memo(({
   ticketNumber,
-  comments = [],
-}: CommentsBoxProps): React.ReactElement {
+  comments,
+}: CommentsBoxProps): React.ReactElement => {
   console.log("CommentsBox ticketNumber:", ticketNumber);
   const api = useApi();
   const [text, setText] = useState<string>("");
@@ -900,6 +912,6 @@ function CommentsBox({
       </div>
     </div>
   );
-}
+});
 
 export default TicketView;

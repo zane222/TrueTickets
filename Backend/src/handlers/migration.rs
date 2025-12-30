@@ -87,7 +87,7 @@ struct ApiCustomer {
 fn parse_timestamp(iso_string: &str) -> Result<i64, Box<Response<Body>>> {
     chrono::DateTime::parse_from_rfc3339(iso_string)
         .map(|dt| dt.timestamp())
-        .map_err(|e| Box::new(error_response(500, "Timestamp Parse Error", &format!("Failed to parse timestamp '{}': {}", iso_string, e), None)))
+        .map_err(|e| Box::new(error_response(500, "Timestamp Parse Error", &format!("Failed to parse timestamp '{:?}': {:?}", iso_string, e), None)))
 }
 
 /// Extract password from ticket using the same logic as apiReference.ts
@@ -201,11 +201,11 @@ async fn download_and_upload_attachment(
         )
         .send()
         .await
-        .map_err(|e| Box::new(error_response(500, "Download Failed", &format!("Failed to download attachment from {}: {}", url, e), None)))?;
+        .map_err(|e| Box::new(error_response(500, "Download Failed", &format!("Failed to download attachment from {:?}: {:?}", url, e), None)))?;
 
     let file_bytes = response.bytes()
         .await
-        .map_err(|e| Box::new(error_response(500, "Download Failed", &format!("Failed to read attachment bytes: {}", e), None)))?;
+        .map_err(|e| Box::new(error_response(500, "Download Failed", &format!("Failed to read attachment bytes: {:?}", e), None)))?;
 
     let bucket_name = std::env::var("S3_BUCKET_NAME")
         .map_err(|_| Box::new(error_response(500, "Configuration Error", "S3_BUCKET_NAME environment variable not set", None)))?;
@@ -222,7 +222,7 @@ async fn download_and_upload_attachment(
         .body(byte_stream)
         .send()
         .await
-        .map_err(|e| Box::new(error_response(500, "S3 Upload Failed", &format!("Failed to upload attachment to S3: {}", e), Some("Check that the Lambda has S3 permissions and the bucket exists"))))?;
+        .map_err(|e| Box::new(error_response(500, "S3 Upload Failed", &format!("Failed to upload attachment to S3: {:?}", e), Some("Check that the Lambda has S3 permissions and the bucket exists"))))?;
 
     Ok(format!("https://{}.s3.amazonaws.com/{}", bucket_name, s3_key))
 }
@@ -259,25 +259,25 @@ pub async fn handle_migrate_tickets(
             .header("Accept-Language", "en-US,en;q=0.9")
             .send()
             .await
-            .map_err(|e| error_response(500, "Search API Failed", &format!("Failed to search ticket number {}: {}", current_ticket_number, e), None))?;
+            .map_err(|e| error_response(500, "Search API Failed", &format!("Failed to search ticket number {:?}: {:?}", current_ticket_number, e), None))?;
 
         if !search_resp.status().is_success() {
-             return Err(error_response(500, "Search API Error", &format!("Search API returned status {} for ticket number {}", search_resp.status(), current_ticket_number), None));
+             return Err(error_response(500, "Search API Error", &format!("Search API returned status {:?} for ticket number {:?}", search_resp.status(), current_ticket_number), None));
         }
 
         let search_data: TicketSearchResponse = search_resp.json()
             .await
-            .map_err(|e| error_response(500, "Search JSON Error", &format!("Failed to parse search JSON for ticket {}: {}", current_ticket_number, e), None))?;
+            .map_err(|e| error_response(500, "Search JSON Error", &format!("Failed to parse search JSON for ticket {:?}: {:?}", current_ticket_number, e), None))?;
 
         let ticket_id = search_data.tickets.first()
-            .ok_or_else(|| error_response(404, "Not Found", &format!("Ticket number {} not found via search", current_ticket_number), None))?.id;
+            .ok_or_else(|| error_response(404, "Not Found", &format!("Ticket number {:?} not found via search", current_ticket_number), None))?.id;
 
         // Step 2: Fetch full ticket details using the internal ID
         let details_url = format!("https://Cacell.repairshopr.com/api/v1/tickets/{}", ticket_id);
 
         let details_resp = http_client
             .get(&details_url)
-            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Authorization", format!("Bearer {:?}", api_key))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header(
@@ -287,24 +287,24 @@ pub async fn handle_migrate_tickets(
             .header("Accept-Language", "en-US,en;q=0.9")
             .send()
             .await
-            .map_err(|e| error_response(500, "Details API Failed", &format!("Failed to fetch full details for ticket ID {}: {}", ticket_id, e), None))?;
+            .map_err(|e| error_response(500, "Details API Failed", &format!("Failed to fetch full details for ticket ID {:?}: {:?}", ticket_id, e), None))?;
 
         if !details_resp.status().is_success() {
-             return Err(error_response(500, "Details API Error", &format!("Details API returned status {} for ticket ID {}", details_resp.status(), ticket_id), None));
+             return Err(error_response(500, "Details API Error", &format!("Details API returned status {:?} for ticket ID {:?}", details_resp.status(), ticket_id), None));
         }
 
         let root: serde_json::Value = details_resp.json()
             .await
-            .map_err(|e| error_response(500, "Details JSON Error", &format!("Failed to parse full details JSON for ticket ID {}: {}", ticket_id, e), None))?;
+            .map_err(|e| error_response(500, "Details JSON Error", &format!("Failed to parse full details JSON for ticket ID {:?}: {:?}", ticket_id, e), None))?;
 
         let ticket_value = root.get("ticket")
-            .ok_or_else(|| error_response(500, "Missing Field", &format!("Response for ticket ID {} is missing 'ticket' field", ticket_id), None))?;
+            .ok_or_else(|| error_response(500, "Missing Field", &format!("Response for ticket ID {:?} is missing 'ticket' field", ticket_id), None))?;
 
         let ticket: LargeTicket = serde_json::from_value(ticket_value.clone())
-            .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize full ticket details for ID {}: {}", ticket_id, e), None))?;
+            .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize full ticket details for ID {:?}: {:?}", ticket_id, e), None))?;
 
         if ticket.number != current_ticket_number {
-            return Err(error_response(500, "API Mismatch", &format!("API returned a ticket number different from what was requested (ID {}), requested '{}', got '{}'", ticket_id, current_ticket_number, ticket.number), None));
+            return Err(error_response(500, "API Mismatch", &format!("API returned a ticket number different from what was requested (ID {:?}), requested '{:?}', got '{:?}'", ticket_id, current_ticket_number, ticket.number), None));
         }
         let password = extract_password(&ticket);
         let items_left = check_ac_charger(&ticket);
@@ -328,8 +328,8 @@ pub async fn handle_migrate_tickets(
         if let Some(ref p) = api_cust.phone {
             phone_numbers.push(PhoneNumber {
                 number: p.clone(),
-                prefers_texting: false,
-                no_english: false,
+                prefers_texting: None,
+                no_english: None,
             });
         }
 
@@ -340,19 +340,21 @@ pub async fn handle_migrate_tickets(
             .item_if_not_empty("email", AttributeValue::S(api_cust.email.clone().unwrap_or_default()))
             .item("phone_numbers", AttributeValue::L(
                 phone_numbers.iter().map(|p| {
-                    AttributeValue::M(
-                        vec![
-                            ("number".to_string(), AttributeValue::S(p.number.clone())),
-                            ("prefers_texting".to_string(), AttributeValue::Bool(p.prefers_texting)),
-                            ("no_english".to_string(), AttributeValue::Bool(p.no_english)),
-                        ].into_iter().collect()
-                    )
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("number".to_string(), AttributeValue::S(p.number.clone()));
+                    if p.prefers_texting.unwrap_or(false) {
+                        map.insert("prefers_texting".to_string(), AttributeValue::Bool(true));
+                    }
+                    if p.no_english.unwrap_or(false) {
+                        map.insert("no_english".to_string(), AttributeValue::Bool(true));
+                    }
+                    AttributeValue::M(map)
                 }).collect()
             ))
             .item("created_at", AttributeValue::N(cust_created_at.to_string()))
             .item("last_updated", AttributeValue::N(cust_last_updated.to_string()))
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer Put item: {}", e), None))?;
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer Put item: {:?}", e), None))?;
 
         cust_txn_items.push(TransactWriteItem::builder().put(put_customer).build());
 
@@ -362,7 +364,7 @@ pub async fn handle_migrate_tickets(
             .item("customer_id", AttributeValue::S(cust_id.clone()))
             .item("n", AttributeValue::S(api_cust.business_and_full_name.to_lowercase()))
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer name Put item: {}", e), None))?;
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer name Put item: {:?}", e), None))?;
 
         cust_txn_items.push(TransactWriteItem::builder().put(put_name).build());
 
@@ -373,7 +375,7 @@ pub async fn handle_migrate_tickets(
                 .item("phone_number", AttributeValue::S(p.clone()))
                 .item("customer_id", AttributeValue::S(cust_id.clone()))
                 .build()
-                .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer phone Put item: {}", e), None))?;
+                .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer phone Put item: {:?}", e), None))?;
             cust_txn_items.push(TransactWriteItem::builder().put(put_phone).build());
         }
 
@@ -423,7 +425,7 @@ pub async fn handle_migrate_tickets(
             .item("created_at", AttributeValue::N(created_at.to_string()))
             .item("last_updated", AttributeValue::N(Utc::now().timestamp().to_string()))
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {}", e), None))?;
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {:?}", e), None))?;
 
         ticket_txn_items.push(TransactWriteItem::builder().put(put_ticket).build());
 
@@ -433,7 +435,7 @@ pub async fn handle_migrate_tickets(
             .item("gsi_pk", AttributeValue::S("ALL".to_string()))
             .item("s", AttributeValue::S(ticket.subject.to_lowercase()))
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {}", e), None))?;
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {:?}", e), None))?;
 
         ticket_txn_items.push(TransactWriteItem::builder().put(put_subject).build());
 
@@ -441,7 +443,7 @@ pub async fn handle_migrate_tickets(
             .set_transact_items(Some(ticket_txn_items))
             .send()
             .await
-            .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to migrate ticket {}: {}", ticket.number, e), None))?;
+            .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to migrate ticket {:?}: {:?}", ticket.number, e), None))?;
 
         migrated_count += 1;
     }
@@ -455,7 +457,7 @@ pub async fn handle_migrate_tickets(
         .condition_expression("attribute_not_exists(counter_value) OR counter_value <= :new")
         .send()
         .await
-        .map_err(|e| error_response(500, "Counter Update Error", &format!("Failed to update ticket counter: {}", e), None))?;
+        .map_err(|e| error_response(500, "Counter Update Error", &format!("Failed to update ticket counter: {:?}", e), None))?;
 
     Ok(json!({
         "migrated_count": migrated_count,

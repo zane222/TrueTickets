@@ -1,7 +1,7 @@
 export interface PhoneNumber {
   number: string;
-  prefers_texting: boolean;
-  no_english: boolean;
+  prefers_texting?: boolean;
+  no_english?: boolean;
 }
 
 export interface TicketWithoutCustomer {
@@ -9,6 +9,7 @@ export interface TicketWithoutCustomer {
   subject: string;
   status: string;
   password?: string;
+  device: string;
   created_at: number;
   last_updated: number;
   comments?: Comment[];

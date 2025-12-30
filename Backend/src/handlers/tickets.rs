@@ -15,6 +15,7 @@ use crate::db_utils::DynamoDbBuilderExt;
 
 pub async fn handle_get_ticket_by_number(
     ticket_number: &str,
+    searching: bool,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
     // 1. Get Ticket
@@ -23,13 +24,21 @@ pub async fn handle_get_ticket_by_number(
         .key("ticket_number", AttributeValue::N(ticket_number.to_string()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{}', probably there's no ticket under that number: {}", ticket_number, e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{:?}', probably there's no ticket under that number: {:?}", ticket_number, e), None))?;
 
-    let ticket_item = output.item
-        .ok_or_else(|| error_response(404, "Ticket Not Found", "No ticket with that number", None))?;
+    let ticket_item = match output.item {
+        Some(item) => item,
+        None => {
+            if searching {
+                return Ok(json!({ "ticket": null }));
+            } else {
+                return Err(error_response(404, "Ticket Not Found", "No ticket with that number", None));
+            }
+        }
+    };
 
     let ticket_nocust: TicketWithoutCustomer = serde_dynamo::from_item(ticket_item)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {}", e), None))?;
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {:?}", e), None))?;
 
     // 2. Get Customer
     let cust_output = client.get_item()
@@ -37,13 +46,13 @@ pub async fn handle_get_ticket_by_number(
         .key("customer_id", AttributeValue::S(ticket_nocust.customer_id.clone()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {:?}", e), None))?;
 
     let customer_item = cust_output.item
         .ok_or_else(|| error_response(404, "Customer Not Found", "Ticket exists but linked customer is missing", None))?;
 
     let customer: Customer = serde_dynamo::from_item(customer_item)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {}", e), None))?;
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {:?}", e), None))?;
 
     // 3. Compose response
     let full_ticket = Ticket {
@@ -51,8 +60,14 @@ pub async fn handle_get_ticket_by_number(
         customer,
     };
 
-    serde_json::to_value(&full_ticket)
-        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize ticket: {}", e), None))
+    let val = serde_json::to_value(&full_ticket)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize ticket: {:?}", e), None))?;
+
+    if searching {
+        Ok(json!({ "ticket": val }))
+    } else {
+        Ok(val)
+    }
 }
 
 pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Client) -> Result<Value, Response<Body>> {
@@ -64,13 +79,13 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
         .expression_attribute_values(":cid", AttributeValue::S(customer_id))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query tickets for customer: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query tickets for customer: {:?}", e), None))?;
 
     let tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(output.items.unwrap_or_else(Vec::new))
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {}", e), None))?;
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {:?}", e), None))?;
 
     serde_json::to_value(&tickets_nocust)
-        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize tickets: {}", e), None))
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize tickets: {:?}", e), None))
 }
 
 pub async fn handle_search_tickets_by_subject(
@@ -119,12 +134,12 @@ pub async fn handle_search_tickets_by_subject(
             break;
         }
         let page = paginator.try_next().await
-            .map_err(|e| error_response(500, "Pagination Error", &format!("Failed to get next page of ticket subjects: {}", e), None))?;
+            .map_err(|e| error_response(500, "Pagination Error", &format!("Failed to get next page of ticket subjects: {:?}", e), None))?;
 
         match page {
             Some(item) => {
                 let tn: TicketNumberOnly = serde_dynamo::from_item(item)
-                    .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject search result: {}", e), None))?;
+                    .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject search result: {:?}", e), None))?;
                 ticket_numbers.push(tn.ticket_number.to_string());
             },
             None => break,
@@ -147,13 +162,13 @@ pub async fn handle_search_tickets_by_subject(
     let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
         .build()
-        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {}", e), None))?;
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {:?}", e), None))?;
 
     let output = client.batch_get_item()
         .request_items("Tickets", ka)
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {:?}", e), None))?;
 
     if let Some(unprocessed) = output.unprocessed_keys && !unprocessed.is_empty() {
         return Err(error_response(503, "Partial Batch Success", "Some ticket details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the search")));
@@ -162,7 +177,7 @@ pub async fn handle_search_tickets_by_subject(
     let responses = output.responses.unwrap_or_else(HashMap::new);
     let ticket_items = responses.get("Tickets").cloned().unwrap_or_else(Vec::new);
     let mut tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {}", e), None))?;
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {:?}", e), None))?;
 
     // BatchGetItem doesn't guarantee order results in the same order as the requests so sorting is needed
     tickets_nocust.sort_by_key(|ticket| ticket.ticket_number);
@@ -170,7 +185,7 @@ pub async fn handle_search_tickets_by_subject(
     let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
-        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {}", e), None))
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {:?}", e), None))
 }
 
 pub async fn handle_get_recent_tickets(client: &Client) -> Result<Value, Response<Body>> {
@@ -183,15 +198,15 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Result<Value, Respons
         .limit(30)
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query recent tickets: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query recent tickets: {:?}", e), None))?;
 
     let tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(output.items.unwrap_or_else(Vec::new))
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {}", e), None))?;
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {:?}", e), None))?;
 
     let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
-        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize recent tickets: {}", e), None))
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize recent tickets: {:?}", e), None))
 }
 
 pub async fn handle_get_recent_tickets_filtered(
@@ -225,14 +240,14 @@ pub async fn handle_get_recent_tickets_filtered(
     for task in tasks {
         let items = task
             .await
-            .map_err(|e| error_response(500, "Concurrency Error", &format!("Task join error: {}", e), None))?
-            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query tickets by status/device: {}", e), None))?
+            .map_err(|e| error_response(500, "Concurrency Error", &format!("Task join error: {:?}", e), None))?
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query tickets by status/device: {:?}", e), None))?
             .items.unwrap_or_else(Vec::new);
 
         if items.is_empty() { continue; }
 
         let parsed: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(items)
-            .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse filtered tickets: {}", e), None))?;
+            .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse filtered tickets: {:?}", e), None))?;
 
         all_tickets_nocust.extend(parsed);
     }
@@ -244,7 +259,7 @@ pub async fn handle_get_recent_tickets_filtered(
     let tickets = batch_fetch_and_merge_customers(all_tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
-        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize filtered recent tickets: {}", e), None))
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize filtered recent tickets: {:?}", e), None))
 }
 
 pub async fn handle_create_ticket(
@@ -266,12 +281,12 @@ pub async fn handle_create_ticket(
             .consistent_read(true)
             .send()
             .await
-            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to read ticket counter: {}", e), None))?;
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to read ticket counter: {:?}", e), None))?;
 
         let current_val: i64 = match counter_get.item {
             Some(item) => {
                 let cv: CounterValue = serde_dynamo::from_item(item)
-                    .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse ticket counter: {}", e), None))?;
+                    .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse ticket counter: {:?}", e), None))?;
                 cv.counter_value
             }
             None => return Err(error_response(500, "Data Integrity Error", "Ticket counter not found in database. Please initialize the counter.", None)),
@@ -292,7 +307,7 @@ pub async fn handle_create_ticket(
             .expression_attribute_values(":new", AttributeValue::N(next_val.to_string()))
             .expression_attribute_values(":old", AttributeValue::N(current_val.to_string()))
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build counter update: {}", e), None))?;
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build counter update: {:?}", e), None))?;
 
         let put_ticket = Put::builder()
             .table_name("Tickets")
@@ -308,7 +323,7 @@ pub async fn handle_create_ticket(
             .item("created_at", AttributeValue::N(now.clone()))
             .item("last_updated", AttributeValue::N(now.clone()))
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {}", e), None))?;
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {:?}", e), None))?;
 
         let put_subject = Put::builder()
             .table_name("TicketSubjects")
@@ -316,7 +331,7 @@ pub async fn handle_create_ticket(
             .item("gsi_pk", AttributeValue::S("ALL".to_string()))
             .item("s", AttributeValue::S(subject.to_lowercase()))
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {}", e), None))?;
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {:?}", e), None))?;
 
         let result = client.transact_write_items()
             .transact_items(TransactWriteItem::builder().update(update_counter).build())
@@ -336,7 +351,7 @@ pub async fn handle_create_ticket(
                         continue;
                     }
                 }
-                return Err(error_response(500, "Transaction Error", &format!("Failed to execute create ticket transaction: {}", e), None));
+                return Err(error_response(500, "Transaction Error", &format!("Failed to execute create ticket transaction: {:?}", e), None));
             }
         }
     }
@@ -368,7 +383,7 @@ pub async fn handle_update_ticket(
                 .expression_attribute_names("#st", "status")
                 .send()
                 .await
-                .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch ticket for update: {}", e), None))?;
+                .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch ticket for update: {:?}", e), None))?;
 
             if let Some(item) = output.item {
                 if status.is_none() {
@@ -388,12 +403,13 @@ pub async fn handle_update_ticket(
             .update_expression("SET s = :s")
             .expression_attribute_values(":s", AttributeValue::S(s.to_lowercase())) // Lowercase
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket subjects: {}", e), None))?;
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket subjects: {:?}", e), None))?;
 
         txn_items.push(TransactWriteItem::builder().update(update).build());
     }
 
     let mut update_parts = Vec::new();
+    let mut remove_parts = Vec::new();
     let mut expr_vals = HashMap::new();
     let mut expr_names = HashMap::new();
 
@@ -406,14 +422,27 @@ pub async fn handle_update_ticket(
         expr_vals.insert(":st".to_string(), AttributeValue::S(st));
         expr_names.insert("#st".to_string(), "status".to_string());
     }
+    
+    // Handle password: None = no change, Some("") = remove, Some(value) = update
     if let Some(pw) = password {
-        update_parts.push("password = :pw".to_string());
-        expr_vals.insert(":pw".to_string(), AttributeValue::S(pw));
+        if pw.is_empty() {
+            remove_parts.push("password".to_string());
+        } else {
+            update_parts.push("password = :pw".to_string());
+            expr_vals.insert(":pw".to_string(), AttributeValue::S(pw));
+        }
     }
+    
+    // Handle items_left: None = no change, Some([]) = remove, Some(vec) = update
     if let Some(items) = items_left {
-        update_parts.push("items_left = :il".to_string());
-        expr_vals.insert(":il".to_string(), AttributeValue::L(items.into_iter().map(AttributeValue::S).collect()));
+        if items.is_empty() {
+            remove_parts.push("items_left".to_string());
+        } else {
+            update_parts.push("items_left = :il".to_string());
+            expr_vals.insert(":il".to_string(), AttributeValue::L(items.into_iter().map(AttributeValue::S).collect()));
+        }
     }
+    
     if let Some(d) = device {
         update_parts.push("device = :d".to_string());
         expr_vals.insert(":d".to_string(), AttributeValue::S(d));
@@ -429,7 +458,15 @@ pub async fn handle_update_ticket(
     update_parts.push("last_updated = :lu".to_string());
     expr_vals.insert(":lu".to_string(), AttributeValue::N(Utc::now().timestamp().to_string()));
 
-    let update_expr = format!("SET {}", update_parts.join(", "));
+    // Build update expression with both SET and REMOVE clauses
+    let mut update_expr_parts = Vec::new();
+    if !update_parts.is_empty() {
+        update_expr_parts.push(format!("SET {}", update_parts.join(", ")));
+    }
+    if !remove_parts.is_empty() {
+        update_expr_parts.push(format!("REMOVE {}", remove_parts.join(", ")));
+    }
+    let update_expr = update_expr_parts.join(" ");
 
     let mut update_builder = aws_sdk_dynamodb::types::Update::builder()
         .table_name("Tickets")
@@ -448,7 +485,7 @@ pub async fn handle_update_ticket(
     }
 
     let update = update_builder.build()
-        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket: {}", e), None))?;
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket: {:?}", e), None))?;
 
     txn_items.push(TransactWriteItem::builder().update(update).build());
 
@@ -456,7 +493,7 @@ pub async fn handle_update_ticket(
         .set_transact_items(Some(txn_items))
         .send()
         .await
-        .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute update ticket transaction: {}", e), None))?;
+        .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute update ticket transaction: {:?}", e), None))?;
 
     Ok(json!({"ticket_number": ticket_number}))
 }
@@ -485,7 +522,7 @@ pub async fn handle_add_ticket_comment(
         .expression_attribute_values(":lu", AttributeValue::N(Utc::now().timestamp().to_string()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to add comment to ticket {}: {}", ticket_number, e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to add comment to ticket {:?}: {:?}", ticket_number, e), None))?;
 
     Ok(json!({"ticket_number": ticket_number}))
 }
@@ -500,12 +537,12 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
         .consistent_read(true)
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to read ticket counter: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to read ticket counter: {:?}", e), None))?;
 
     let current_counter: i64 = match counter_output.item {
         Some(item) => {
             let cv: CounterValue = serde_dynamo::from_item(item)
-                .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse ticket counter: {}", e), None))?;
+                .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse ticket counter: {:?}", e), None))?;
             cv.counter_value
         },
         None => return Err(error_response(500, "Data Integrity Error", "Ticket counter not found in database. Please initialize the counter.", None)),
@@ -539,13 +576,13 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
     let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
         .build()
-        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {}", e), None))?;
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {:?}", e), None))?;
 
     let output = client.batch_get_item()
         .request_items("Tickets", ka)
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {:?}", e), None))?;
 
     if let Some(unprocessed) = &output.unprocessed_keys && !unprocessed.is_empty() {
         return Err(error_response(503, "Partial Batch Success", "Some ticket details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
@@ -554,7 +591,7 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
     let responses = output.responses.unwrap_or_else(HashMap::new);
     let ticket_items = responses.get("Tickets").cloned().unwrap_or_else(Vec::new);
     let mut tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {}", e), None))?;
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {:?}", e), None))?;
 
     // Sort descending by ticket number (most recent first)
     tickets_nocust.sort_by(|a, b| b.ticket_number.cmp(&a.ticket_number));
@@ -563,7 +600,7 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
     let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
-        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {}", e), None))
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {:?}", e), None))
 }
 
 async fn batch_fetch_and_merge_customers(
@@ -592,13 +629,13 @@ async fn batch_fetch_and_merge_customers(
         .set_keys(Some(keys))
         .projection_expression("customer_id, full_name, email, phone_numbers, created_at, last_updated") // Fetch full customer
         .build()
-        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {}", e), None))?;
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {:?}", e), None))?;
 
     let batch_output = client.batch_get_item()
         .request_items("Customers", ka)
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customers: {}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customers: {:?}", e), None))?;
 
     if let Some(unprocessed) = batch_output.unprocessed_keys && !unprocessed.is_empty() {
         return Err(error_response(503, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Merge failed.", Some("Check throughput and retry")));
@@ -608,7 +645,7 @@ async fn batch_fetch_and_merge_customers(
     let customer_items = responses.get("Customers").cloned().unwrap_or_else(Vec::new);
 
     let customers_vec: Vec<Customer> = serde_dynamo::from_items(customer_items)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customers in batch: {}", e), None))?;
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customers in batch: {:?}", e), None))?;
 
     let customer_map: HashMap<String, Customer> = customers_vec.into_iter()
         .map(|c| (c.customer_id.clone(), c))
@@ -625,7 +662,7 @@ async fn batch_fetch_and_merge_customers(
                 });
             }
             None => {
-                return Err(error_response(500, "Data Integrity Error", &format!("Ticket {} refers to missing customer_id {}", details.ticket_number, details.customer_id), None));
+                return Err(error_response(500, "Data Integrity Error", &format!("Ticket {:?} refers to missing customer_id {:?}", details.ticket_number, details.customer_id), None));
             }
         }
     }

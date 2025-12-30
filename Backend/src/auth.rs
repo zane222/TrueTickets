@@ -57,5 +57,5 @@ pub fn generate_temp_password() -> String {
         .collect();
 
     // Add required special characters to ensure complexity
-    format!("{}A1!", digits)
+    format!("{:?}A1!", digits)
 }

@@ -1,11 +1,13 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { formatPhone, fmtDate } from "../utils/appUtils.jsx";
-import { convertStatus } from "../constants/appConstants.js";
+import { convertStatus, EMPTY_ARRAY } from "../constants/appConstants.js";
 import { useApi } from "../hooks/useApi";
 import NavigationButton from "./ui/NavigationButton";
 import { useHotkeys } from "../hooks/useHotkeys";
+import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import type { Ticket, Customer } from "../types/api";
+import type { KeyBind } from "./ui/KeyBindsModal";
 
 function SearchModal({
   open,
@@ -30,7 +32,7 @@ function SearchModal({
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentSearchQueryRef = useRef<string>("");
 
-  const handleNewCustomer = React.useCallback(() => {
+  const handleNewCustomer = useCallback(() => {
     const query = search.trim();
     if (!query) {
       onClose();
@@ -51,10 +53,31 @@ function SearchModal({
     goTo(url);
   }, [onClose, goTo, search]);
 
-  useHotkeys({
-    n: () => handleNewCustomer(),
-    c: () => onClose(),
-  });
+  const searchKeybinds = useMemo<KeyBind[]>(() => [
+    { key: "N", description: "New customer", category: "Navigation" },
+    { key: "C", description: "Close search", category: "Navigation" },
+  ], []);
+
+  useRegisterKeybinds(open ? searchKeybinds : (EMPTY_ARRAY as any));
+
+  const hotkeyMap = useMemo(() => ({
+    'n': () => handleNewCustomer(),
+    'c': () => onClose(),
+    'escape': () => onClose(),
+    'enter': () => {
+      if (results.length > 0) {
+        const item = results[0];
+        if (isCustomer(item)) {
+          goTo(`/$${item.customer_id}`);
+        } else {
+          goTo(`/&${item.ticket_number}`);
+        }
+        onClose();
+      }
+    }
+  }), [onClose, results, goTo, handleNewCustomer]);
+
+  useHotkeys(hotkeyMap);
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -142,7 +165,21 @@ function SearchModal({
 
   const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
   const isLikelyPhone = (digits: string) => digits.length >= 7 && digits.length <= 11;
-  const canParse = (str: string) => /^\d/.test(str.trim()) && !isNaN(parseInt(str));
+
+  const formatPhoneLive = (value: string): string => {
+    const digits = parsePhoneNumber(value);
+    const hasLetters = /[a-zA-Z]/.test(value);
+
+    // Only format if 7-10 digits and NO letters are present
+    if (hasLetters || digits.length < 7 || digits.length > 10) {
+      return value;
+    }
+
+    if (digits.length <= 6) {
+      return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    }
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  };
 
   const searchTicketNumber = React.useCallback(
     async (query: string, signal: AbortSignal) => {
@@ -163,34 +200,15 @@ function SearchModal({
           }
         } catch (e) {
           if (!signal.aborted) {
-            // Check if it's a 404 (not found) vs other errors
-            const is404 = e && typeof e === 'object' && 'status' in e && (e as any).status === 404;
-
-            if (is404) {
-              // Expected "not found" - just show no results
-              setResults([]);
-              setStatus("No results found");
-              setLoading(false);
-            } else {
-              // Unexpected error - dispatch error event manually
-              const errorMessage = e && typeof e === 'object' && 'message' in e
-                ? (e as Error).message
-                : 'An error occurred while searching';
-              window.dispatchEvent(
-                new CustomEvent("api-error", {
-                  detail: { message: errorMessage },
-                }),
-              );
-              setResults([]);
-              setStatus("No results found");
-              setLoading(false);
-            }
+            setResults([]);
+            setStatus("No results found");
+            setLoading(false);
           }
         }
       } else {
-        const url = `/tickets?number=${encodeURIComponent(query)}`;
+        const url = `/tickets?search_by_number=${encodeURIComponent(query)}`;
         try {
-          const ticket = await api.get<Ticket>(url, { silent: true });
+          const { ticket } = await api.get<{ ticket: Ticket | null }>(url, { silent: true });
           if (!signal.aborted && currentSearchQueryRef.current === query) {
             const res = ticket ? [ticket] : [];
             setResults(res);
@@ -204,35 +222,16 @@ function SearchModal({
           }
         } catch (e) {
           if (!signal.aborted) {
-            // Check if it's a 404 (not found) vs other errors
-            const is404 = e && typeof e === 'object' && 'status' in e && (e as any).status === 404;
-
-            if (is404) {
-              // Expected "not found" - just show no results
-              setResults([]);
-              setStatus("No results found");
-              setLoading(false);
-            } else {
-              // Unexpected error - dispatch error event manually
-              const errorMessage = e && typeof e === 'object' && 'message' in e
-                ? (e as Error).message
-                : 'An error occurred while searching';
-              window.dispatchEvent(
-                new CustomEvent("api-error", {
-                  detail: { message: errorMessage },
-                }),
-              );
-              setResults([]);
-              setStatus("No results found");
-              setLoading(false);
-            }
+            setResults([]);
+            setStatus("No results found");
+            setLoading(false);
           }
         }
       }
     }, [api, onClose, goTo]
   );
 
-  const performSearch = React.useCallback(
+  const performSearch = useCallback(
     async (query: string, signal: AbortSignal) => {
       try {
         const trimmedQuery = query.trim();
@@ -241,7 +240,7 @@ function SearchModal({
         if (isLikelyPhone(phoneDigits)) {
           setSearchType("customers");
           const customers = await api.get<Customer[]>(
-            `/customers/autocomplete?query=${encodeURIComponent(phoneDigits)}`,
+            `/customers?phone_number=${encodeURIComponent(phoneDigits)}`,
             { silent: true }
           );
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
@@ -254,11 +253,11 @@ function SearchModal({
               goTo(`/$${customers[0].customer_id}`);
             }
           }
-        } else if (canParse(trimmedQuery) && trimmedQuery.length === 3) {
+        } else if (/^\d+$/.test(trimmedQuery) && trimmedQuery.length === 3) {
           setSearchType("tickets");
           await searchTicketNumber(trimmedQuery, signal);
           return;
-        } else if (canParse(trimmedQuery) && trimmedQuery.length <= 6) {
+        } else if (/^\d+$/.test(trimmedQuery) && trimmedQuery.length <= 6) {
           setSearchType("tickets");
           await searchTicketNumber(trimmedQuery, signal);
         } else {
@@ -358,7 +357,7 @@ function SearchModal({
           <input
             ref={searchInputRef}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setSearch(formatPhoneLive(e.target.value))}
             placeholder="Search..."
             className="md-input w-full text-md sm:text-base py-3 sm:py-2 pl-10 sm:pl-12"
             autoFocus
@@ -411,12 +410,12 @@ function SearchModal({
                 {isCustomer(item) ? (
                   <>
                     <div className="hidden sm:grid grid-cols-12 px-4 py-3">
-                      <div className="col-span-5 truncate">{item.full_name}</div>
+                      <div className="col-span-5 truncate"><HighlightText text={item.full_name} highlight={search} /></div>
                       <div className="col-span-3 truncate">{item.phone_numbers && item.phone_numbers.length > 0 ? formatPhone(item.phone_numbers[0].number) : "—"}</div>
                       <div className="col-span-4 truncate text-md">{fmtDate(item.created_at)}</div>
                     </div>
                     <div className="sm:hidden px-4 py-3 space-y-2">
-                      <div className="text-md">{item.full_name}</div>
+                      <div className="text-md"><HighlightText text={item.full_name} highlight={search} /></div>
                       <div className="flex items-center justify-between text-md">
                         {item.phone_numbers && item.phone_numbers.length > 0 && <span>{formatPhone(item.phone_numbers[0].number)}</span>}
                         <span className="text-md text-on-surface">{fmtDate(item.created_at)}</span>

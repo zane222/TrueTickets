@@ -219,7 +219,10 @@ function App() {
 
   const route = useMemo(() => {
     const url = new URL(window.location.origin + path);
-    const pathname = url.pathname;
+    let pathname = url.pathname;
+    if (pathname.length > 1 && pathname.endsWith("/")) {
+      pathname = pathname.slice(0, -1);
+    }
     const query = url.searchParams;
     if (pathname === "/newcustomer") return { view: "newcustomer" };
     if (pathname.startsWith("/$")) {

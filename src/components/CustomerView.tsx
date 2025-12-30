@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Plus, Edit, Loader2 } from "lucide-react";
-import { convertStatus } from "../constants/appConstants.js";
+import { convertStatus, EMPTY_ARRAY } from "../constants/appConstants.js";
 import {
   formatPhone,
   fmtDate,
   getTicketPassword,
-  getTicketDeviceInfo,
 } from "../utils/appUtils.jsx";
 import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
@@ -67,38 +66,31 @@ function CustomerView({
     },
     {
       key: "N",
-      description: "New customer",
+      description: "New ticket",
       category: "Navigation",
     },
   ], []);
 
-  useRegisterKeybinds(customerViewKeybinds);
+  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : customerViewKeybinds);
 
-  // Helper to get primary phone safely
-  const getPrimaryPhone = (c: Customer | null): string => {
-    if (!c || !c.phone_numbers || c.phone_numbers.length === 0) return "";
-    return c.phone_numbers[0].number;
-  };
 
-  useHotkeys(
-    {
-      h: () => goTo("/"),
-      e: () => goTo(`/$${id}?edit`),
-      s: () => {
-        // Trigger search modal from parent
-        const searchEvent = new CustomEvent("openSearch");
-        window.dispatchEvent(searchEvent);
-      },
-      n: () => {
-        const customerName = customer?.full_name || "";
-        const encodedName = encodeURIComponent(customerName);
-        const primaryPhone = getPrimaryPhone(customer);
-        const encodedPhone = encodeURIComponent(primaryPhone);
-        goTo(`/$${id}?newticket&customerName=${encodedName}&primaryPhone=${encodedPhone}`);
-      },
+
+  const hotkeyMap = useMemo(() => ({
+    h: () => goTo("/"),
+    e: () => goTo(`/$${id}?edit`),
+    s: () => {
+      // Trigger search modal from parent
+      const searchEvent = new CustomEvent("openSearch");
+      window.dispatchEvent(searchEvent);
     },
-    showSearch,
-  );
+    n: () => {
+      const customerName = customer?.full_name || "";
+      const encodedName = encodeURIComponent(customerName);
+      goTo(`/$${id}?newticket&customerName=${encodedName}`);
+    },
+  }), [id, goTo, customer?.full_name]);
+
+  useHotkeys(hotkeyMap, showSearch);
 
   const passwords = useMemo<string[]>(() => {
     try {
@@ -251,11 +243,9 @@ function CustomerView({
           onClick={() => {
             const customerName = customer?.full_name || "";
             const encodedName = encodeURIComponent(customerName);
-            const primaryPhone = getPrimaryPhone(customer);
-            const encodedPhone = encodeURIComponent(primaryPhone);
-            goTo(`/$${id}?newticket&customerName=${encodedName}&primaryPhone=${encodedPhone}`);
+            goTo(`/$${id}?newticket&customerName=${encodedName}`);
           }}
-          targetUrl={`${window.location.origin}/$${id}?newticket&customerName=${encodeURIComponent(customer?.full_name || "")}&primaryPhone=${encodeURIComponent(getPrimaryPhone(customer))}`}
+          targetUrl={`${window.location.origin}/$${id}?newticket&customerName=${encodeURIComponent(customer?.full_name || "")}`}
           className="md-btn-primary elev-1 inline-flex items-center gap-2 py-3 sm:py-2 text-md sm:text-base touch-manipulation"
           tabIndex={-1}
         >
@@ -270,9 +260,8 @@ function CustomerView({
             <div className="text-lg sm:text-2xl font-bold mb-2">
               {customer.full_name}
             </div>
-            <div className="mb-1 text-md sm:text-base text-outline flex items-center justify-between">
-              <span>{customer.email}</span>
-              <span className="text-md font-normal">Joined: {fmtDate(customer.created_at)}</span>
+            <div className="mb-1 text-md sm:text-base text-outline">
+              {customer.email}
             </div>
             <div className="space-y-1">
               {customer.phone_numbers && customer.phone_numbers.length > 0 ? (
@@ -325,7 +314,7 @@ function CustomerView({
                       {convertStatus(ticket.status || "")}
                     </div>
                     <div className="col-span-2 truncate">
-                      {getTicketDeviceInfo(ticket).device}
+                      {ticket.device}
                     </div>
                     <div className="col-span-2 truncate">
                       {fmtDate(ticket.created_at)}
@@ -345,7 +334,7 @@ function CustomerView({
                     <div className="flex justify-between items-center text-md">
                       <span>{convertStatus(ticket.status || "")}</span>
                       <span className="text-outline">
-                        {getTicketDeviceInfo(ticket).device}
+                        {ticket.device}
                       </span>
                     </div>
                   </div>

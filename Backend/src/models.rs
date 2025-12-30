@@ -10,8 +10,10 @@ pub struct Comment {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PhoneNumber {
     pub number: String,
-    pub prefers_texting: bool,
-    pub no_english: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefers_texting: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub no_english: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -105,4 +107,3 @@ pub struct UpdateCustomerRequest {
     pub email: Option<String>,
     pub phone_numbers: Option<Vec<PhoneNumber>>,
 }
-

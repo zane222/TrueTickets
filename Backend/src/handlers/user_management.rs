@@ -31,12 +31,12 @@ pub async fn handle_user_invitation(
             .name("email")
             .value(email)
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build email attribute: {}", e), None))?,
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build email attribute: {:?}", e), None))?,
         AttributeType::builder()
             .name("email_verified")
             .value("true")
             .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build email_verified attribute: {}", e), None))?,
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build email_verified attribute: {:?}", e), None))?,
     ];
 
     if !first_name.is_empty() {
@@ -45,7 +45,7 @@ pub async fn handle_user_invitation(
                 .name("custom:given_name")
                 .value(first_name)
                 .build()
-                .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build given_name attribute: {}", e), None))?,
+                .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build given_name attribute: {:?}", e), None))?,
         );
     }
 
@@ -61,7 +61,7 @@ pub async fn handle_user_invitation(
         .map_err(|e| {
             let error_code = e.to_string();
             if error_code.contains("AccessDeniedException") {
-                error_response(500, "Access Denied", &format!("Missing permissions to invite user: {}", e), Some("Check IAM policy for cognito-idp:AdminCreateUser"))
+                error_response(500, "Access Denied", &format!("Missing permissions to invite user: {:?}", e), Some("Check IAM policy for cognito-idp:AdminCreateUser"))
             } else {
                 error_response(400, "Could Not Invite User", &e.to_string(), None)
             }
@@ -82,7 +82,7 @@ pub async fn handle_user_invitation(
             if e.to_string().contains("AccessDeniedException") {
                 error_response(500, "Access Denied", "Missing permissions to set user password", Some("Check IAM policy for cognito-idp:AdminSetUserPassword"))
             } else {
-                error_response(500, "Password Error", &format!("Could not set user password: {}", e), None)
+                error_response(500, "Password Error", &format!("Could not set user password: {:?}", e), None)
             }
         })?;
 
@@ -98,7 +98,7 @@ pub async fn handle_user_invitation(
     let user = response.user().ok_or_else(|| error_response(500, "Data Error", "Successfully invited user but could not collect user info", None))?;
 
     Ok(json!({
-        "message": format!("Invitation sent successfully to {}", email),
+        "message": format!("Invitation sent successfully to {:?}", email),
         "user": {
             "username": user.username(),
             "enabled": user.enabled(),
@@ -124,7 +124,7 @@ pub async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) 
         .limit(60)
         .send()
         .await
-        .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to list users: {}", e), None))?;
+        .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to list users: {:?}", e), None))?;
 
     let mut users = vec![];
 
@@ -214,9 +214,9 @@ pub async fn handle_update_user_group(
             .username(username)
             .send()
             .await
-            .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to delete user {}: {}", username, e), None))?;
+            .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to delete user {:?}: {:?}", username, e), None))?;
 
-        Ok(json!({ "message": format!("User {} deleted successfully", username) }))
+        Ok(json!({ "message": format!("User {:?} deleted successfully", username) }))
     } else {
         // Get current user groups
         let groups_response = cognito_client
@@ -225,7 +225,7 @@ pub async fn handle_update_user_group(
             .username(username)
             .send()
             .await
-            .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to get user groups for {}: {}", username, e), None))?;
+            .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to get user groups for {:?}: {:?}", username, e), None))?;
 
         // Remove user from all current groups
         for group in groups_response.groups() {
@@ -248,8 +248,8 @@ pub async fn handle_update_user_group(
             .group_name(new_group)
             .send()
             .await
-            .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to add user {} to group {}: {}", username, new_group, e), None))?;
+            .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to add user {:?} to group {:?}: {:?}", username, new_group, e), None))?;
 
-        Ok(json!({ "message": format!("User {} moved to group {}", username, new_group) }))
+        Ok(json!({ "message": format!("User {:?} moved to group {:?}", username, new_group) }))
     }
 }

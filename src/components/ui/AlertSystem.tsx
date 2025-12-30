@@ -317,14 +317,21 @@ export const useAlertMethods = () => {
     clearDataChangedWarnings,
   } = useAlert();
 
-  return {
+  return useMemo(() => ({
     success: showSuccess,
     error: showError,
     warning: showWarning,
     dataChanged: showDataChangedWarning,
     info: showInfo,
     clearDataChangedWarnings,
-  };
+  }), [
+    showSuccess,
+    showError,
+    showWarning,
+    showDataChangedWarning,
+    showInfo,
+    clearDataChangedWarnings,
+  ]);
 };
 
 /**

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { EMPTY_ARRAY } from "../constants/appConstants.js";
 import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
 import { useChangeDetection } from "../hooks/useChangeDetection";
@@ -80,19 +81,18 @@ export default function NewCustomer({
     { key: "C", description: "Cancel", category: "Navigation" },
   ], []);
 
-  useRegisterKeybinds(keybinds);
+  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : keybinds);
 
-  useHotkeys(
-    {
-      h: () => goTo("/"),
-      s: () => window.dispatchEvent(new CustomEvent("openSearch")),
-      c: () => {
-        if (customerId) goTo(`/$${customerId}`);
-        else goTo("/");
-      },
+  const hotkeyMap = useMemo(() => ({
+    h: () => goTo("/"),
+    s: () => window.dispatchEvent(new CustomEvent("openSearch")),
+    c: () => {
+      if (customerId) goTo(`/$${customerId}`);
+      else goTo("/");
     },
-    showSearch,
-  );
+  }), [goTo, customerId]);
+
+  useHotkeys(hotkeyMap, showSearch);
 
   const formatPhoneLive = (value?: string | null): string => {
     const digits = (value || "").replace(/\D/g, "");
@@ -200,7 +200,8 @@ export default function NewCustomer({
           })),
         };
         const res = await api.post<{ customer_id: string }>("/customers", payload);
-        const goToUrl = `/$${res.customer_id}${window.location.search.includes("newticket") ? "?newticket" : ""}`;
+        const customerName = encodeURIComponent(form.full_name);
+        const goToUrl = `/$${res.customer_id}?newticket&customerName=${customerName}`;
         goTo(goToUrl);
       }
     } catch (err) {
@@ -237,7 +238,7 @@ export default function NewCustomer({
               tabIndex={5}
             >
               <div className="flex items-center justify-center gap-2">
-                <span>{saving ? (customerId ? "Updating..." : "Creating...") : (customerId ? "Update" : "Create Customer")}</span>
+                <span>{saving ? (customerId ? "Updating..." : "Creating...") : (customerId ? "Update" : "Create Ticket and Customer")}</span>
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               </div>
             </motion.button>

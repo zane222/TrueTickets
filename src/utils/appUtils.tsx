@@ -174,52 +174,34 @@ export function getDeviceTypeFromSubject(subjectText: string): string | null {
 }
 
 /**
- * Get ticket device information
- *
- * Accepts typed ticket objects or a generic record and safely parses the
- * internal `Model` vT JSON when present.
+ * Parse estimated time from subject string.
+ * Example: "iPhone screen repair [3hr]" -> { baseSubject: "iPhone screen repair", time: "3hr" }
  */
-export function getTicketDeviceInfo(
-  ticket: Ticket | TicketWithoutCustomer | Record<string, unknown>,
-): {
-  device: string;
-  itemsLeft: string[];
-  estimatedTime: string;
-} {
-  try {
-    const t = ticket as Record<string, unknown>;
-    let device = "Other";
-    let itemsLeft: string[] = [];
-    let estimatedTime = "";
+export function parseEstimatedTime(subject: string): { baseSubject: string; time: string } {
+  if (!subject) return { baseSubject: "", time: "" };
 
-    // Use top-level estimated_time if available
-    if (typeof t["estimated_time"] === "string" && t["estimated_time"]) {
-      estimatedTime = t["estimated_time"] as string;
-    }
-
-    // Detection fallback for device
-    const detectedDevice = getDeviceTypeFromSubject(
-      typeof t?.subject === "string" ? (t.subject as string) : "",
-    );
-    device = detectedDevice || "Other";
-
-    return {
-      device,
-      itemsLeft,
-      estimatedTime,
-    };
-  } catch {
-    const detectedDevice = getDeviceTypeFromSubject(
-      typeof (ticket as Record<string, unknown>)?.subject === "string"
-        ? ((ticket as Record<string, unknown>).subject as string)
-        : "",
-    );
-    return {
-      device: detectedDevice || "Other",
-      itemsLeft: [],
-      estimatedTime: "",
-    };
+  const match = subject.match(/\s?\[([^\]]+)\]$/);
+  if (match) {
+    const time = match[1].trim();
+    const baseSubject = subject.slice(0, match.index).trim();
+    return { baseSubject, time };
   }
+
+  return { baseSubject: subject.trim(), time: "" };
+}
+
+/**
+ * Append estimated time to subject string.
+ * Ensures only one time bracket exists at the end.
+ */
+export function appendEstimatedTime(subject: string, time: string): string {
+  const { baseSubject } = parseEstimatedTime(subject);
+  const trimmedBase = baseSubject.trim();
+  const trimmedTime = time.trim();
+
+  if (!trimmedTime) return trimmedBase;
+
+  return `${trimmedBase} [${trimmedTime}]`;
 }
 
 /**
