@@ -112,7 +112,7 @@ pub async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) 
     // Check user permissions
     let user_groups = get_user_groups_from_event(event);
     if !can_manage_users(&user_groups) {
-        return Err(error_response(403, "Insufficient Permissions", "You do not have permission to view users", Some("Only ApplicationAdmin and Owner can view users")));
+        return Err(error_response(403, "Insufficient Permissions", &format!("You do not have permission to view users, you are a {}", user_groups), Some("Only ApplicationAdmin and Owner can view users")));
     }
 
     let user_pool_id = std::env::var("USER_POOL_ID")

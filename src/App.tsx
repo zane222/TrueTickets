@@ -22,7 +22,9 @@ import { TicketListView } from "./components/TicketList";
 import {
   CAN_INVITE_USERS_GROUPS,
   CAN_MANAGE_USERS_GROUPS,
+  CAN_ACCESS_SETTINGS_GROUPS,
 } from "./constants/authConstants";
+import SettingsPage from "./components/SettingsPage";
 import type { ApiContextValue } from "./types/components";
 
 /**
@@ -204,6 +206,10 @@ function App() {
     CAN_MANAGE_USERS_GROUPS.includes(group),
   );
 
+  const canAccessSettings = userGroups.some((group) =>
+    CAN_ACCESS_SETTINGS_GROUPS.includes(group),
+  );
+
   // User management handlers
   const handleInviteUserClick = () => setShowInviteUser(true);
   const handleManageUsersClick = () => setShowUserManagement(true);
@@ -225,6 +231,7 @@ function App() {
     }
     const query = url.searchParams;
     if (pathname === "/newcustomer") return { view: "newcustomer" };
+    if (pathname === "/settings") return { view: "settings" };
     if (pathname.startsWith("/$")) {
       const id = pathname.slice(2);
       if (query.has("newticket"))
@@ -253,8 +260,10 @@ function App() {
         setShowUserMenu={setShowUserMenu}
         canInviteUsers={canInviteUsers}
         canManageUsers={canManageUsers}
+        canAccessSettings={canAccessSettings}
         onInviteUser={handleInviteUserClick}
         onManageUsers={handleManageUsersClick}
+        onSettings={() => navigate("/settings")}
         onLogout={handleLogout}
         userName={userName}
       />
@@ -291,6 +300,10 @@ function App() {
           goTo={navigate}
           showSearch={showSearch}
         />
+      )}
+
+      {route.view === "settings" && (
+        <SettingsPage goTo={navigate} />
       )}
 
       <SearchModal

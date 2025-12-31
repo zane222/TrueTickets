@@ -37,6 +37,12 @@ export const CAN_MANAGE_USERS_GROUPS = [
   USER_GROUP_IDS.OWNER,
 ];
 
+export const CAN_ACCESS_SETTINGS_GROUPS = [
+  USER_GROUP_IDS.APPLICATION_ADMIN,
+  USER_GROUP_IDS.OWNER,
+  USER_GROUP_IDS.MANAGER,
+];
+
 // Error messages for user management
 export const USER_MANAGEMENT_ERRORS = {
   ADD_USER_FAILED: "Failed to add user. Please try again.",

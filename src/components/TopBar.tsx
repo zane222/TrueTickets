@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Search, UserPlus, User, LogOut, Clock } from "lucide-react";
+import { Search, UserPlus, User, LogOut, Clock, Settings } from "lucide-react";
 import NavigationButton from "./ui/NavigationButton";
 
 
@@ -12,8 +12,10 @@ interface TopBarProps {
   setShowUserMenu: (show: boolean) => void;
   canInviteUsers: boolean;
   canManageUsers: boolean;
+  canAccessSettings: boolean;
   onInviteUser: () => void;
   onManageUsers: () => void;
+  onSettings: () => void;
   onLogout: () => void;
   userName: string | null;
 }
@@ -26,8 +28,10 @@ export function TopBar({
   setShowUserMenu,
   canInviteUsers,
   canManageUsers,
+  canAccessSettings,
   onInviteUser,
   onManageUsers,
+  onSettings,
   onLogout,
   userName,
 }: TopBarProps) {
@@ -161,6 +165,20 @@ export function TopBar({
               </motion.div>
             )}
           </div>
+
+          {/* Settings Button */}
+          {canAccessSettings && (
+            <NavigationButton
+              onClick={onSettings}
+              targetUrl={`${window.location.origin}/settings`}
+              title="Settings"
+              className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
+              tabIndex={-1}
+            >
+              <Settings className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
+            </NavigationButton>
+          )}
+
         </div>
       </div>
     </div>
