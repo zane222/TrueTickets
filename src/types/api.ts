@@ -61,6 +61,7 @@ export interface UpdateTicket {
   status: string | null;
   password: string | null;
   items_left: string[] | null;
+  line_items: { subject: string; price: number }[] | null;
   device: string | null;
 }
 

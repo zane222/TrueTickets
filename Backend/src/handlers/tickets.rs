@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::http::error_response;
 use crate::models::{
     TicketWithoutCustomer, Ticket, Customer, CounterValue,
-    TicketNumberOnly
+    TicketNumberOnly, LineItem
 };
 use crate::db_utils::DynamoDbBuilderExt;
 
@@ -363,6 +363,7 @@ pub async fn handle_update_ticket(
     status: Option<String>,
     password: Option<String>,
     items_left: Option<Vec<String>>,
+    line_items: Option<Vec<LineItem>>,
     device: Option<String>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
@@ -440,6 +441,21 @@ pub async fn handle_update_ticket(
         } else {
             update_parts.push("items_left = :il".to_string());
             expr_vals.insert(":il".to_string(), AttributeValue::L(items.into_iter().map(AttributeValue::S).collect()));
+        }
+    }
+
+    // Handle line_items: None = no change, Some([]) = remove, Some(vec) = update
+    if let Some(items) = line_items {
+        if items.is_empty() {
+            remove_parts.push("line_items".to_string());
+        } else {
+            update_parts.push("line_items = :lis".to_string());
+            expr_vals.insert(":lis".to_string(), AttributeValue::L(items.into_iter().map(|li| {
+                AttributeValue::M(vec![
+                    ("subject".to_string(), AttributeValue::S(li.subject)),
+                    ("price".to_string(), AttributeValue::N(li.price.to_string())),
+                ].into_iter().collect())
+            }).collect()));
         }
     }
     

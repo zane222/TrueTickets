@@ -339,6 +339,7 @@ function TicketView({
         subject: null,
         password: null,
         items_left: null,
+        line_items: null,
         device: null,
       };
 
@@ -720,15 +721,48 @@ function TicketView({
                         ? "Print Receipt"
                         : "Print Estimate";
 
+                    const [savingLineItems, setSavingLineItems] = useState(false);
+                    const handleSaveLineItems = async () => {
+                      setSavingLineItems(true);
+                      try {
+                        const updateData: UpdateTicket = {
+                          status: null,
+                          subject: null,
+                          password: null,
+                          items_left: null,
+                          line_items: ticket.line_items || [],
+                          device: null,
+                        };
+                        await api.put(`/tickets?number=${ticket.ticket_number}`, updateData);
+                        _dataChanged("Saved", "Line items updated successfully.");
+                      } catch (err) {
+                        console.error(err);
+                        _error("Save Failed", "Failed to save line items.");
+                      } finally {
+                        setSavingLineItems(false);
+                      }
+                    };
+
                     return (
-                      <button
-                        onClick={generateDocumentPDF}
-                        className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
-                        tabIndex={-1}
-                      >
-                        <Printer className="w-5 h-5" />
-                        {printLabel}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleSaveLineItems}
+                          disabled={savingLineItems}
+                          className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
+                          tabIndex={-1}
+                        >
+                          {savingLineItems ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                          Save Items
+                        </button>
+                        <button
+                          onClick={generateDocumentPDF}
+                          className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
+                          tabIndex={-1}
+                        >
+                          <Printer className="w-5 h-5" />
+                          {printLabel}
+                        </button>
+                      </div>
                     );
                   })()}
                 </div>

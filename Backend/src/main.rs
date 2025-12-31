@@ -246,11 +246,11 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             };
 
             // Validation: Ensure at least one field is not None
-            if req.subject.is_none() && req.status.is_none() && req.password.is_none() && req.items_left.is_none() && req.device.is_none() {
+            if req.subject.is_none() && req.status.is_none() && req.password.is_none() && req.items_left.is_none() && req.line_items.is_none() && req.device.is_none() {
                 return error_response(400, "Empty Update", "At least one field must be provided for update", None);
             }
 
-            match handle_update_ticket(ticket_number, req.subject, req.status, req.password, req.items_left, req.device, &dynamodb_client).await {
+            match handle_update_ticket(ticket_number, req.subject, req.status, req.password, req.items_left, req.line_items, req.device, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }

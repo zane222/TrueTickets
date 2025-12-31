@@ -17,6 +17,12 @@ pub struct PhoneNumber {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LineItem {
+    pub subject: String,
+    pub price: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TicketWithoutCustomer {
     pub ticket_number: i64,
     pub subject: String,
@@ -34,6 +40,8 @@ pub struct TicketWithoutCustomer {
     pub attachments: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub items_left: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_items: Option<Vec<LineItem>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -69,7 +77,6 @@ pub struct TicketNumberOnly {
     pub ticket_number: i64,
 }
 
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CustomerPhonesOnly {
     pub phone_numbers: Vec<PhoneNumber>,
@@ -91,6 +98,7 @@ pub struct UpdateTicketRequest {
     pub status: Option<String>,
     pub password: Option<String>,
     pub items_left: Option<Vec<String>>,
+    pub line_items: Option<Vec<LineItem>>,
     pub device: Option<String>,
 }
 
@@ -107,6 +115,7 @@ pub struct UpdateCustomerRequest {
     pub email: Option<String>,
     pub phone_numbers: Option<Vec<PhoneNumber>>,
 }
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct StoreConfig {
     pub store_name: String,
