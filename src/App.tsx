@@ -263,7 +263,7 @@ function App() {
         canAccessSettings={canAccessSettings}
         onInviteUser={handleInviteUserClick}
         onManageUsers={handleManageUsersClick}
-        onSettings={() => navigate("/settings")}
+        onSettings={() => navigate("/settings#config")}
         onLogout={handleLogout}
         userName={userName}
       />
