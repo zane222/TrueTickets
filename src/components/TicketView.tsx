@@ -564,12 +564,20 @@ function TicketView({
                   {statusRow.map((status) => {
                     const active = convertStatus(ticket.status || "") === status;
                     const isUpdating = updatingStatus === status;
+                    const isLocked = convertStatus(ticket.status || "") === "Resolved" && (ticket.line_items || []).length > 0;
 
                     return (
                       <motion.button
                         key={status}
-                        onClick={() => updateTicketStatus(status)}
-                        disabled={isUpdating || active}
+                        onClick={() => {
+                          if (status === "Resolved" && (ticket.line_items || []).length > 0) {
+                            alert("Please click 'Take Payment' or remove line items before resolving.");
+                            return;
+                          }
+                          // Since buttons are disabled when locked, this onClick shouldn't fire, but keeping for safety
+                          updateTicketStatus(status);
+                        }}
+                        disabled={isUpdating || active || isLocked}
                         className={`${isUpdating
                           ? "bg-blue-900 text-white px-6 border-none outline-none ring-0"
                           : active
@@ -577,8 +585,8 @@ function TicketView({
                             : (status === "Ready" || status === "Resolved")
                               ? "md-btn-surface px-3 !border-gray-400"
                               : "md-btn-surface px-3"
-                          } flex-auto inline-flex items-center justify-center gap-2 py-2 text-[14px] font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all ${isUpdating || active ? "cursor-not-allowed" : "hover:brightness-95"
-                          }`}
+                          } flex-auto inline-flex items-center justify-center gap-2 py-2 text-[14px] font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all ${isUpdating || active || isLocked ? "cursor-not-allowed" : "hover:brightness-95"
+                          } ${isLocked && !active ? "opacity-50" : ""}`}
                         layout
                       >
                         <span>{status}</span>
@@ -620,76 +628,124 @@ function TicketView({
               </div>
 
               <div className="space-y-3">
-                {(ticket.line_items || []).map((item: any, index: number) => (
-                  <div key={index} className="flex gap-3 items-center">
-                    <input
-                      type="text"
-                      placeholder="Subject"
-                      value={item.subject || ""}
-                      onChange={(e) => {
-                        const newItems = [...(ticket.line_items || [])];
-                        newItems[index] = { ...newItems[index], subject: e.target.value };
-                        setTicket({ ...ticket, line_items: newItems });
-                      }}
-                      className="md-input flex-grow text-md sm:text-base py-3 sm:py-2"
-                    />
-                    <div className="relative w-32">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70 text-sm">$</span>
-                      <input
-                        type="number"
-                        placeholder="0"
-                        value={item.price || ""}
-                        onChange={(e) => {
-                          const newItems = [...(ticket.line_items || [])];
-                          newItems[index] = { ...newItems[index], price: parseFloat(e.target.value) };
-                          setTicket({ ...ticket, line_items: newItems });
-                        }}
-                        className="md-input w-full pl-6 text-md sm:text-base py-3 sm:py-2 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      />
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newItems = (ticket.line_items || []).filter((_: any, i: number) => i !== index);
-                        setTicket({ ...ticket, line_items: newItems });
-                      }}
-                      className="p-2 text-on-surface-variant hover:text-error transition-colors"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-                ))}
+                {(() => {
+                  const isLocked = convertStatus(ticket.status || "") === "Resolved" && (ticket.line_items || []).length > 0;
 
-                <button
-                  type="button"
-                  className="md-btn-surface elev-1 text-sm py-1.5 px-3 w-fit"
-                  onClick={() => {
-                    const newItems = [...(ticket.line_items || []), { subject: "", price: 0 }];
-                    setTicket({ ...ticket, line_items: newItems });
-                  }}
-                  tabIndex={-1}
-                >
-                  + Add Line Item
-                </button>
-
-                {/* Totals Section */}
-                {(ticket.line_items || []).length > 0 && (
-                  <div className="flex flex-col items-end">
-                    {(() => {
-                      const subtotal = (ticket.line_items || []).reduce((acc: number, item: any) => acc + (parseFloat(item.price) || 0), 0);
-                      const tax = subtotal * 0.0825;
-                      const total = subtotal + tax;
-
-                      return (
-                        <div className="w-full max-w-[200px] space-y-1">
-                          <div className="flex justify-between text-md font-semibold">
-                            <span>Total:</span>
-                            <span>${total.toFixed(2)}</span>
+                  return (
+                    <>
+                      {(ticket.line_items || []).map((item: any, index: number) => (
+                        <div key={index} className="flex gap-3 items-center">
+                          <input
+                            type="text"
+                            placeholder="Subject"
+                            value={item.subject || ""}
+                            onChange={(e) => {
+                              const newItems = [...(ticket.line_items || [])];
+                              newItems[index] = { ...newItems[index], subject: e.target.value };
+                              setTicket({ ...ticket, line_items: newItems });
+                            }}
+                            readOnly={isLocked}
+                            disabled={isLocked}
+                            className={`md-input flex-grow text-md sm:text-base py-3 sm:py-2 ${isLocked ? "opacity-70 cursor-not-allowed" : ""}`}
+                          />
+                          <div className="relative w-32">
+                            <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm ${isLocked ? "text-on-surface-variant/50" : "text-on-surface-variant/70"}`}>$</span>
+                            <input
+                              type="number"
+                              placeholder="0"
+                              value={item.price || ""}
+                              onChange={(e) => {
+                                const newItems = [...(ticket.line_items || [])];
+                                newItems[index] = { ...newItems[index], price: parseFloat(e.target.value) };
+                                setTicket({ ...ticket, line_items: newItems });
+                              }}
+                              readOnly={isLocked}
+                              disabled={isLocked}
+                              className={`md-input w-full pl-6 text-md sm:text-base py-3 sm:py-2 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${isLocked ? "opacity-70 cursor-not-allowed" : ""}`}
+                            />
                           </div>
+                          {!isLocked && (
+                            <button
+                              onClick={() => {
+                                const newItems = (ticket.line_items || []).filter((_: any, i: number) => i !== index);
+                                setTicket({ ...ticket, line_items: newItems });
+                              }}
+                              className="p-2 text-on-surface-variant hover:text-error transition-colors"
+                            >
+                              <X size={18} />
+                            </button>
+                          )}
                         </div>
-                      );
-                    })()}
-                  </div>
-                )}
+                      ))}
+
+                      {!isLocked && (
+                        <button
+                          type="button"
+                          className="md-btn-surface elev-1 text-sm py-1.5 px-3 w-fit"
+                          onClick={() => {
+                            if (convertStatus(ticket.status || "") === "Resolved") {
+                              alert("Please change status from Resolved first.");
+                              return;
+                            }
+                            const newItems = [...(ticket.line_items || []), { subject: "", price: 0 }];
+                            setTicket({ ...ticket, line_items: newItems });
+                          }}
+                          tabIndex={-1}
+                        >
+                          + Add Line Item
+                        </button>
+                      )}
+
+                      {/* Totals Section */}
+                      {(ticket.line_items || []).length > 0 && (
+                        <div className="flex flex-col items-end">
+                          {(() => {
+                            const subtotal = (ticket.line_items || []).reduce((acc: number, item: any) => acc + (parseFloat(item.price) || 0), 0);
+                            const tax = subtotal * 0.0825;
+                            const total = subtotal + tax;
+
+                            return (
+                              <div className="w-full max-w-[200px] space-y-2">
+                                <div className="flex justify-between text-md font-semibold">
+                                  <span>Total:</span>
+                                  <span>${total.toFixed(2)}</span>
+                                </div>
+
+                                {isLocked ? (
+                                  <button
+                                    onClick={() => {
+                                      if (confirm("Refund payment and unresolve ticket due to issue?")) {
+                                        console.log("Payment Refunded at:", new Date().toLocaleString());
+                                        updateTicketStatus("In Progress");
+                                      }
+                                    }}
+                                    className="w-full md-btn-surface border-error/50 text-error hover:bg-error/10 py-2 text-sm font-semibold transition-all"
+                                  >
+                                    Refund
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      if (convertStatus(ticket.status || "") === "Resolved") {
+                                        alert("Please change status from Resolved first.");
+                                        return;
+                                      }
+                                      console.log("Payment Taken at:", new Date().toLocaleString());
+                                      updateTicketStatus("Resolved");
+                                    }}
+                                    className="w-full md-btn-primary py-2 text-sm font-semibold shadow-md hover:shadow-lg transition-all"
+                                  >
+                                    Take Payment
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
