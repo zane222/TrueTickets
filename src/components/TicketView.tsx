@@ -534,7 +534,7 @@ function TicketView({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT SIDE: Ticket + Status + Attachments */}
-        <div ref={parentContainerRef} className="lg:col-span-6 space-y-20 w-full lg:w-[520px]">
+        <div ref={parentContainerRef} className="lg:col-span-6 space-y-6 w-full lg:w-[520px]">
           {/* Ticket Card - Scaled up */}
           <div className="relative mx-auto bg-white rounded-lg shadow-lg overflow-hidden h-[150px] w-full lg:w-[520px] max-w-[520px]">
             <div className="absolute inset-0 origin-top-left" style={{ transform: `scale(${ticketCardScale})` }}>
@@ -557,54 +557,126 @@ function TicketView({
             </div>
           </div>
 
-          {/* Status and Attachments side by side */}
-          <div className="grid grid-cols-2 gap-6 items-start">
-            {/* Status buttons */}
-            <div className="md-card p-4 space-y-3">
-              <p className="text-md font-semibold">Status:</p>
-              <div className="flex flex-col gap-2">
-                {STATUSES.map((status, _index) => {
-                  const active = convertStatus(ticket.status || "") === status;
-                  const isUpdating = updatingStatus === status;
-                  return (
-                    <motion.button
-                      key={status}
-                      onClick={() => updateTicketStatus(status)}
-                      disabled={isUpdating || active}
-                      className={`${active ? "md-btn-primary" : "md-btn-surface"} text-left relative overflow-hidden py-2 text-base touch-manipulation w-full ${isUpdating || active ? "cursor-not-allowed" : ""
-                        }`}
-                      style={active ? { borderRadius: "12px" } : {}}
-                      tabIndex={-1}
-                      initial={{
-                        minHeight: active ? "3.5rem" : "2rem",
-                        paddingTop: active ? "1rem" : "0.5rem",
-                        paddingBottom: active ? "1rem" : "0.5rem",
-                      }}
-                      animate={{
-                        minHeight: active ? "3.5rem" : "2rem",
-                        paddingTop: active ? "1rem" : "0.5rem",
-                        paddingBottom: active ? "1rem" : "0.5rem",
-                      }}
-                      transition={{
-                        duration: 0.2,
-                        ease: "easeInOut",
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
+          {/* Status buttons - Stacked Flex Rows */}
+          <div className="md-card p-4 space-y-3 mb-6">
+            <p className="text-md font-semibold">Status:</p>
+            <div className="w-full flex flex-col gap-2">
+              {[
+                [STATUSES[0], STATUSES[2], STATUSES[4], STATUSES[6]], // D, F, A, Ready
+                [STATUSES[1], STATUSES[3], STATUSES[5], STATUSES[7]]  // W, O, I, Resolved
+              ].map((statusRow, rowIndex) => (
+                <div key={rowIndex} className="flex gap-2 w-full">
+                  {statusRow.map((status) => {
+                    const active = convertStatus(ticket.status || "") === status;
+                    const isUpdating = updatingStatus === status;
+
+                    return (
+                      <motion.button
+                        key={status}
+                        onClick={() => updateTicketStatus(status)}
+                        disabled={isUpdating || active}
+                        className={`${isUpdating
+                          ? "bg-blue-900 text-white px-6 border-none outline-none ring-0"
+                          : active
+                            ? "md-btn-primary px-6"
+                            : "md-btn-surface px-3"
+                          } flex-auto inline-flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all ${isUpdating || active ? "cursor-not-allowed" : "hover:brightness-95"
+                          }`}
+                        layout
+                      >
                         <span>{status}</span>
-                        {isUpdating && (
-                          <div className="ml-2">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          </div>
-                        )}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Line Items and Attachments - Stacked */}
+          <div className="space-y-6">
+            {/* Line Items Section */}
+            <div className="md-card p-4 space-y-4">
+              <div className="flex justify-between items-center">
+                <p className="text-md font-semibold">Line Items</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const newItems = [...(ticket.line_items || []), { subject: "", price: 0 }];
+                      setTicket({ ...ticket, line_items: newItems });
+                    }}
+                    className="md-btn-surface elev-1 inline-flex items-center justify-center w-8 h-8 rounded-full text-sm touch-manipulation"
+                    title="Add Line Item"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                  {(() => {
+                    const currentStatus = convertStatus(ticket.status || "");
+                    const printLabel = currentStatus === "Ready"
+                      ? "Print Invoice"
+                      : currentStatus === "Resolved"
+                        ? "Print Receipt"
+                        : "Print Estimate";
+
+                    return (
+                      <button
+                        onClick={() => {/* TODO */ }}
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm touch-manipulation"
+                        tabIndex={-1}
+                      >
+                        <Printer className="w-4 h-4" />
+                        {printLabel}
+                      </button>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {(ticket.line_items || []).length === 0 ? (
+                  <div className="py-4 text-center opacity-60 text-sm">
+                    No line items added
+                  </div>
+                ) : (
+                  (ticket.line_items || []).map((item: any, index: number) => (
+                    <div key={index} className="flex gap-3 items-center">
+                      <input
+                        type="text"
+                        placeholder="Subject"
+                        value={item.subject || ""}
+                        onChange={(e) => {
+                          const newItems = [...(ticket.line_items || [])];
+                          newItems[index] = { ...newItems[index], subject: e.target.value };
+                          setTicket({ ...ticket, line_items: newItems });
+                        }}
+                        className="flex-grow p-2 rounded-md bg-surface-variant/50 border-none focus:ring-2 focus:ring-primary text-sm"
+                      />
+                      <div className="relative w-32">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70 text-sm">$</span>
+                        <input
+                          type="number"
+                          placeholder="0.00"
+                          value={item.price || ""}
+                          onChange={(e) => {
+                            const newItems = [...(ticket.line_items || [])];
+                            newItems[index] = { ...newItems[index], price: parseFloat(e.target.value) };
+                            setTicket({ ...ticket, line_items: newItems });
+                          }}
+                          className="w-full p-2 pl-6 rounded-md bg-surface-variant/50 border-none focus:ring-2 focus:ring-primary text-sm text-right"
+                        />
                       </div>
-                      {/* Loading overlay animation */}
-                      {isUpdating && (
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
-                      )}
-                    </motion.button>
-                  );
-                })}
+                      <button
+                        onClick={() => {
+                          const newItems = (ticket.line_items || []).filter((_: any, i: number) => i !== index);
+                          setTicket({ ...ticket, line_items: newItems });
+                        }}
+                        className="p-2 text-on-surface-variant hover:text-error transition-colors"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -682,6 +754,7 @@ function TicketView({
             </div>
           </div>
         </div>
+
 
         {/* RIGHT SIDE: Comments */}
         <aside className="lg:col-start-7 lg:col-span-6 space-y-6">

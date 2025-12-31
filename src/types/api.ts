@@ -15,6 +15,7 @@ export interface TicketWithoutCustomer {
   comments?: Comment[];
   attachments?: string[];
   items_left?: string[];
+  line_items?: { subject: string; price: number }[];
 }
 
 export interface Ticket extends TicketWithoutCustomer {
