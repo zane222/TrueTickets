@@ -130,7 +130,7 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
                             }`}
                     >
                         <DollarSign className="w-5 h-5 mr-3" />
-                        Income & Payroll
+                        Income & Expenses
                     </button>
                 )}
 

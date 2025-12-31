@@ -488,9 +488,14 @@ export default function HoursTab() {
                     <div key={currentEmpName} className="md-card p-6 gap-4 flex flex-col">
                         <div className="flex justify-between items-center">
                             <h4 className="font-bold text-lg text-on-surface">Hours Overview</h4>
-                            <span className="text-sm font-medium text-outline bg-surface-variant/20 px-3 py-1 rounded-full">
-                                Total: <span className="text-primary font-bold ml-1">{currentData.total.toFixed(2)} hrs</span>
-                            </span>
+                            <div className="flex gap-4">
+                                <span className="text-sm font-medium text-outline bg-surface-variant/20 px-3 py-1 rounded-full">
+                                    Total: <span className="text-primary font-bold ml-1">{currentData.total.toFixed(2)} hrs</span>
+                                </span>
+                                <span className="text-sm font-medium text-outline bg-surface-variant/20 px-3 py-1 rounded-full">
+                                    Est. Payroll: <span className="text-green-500 font-bold ml-1">${(currentData.total * 20).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </span>
+                            </div>
                         </div>
 
                         {renderCalendar(currentData.shifts, currentEmpName)}

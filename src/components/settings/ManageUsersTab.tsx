@@ -242,34 +242,51 @@ export default function ManageUsersTab() {
                                 </div>
 
                                 {selectedUser.groups[0] !== "delete" ? (
-                                    <div className="grid gap-2">
-                                        <label className="text-sm font-medium text-outline">
-                                            Role / Permission Group
-                                        </label>
-                                        <select
-                                            className="md-input w-full"
-                                            value={selectedUser.groups?.[0] || USER_GROUP_IDS.EMPLOYEE}
-                                            onChange={(e) => {
-                                                setSelectedUser({
-                                                    ...selectedUser,
-                                                    groups: [e.target.value],
-                                                });
-                                            }}
-                                        >
-                                            <option value={USER_GROUP_IDS.EMPLOYEE}>
-                                                {getGroupDisplayName(USER_GROUP_IDS.EMPLOYEE)}
-                                            </option>
-                                            <option value={USER_GROUP_IDS.MANAGER}>
-                                                {getGroupDisplayName(USER_GROUP_IDS.MANAGER)}
-                                            </option>
-                                            <option value={USER_GROUP_IDS.OWNER}>
-                                                {getGroupDisplayName(USER_GROUP_IDS.OWNER)}
-                                            </option>
-                                            <option value={USER_GROUP_IDS.APPLICATION_ADMIN}>
-                                                {getGroupDisplayName(USER_GROUP_IDS.APPLICATION_ADMIN)}
-                                            </option>
-                                        </select>
-                                    </div>
+                                    <>
+                                        <div className="grid gap-2">
+                                            <label className="text-sm font-medium text-outline">
+                                                Role / Permission Group
+                                            </label>
+                                            <select
+                                                className="md-input w-full"
+                                                value={selectedUser.groups?.[0] || USER_GROUP_IDS.EMPLOYEE}
+                                                onChange={(e) => {
+                                                    setSelectedUser({
+                                                        ...selectedUser,
+                                                        groups: [e.target.value],
+                                                    });
+                                                }}
+                                            >
+                                                <option value={USER_GROUP_IDS.EMPLOYEE}>
+                                                    {getGroupDisplayName(USER_GROUP_IDS.EMPLOYEE)}
+                                                </option>
+                                                <option value={USER_GROUP_IDS.MANAGER}>
+                                                    {getGroupDisplayName(USER_GROUP_IDS.MANAGER)}
+                                                </option>
+                                                <option value={USER_GROUP_IDS.OWNER}>
+                                                    {getGroupDisplayName(USER_GROUP_IDS.OWNER)}
+                                                </option>
+                                                <option value={USER_GROUP_IDS.APPLICATION_ADMIN}>
+                                                    {getGroupDisplayName(USER_GROUP_IDS.APPLICATION_ADMIN)}
+                                                </option>
+                                            </select>
+                                        </div>
+
+                                        <div className="grid gap-2 pt-2">
+                                            <label className="text-sm font-medium text-outline">
+                                                Hourly Wage ($)
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-outline font-medium">$</span>
+                                                <input
+                                                    type="number"
+                                                    className="md-input w-full pl-12"
+                                                    placeholder="20.00"
+                                                    defaultValue="20.00"
+                                                />
+                                            </div>
+                                        </div>
+                                    </>
                                 ) : (
                                     <div className="text-on-surface">
                                         Are you sure you want to remove this user? This will revoke all their access immediately.
