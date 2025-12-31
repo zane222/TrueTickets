@@ -324,10 +324,10 @@ function TicketView({
       const baseWidth = 520;
       const baseScale = 1.48;
       // Only scale on mobile, keep desktop at 1.48
-      const newScale = width >= baseWidth ? 1.48 : Math.max((width / baseWidth) * baseScale, 0.9);
+      const newScale = width >= baseWidth ? 1.48 : Math.max((width / baseWidth) * baseScale);
       setTicketCardScale(newScale);
     }
-  }, [windowWidth]);
+  }, [windowWidth, ticket]);
 
   const updateTicketStatus = async (status: string): Promise<void> => {
     if (!ticket || updatingStatus || convertStatus(ticket.status || "") === status)
@@ -495,11 +495,6 @@ function TicketView({
     ticket.customer?.phone_numbers?.[0]?.number || ""
   );
 
-
-
-
-
-
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
       {/* Top Action Buttons */}
@@ -579,8 +574,10 @@ function TicketView({
                           ? "bg-blue-900 text-white px-6 border-none outline-none ring-0"
                           : active
                             ? "md-btn-primary px-6"
-                            : "md-btn-surface px-3"
-                          } flex-auto inline-flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all ${isUpdating || active ? "cursor-not-allowed" : "hover:brightness-95"
+                            : (status === "Ready" || status === "Resolved")
+                              ? "md-btn-surface px-3 !border-gray-400"
+                              : "md-btn-surface px-3"
+                          } flex-auto inline-flex items-center justify-center gap-2 py-2 text-[14px] font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all ${isUpdating || active ? "cursor-not-allowed" : "hover:brightness-95"
                           }`}
                         layout
                       >
@@ -600,16 +597,6 @@ function TicketView({
               <div className="flex justify-between items-center">
                 <p className="text-md font-semibold">Line Items</p>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      const newItems = [...(ticket.line_items || []), { subject: "", price: 0 }];
-                      setTicket({ ...ticket, line_items: newItems });
-                    }}
-                    className="md-btn-surface elev-1 inline-flex items-center justify-center w-8 h-8 rounded-full text-sm touch-manipulation"
-                    title="Add Line Item"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
                   {(() => {
                     const currentStatus = convertStatus(ticket.status || "");
                     const printLabel = currentStatus === "Ready"
@@ -633,49 +620,75 @@ function TicketView({
               </div>
 
               <div className="space-y-3">
-                {(ticket.line_items || []).length === 0 ? (
-                  <div className="py-4 text-center opacity-60 text-sm">
-                    No line items added
-                  </div>
-                ) : (
-                  (ticket.line_items || []).map((item: any, index: number) => (
-                    <div key={index} className="flex gap-3 items-center">
+                {(ticket.line_items || []).map((item: any, index: number) => (
+                  <div key={index} className="flex gap-3 items-center">
+                    <input
+                      type="text"
+                      placeholder="Subject"
+                      value={item.subject || ""}
+                      onChange={(e) => {
+                        const newItems = [...(ticket.line_items || [])];
+                        newItems[index] = { ...newItems[index], subject: e.target.value };
+                        setTicket({ ...ticket, line_items: newItems });
+                      }}
+                      className="md-input flex-grow text-md sm:text-base py-3 sm:py-2"
+                    />
+                    <div className="relative w-32">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70 text-sm">$</span>
                       <input
-                        type="text"
-                        placeholder="Subject"
-                        value={item.subject || ""}
+                        type="number"
+                        placeholder="0"
+                        value={item.price || ""}
                         onChange={(e) => {
                           const newItems = [...(ticket.line_items || [])];
-                          newItems[index] = { ...newItems[index], subject: e.target.value };
+                          newItems[index] = { ...newItems[index], price: parseFloat(e.target.value) };
                           setTicket({ ...ticket, line_items: newItems });
                         }}
-                        className="flex-grow p-2 rounded-md bg-surface-variant/50 border-none focus:ring-2 focus:ring-primary text-sm"
+                        className="md-input w-full pl-6 text-md sm:text-base py-3 sm:py-2 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
-                      <div className="relative w-32">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70 text-sm">$</span>
-                        <input
-                          type="number"
-                          placeholder="0.00"
-                          value={item.price || ""}
-                          onChange={(e) => {
-                            const newItems = [...(ticket.line_items || [])];
-                            newItems[index] = { ...newItems[index], price: parseFloat(e.target.value) };
-                            setTicket({ ...ticket, line_items: newItems });
-                          }}
-                          className="w-full p-2 pl-6 rounded-md bg-surface-variant/50 border-none focus:ring-2 focus:ring-primary text-sm text-right"
-                        />
-                      </div>
-                      <button
-                        onClick={() => {
-                          const newItems = (ticket.line_items || []).filter((_: any, i: number) => i !== index);
-                          setTicket({ ...ticket, line_items: newItems });
-                        }}
-                        className="p-2 text-on-surface-variant hover:text-error transition-colors"
-                      >
-                        <X size={18} />
-                      </button>
                     </div>
-                  ))
+                    <button
+                      onClick={() => {
+                        const newItems = (ticket.line_items || []).filter((_: any, i: number) => i !== index);
+                        setTicket({ ...ticket, line_items: newItems });
+                      }}
+                      className="p-2 text-on-surface-variant hover:text-error transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  className="md-btn-surface elev-1 text-sm py-1.5 px-3 w-fit"
+                  onClick={() => {
+                    const newItems = [...(ticket.line_items || []), { subject: "", price: 0 }];
+                    setTicket({ ...ticket, line_items: newItems });
+                  }}
+                  tabIndex={-1}
+                >
+                  + Add Line Item
+                </button>
+
+                {/* Totals Section */}
+                {(ticket.line_items || []).length > 0 && (
+                  <div className="flex flex-col items-end">
+                    {(() => {
+                      const subtotal = (ticket.line_items || []).reduce((acc: number, item: any) => acc + (parseFloat(item.price) || 0), 0);
+                      const tax = subtotal * 0.0825;
+                      const total = subtotal + tax;
+
+                      return (
+                        <div className="w-full max-w-[200px] space-y-1">
+                          <div className="flex justify-between text-md font-semibold">
+                            <span>Total:</span>
+                            <span>${total.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
             </div>
