@@ -277,7 +277,7 @@ pub async fn handle_migrate_tickets(
 
         let details_resp = http_client
             .get(&details_url)
-            .header("Authorization", format!("Bearer {:?}", api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header(

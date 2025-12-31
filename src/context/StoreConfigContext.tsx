@@ -39,18 +39,16 @@ export const StoreConfigProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const refreshConfig = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await api.get<StoreConfig>("/store_config");
-            setConfig(data);
+            const data = await api.get<{ config: StoreConfig | null }>("/store_config");
+            if (data && data.config) {
+                setConfig(data.config);
+            } else {
+                setConfig(DEFAULT_CONFIG);
+            }
             setError(null);
         } catch (err: any) {
-            if (err.status === 404) {
-                // Silently fallback to DEFAULT_CONFIG if not found in DB
-                setConfig(DEFAULT_CONFIG);
-                setError(null);
-            } else {
-                console.error("Failed to fetch store config:", err);
-                setError(err.message || "Failed to fetch store config");
-            }
+            console.error("Failed to fetch store config:", err);
+            setError(err.message || "Failed to fetch store config");
         } finally {
             setLoading(false);
         }

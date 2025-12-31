@@ -13,13 +13,17 @@ pub async fn handle_get_store_config(client: &Client) -> Result<Value, Response<
         .key("pk", AttributeValue::S("config".to_string()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get store config: {:?}", e), None))?
-        .item
-        .ok_or_else(|| error_response(404, "Not Found", "Store configuration not found in database", None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get store config: {:?}", e), None))?;
 
-    let config: StoreConfig = serde_dynamo::from_item(output)
+    let item = match output.item {
+        Some(item) => item,
+        None => return Ok(json!({ "config": null })),
+    };
+
+    let config: StoreConfig = serde_dynamo::from_item(item)
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize store config: {:?}", e), None))?;
-    Ok(json!(config))
+    
+    Ok(json!({ "config": config }))
 }
 
 pub async fn handle_update_store_config(

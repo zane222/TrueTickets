@@ -113,7 +113,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/upload-attachment", "POST") => {
+        ("/tickets/attachment", "POST") => {
             // Extract and validate attachment data from request
             let body = match parse_json_body(event.body()) {
                 Ok(body) => body,

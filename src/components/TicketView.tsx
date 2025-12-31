@@ -58,6 +58,17 @@ function TicketView({
   const parentContainerRef = useRef<HTMLDivElement | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null); // Track which status is being updated
+  /* const [savingLineItems, setSavingLineItems] = useState(false); */
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'still typing' | 'saving' | '' | 'error'>('');
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
   const [fullScreenAttachment, setFullScreenAttachment] = useState<{ url: string; fileName?: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -133,7 +144,7 @@ function TicketView({
             ticket_id: id,
             image_data: fileContent,
           };
-          await api.post("/upload-attachment", payload);
+          await api.post("/tickets/attachment", payload);
           console.log(`File uploaded: ${file.name}`);
           uploadedCount++;
         } catch (err) {
@@ -145,9 +156,7 @@ function TicketView({
       // Refresh ticket data after a 1-second delay if any files were uploaded successfully
       // This gives the server time to process the attachments
       if (uploadedCount > 0) {
-        setTimeout(() => {
-          setRefreshKey((prev) => prev + 1);
-        }, 1000);
+        setRefreshKey((prev) => prev + 1);
       }
     }
   }, [id, api, _error]);
@@ -588,6 +597,48 @@ function TicketView({
     }
   };
 
+
+
+  const saveLineItems = async (items: any[]) => {
+    if (!ticket) return;
+    setSaveStatus('saving');
+    try {
+      const updateData: UpdateTicket = {
+        status: null,
+        subject: null,
+        password: null,
+        items_left: null,
+        line_items: items,
+        device: null,
+      };
+      await api.put(`/tickets?number=${ticket.ticket_number}`, updateData);
+      setSaveStatus('saved');
+      // Update local ticket state to match persisted state if needed, though we passed items in.
+    } catch (err) {
+      console.error(err);
+      setSaveStatus('error');
+      _error("Save Failed", "Failed to save line items.");
+    }
+  };
+
+  const triggerAutoSave = (newItems: any[]) => {
+    setSaveStatus('still typing');
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      saveLineItems(newItems);
+    }, 200);
+  };
+
+
+
+  const printLabelText = ticket.status === "Ready"
+    ? "Print Invoice"
+    : ticket.status === "Resolved"
+      ? "Print Receipt"
+      : "Print Estimate";
+
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
       {/* Top Action Buttons */}
@@ -713,58 +764,29 @@ function TicketView({
               <div className="flex justify-between items-center">
                 <p className="text-md font-semibold">Line Items</p>
                 <div className="flex items-center gap-2">
-                  {(() => {
-                    const currentStatus = ticket.status;
-                    const printLabel = currentStatus === "Ready"
-                      ? "Print Invoice"
-                      : currentStatus === "Resolved"
-                        ? "Print Receipt"
-                        : "Print Estimate";
+                  <div className="flex gap-2 items-center">
+                    {/* Status Indicator */}
+                    <div className="mr-2 text-sm font-medium text-on-surface-variant flex items-center gap-2">
+                      {saveStatus === 'still typing' && <span className="text-white">Still Typing...</span>}
+                      {saveStatus === 'saving' && (
+                        <span className="flex items-center gap-1 text-white">
+                          <Loader2 size={14} className="animate-spin" />
+                          Saving...
+                        </span>
+                      )}
+                      {saveStatus === 'saved' && <span className="text-white">Saved</span>}
+                      {saveStatus === 'error' && <span className="text-error">Error Saving</span>}
+                    </div>
 
-                    const [savingLineItems, setSavingLineItems] = useState(false);
-                    const handleSaveLineItems = async () => {
-                      setSavingLineItems(true);
-                      try {
-                        const updateData: UpdateTicket = {
-                          status: null,
-                          subject: null,
-                          password: null,
-                          items_left: null,
-                          line_items: ticket.line_items || [],
-                          device: null,
-                        };
-                        await api.put(`/tickets?number=${ticket.ticket_number}`, updateData);
-                        _dataChanged("Saved", "Line items updated successfully.");
-                      } catch (err) {
-                        console.error(err);
-                        _error("Save Failed", "Failed to save line items.");
-                      } finally {
-                        setSavingLineItems(false);
-                      }
-                    };
-
-                    return (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleSaveLineItems}
-                          disabled={savingLineItems}
-                          className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
-                          tabIndex={-1}
-                        >
-                          {savingLineItems ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                          Save Items
-                        </button>
-                        <button
-                          onClick={generateDocumentPDF}
-                          className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
-                          tabIndex={-1}
-                        >
-                          <Printer className="w-5 h-5" />
-                          {printLabel}
-                        </button>
-                      </div>
-                    );
-                  })()}
+                    <button
+                      onClick={generateDocumentPDF}
+                      className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
+                      tabIndex={-1}
+                    >
+                      <Printer className="w-5 h-5" />
+                      {printLabelText}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -784,7 +806,9 @@ function TicketView({
                               const newItems = [...(ticket.line_items || [])];
                               newItems[index] = { ...newItems[index], subject: e.target.value };
                               setTicket({ ...ticket, line_items: newItems });
+                              setSaveStatus('still typing');
                             }}
+                            onBlur={() => triggerAutoSave(ticket.line_items || [])}
                             readOnly={isLocked}
                             disabled={isLocked}
                             className={`md-input flex-grow text-md sm:text-base py-3 sm:py-2 ${isLocked ? "opacity-70 cursor-not-allowed" : ""}`}
@@ -799,7 +823,9 @@ function TicketView({
                                 const newItems = [...(ticket.line_items || [])];
                                 newItems[index] = { ...newItems[index], price: parseFloat(e.target.value) };
                                 setTicket({ ...ticket, line_items: newItems });
+                                setSaveStatus('still typing');
                               }}
+                              onBlur={() => triggerAutoSave(ticket.line_items || [])}
                               readOnly={isLocked}
                               disabled={isLocked}
                               className={`md-input w-full pl-6 text-md sm:text-base py-3 sm:py-2 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${isLocked ? "opacity-70 cursor-not-allowed" : ""}`}
@@ -808,8 +834,13 @@ function TicketView({
                           {!isLocked && (
                             <button
                               onClick={() => {
+                                const itemToDelete = (ticket.line_items || [])[index];
                                 const newItems = (ticket.line_items || []).filter((_: any, i: number) => i !== index);
                                 setTicket({ ...ticket, line_items: newItems });
+                                const isEmpty = !itemToDelete.subject && !itemToDelete.price;
+                                if (!isEmpty) {
+                                  triggerAutoSave(newItems);
+                                }
                               }}
                               className="p-2 text-on-surface-variant hover:text-error transition-colors"
                             >
