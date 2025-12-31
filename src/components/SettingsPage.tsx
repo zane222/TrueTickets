@@ -164,8 +164,8 @@ interface Shift {
 
 function HoursTab() {
 
-    const [payPeriodInfo, setPayPeriodInfo] = useState<{ start: Date, end: Date } | null>(null);
-    const [employeeData, setEmployeeData] = useState<Record<string, { shifts: Shift[], total: number }>>({});
+    // State for raw shifts (just the data)
+    const [employeeShifts, setEmployeeShifts] = useState<Record<string, Shift[]>>({});
 
     // Helper to parse "9:30 am" or "9:30am" to decimals
     const parseTimeStr = (t: string) => {
@@ -194,14 +194,15 @@ function HoursTab() {
         return d;
     });
     const [viewPeriod, setViewPeriod] = useState<'first' | 'second'>(() => new Date().getDate() <= 15 ? 'first' : 'second');
+    const [currentEmployeeIndex, setCurrentEmployeeIndex] = useState(0);
 
     const handleUpdateShift = (employeeName: string, date: Date, newSegments: { start: string, end: string }[]) => {
-        setEmployeeData(prev => {
-            const newData = { ...prev };
-            const empData = { ...newData[employeeName] };
+        setEmployeeShifts(prev => {
+            const newShifts = { ...prev };
+            const empShifts = [...newShifts[employeeName]];
 
-            // Find the specific shift index
-            const shiftIdx = empData.shifts.findIndex(s =>
+            // Find shift
+            const shiftIdx = empShifts.findIndex(s =>
                 s.date.getDate() === date.getDate() &&
                 s.date.getMonth() === date.getMonth() &&
                 s.date.getFullYear() === date.getFullYear()
@@ -210,78 +211,31 @@ function HoursTab() {
             const newTotalHours = calculateShiftTotal(newSegments);
 
             if (shiftIdx >= 0) {
-                // Update existing shift
-                if (newSegments.length === 0) {
-                    // Remove shift if no segments? Or just keep empty? User said "remove a time clock period".
-                    // If all segments removed, maybe remove shift? Let's keep it empty for now or remove.
-                    // Let's remove the shift if segments are empty to be clean, or just set segments empty.
-                    empData.shifts[shiftIdx] = {
-                        ...empData.shifts[shiftIdx],
-                        segments: newSegments,
-                        hours: 0
-                    };
-                } else {
-                    empData.shifts[shiftIdx] = {
-                        ...empData.shifts[shiftIdx],
-                        segments: newSegments,
-                        hours: newTotalHours
-                    };
-                }
-            } else {
-                // Create new shift (if we support adding to empty days later)
-                // For now, only editing existing
+                // Update existing
+                empShifts[shiftIdx] = {
+                    ...empShifts[shiftIdx],
+                    segments: newSegments,
+                    hours: newTotalHours
+                };
             }
 
-            // Recalculate Period Total
-            // We need to re-sum all shifts that fall within the current payPeriodInfo
-            if (payPeriodInfo) {
-                let periodTotal = 0;
-                empData.shifts.forEach(s => {
-                    // Normalize dates to compare only day, month, year
-                    const shiftDate = new Date(s.date.getFullYear(), s.date.getMonth(), s.date.getDate());
-                    const periodStartDate = new Date(payPeriodInfo.start.getFullYear(), payPeriodInfo.start.getMonth(), payPeriodInfo.start.getDate());
-                    const periodEndDate = new Date(payPeriodInfo.end.getFullYear(), payPeriodInfo.end.getMonth(), payPeriodInfo.end.getDate());
-
-                    if (shiftDate >= periodStartDate && shiftDate <= periodEndDate) {
-                        periodTotal += calculateShiftTotal(s.segments);
-                    }
-                });
-                empData.total = periodTotal;
-            }
-
-            newData[employeeName] = empData;
-            return newData;
+            newShifts[employeeName] = empShifts;
+            return newShifts;
         });
     };
 
-    // 2. Update Data when View Month/Period Changes
+    // 2. Generate Data ONLY when View Month Changes
     useEffect(() => {
         const year = viewMonth.getFullYear();
         const month = viewMonth.getMonth();
 
-        let start: Date, end: Date;
-
-        if (viewPeriod === 'first') {
-            // 1st - 15th
-            start = new Date(year, month, 1);
-            end = new Date(year, month, 15);
-        } else {
-            // 16th - End
-            start = new Date(year, month, 16);
-            end = new Date(year, month + 1, 0);
-        }
-
-        // Set time to end of day for 'end'
-        end.setHours(23, 59, 59, 999);
-
-        setPayPeriodInfo({ start, end });
-
         // Generate mock shifts
         const employees = ["John Doe", "Jane Smith"];
 
-        const grouped: Record<string, { shifts: Shift[], total: number }> = {};
+        // Only shifts, no totals yet
+        const newShifts: Record<string, Shift[]> = {};
         employees.forEach(emp => {
-            grouped[emp] = { shifts: [], total: 0 };
+            newShifts[emp] = [];
         });
 
         // Generate shifts for the full month (for display context)
@@ -312,9 +266,7 @@ function HoursTab() {
                 }
 
                 // 2. Determine if we generate NEW shifts today
-                // Skip new shifts on weekends, or randomly (80% chance of NO new shift if no carry over? original logic was 20% work)
-                // Adjusted logic: If it's a weekend, we don't start NEW shifts.
-                // If it's a weekday, we *might* start a shift.
+                // Skip new shifts on weekends, or randomly
                 let generateNew = !isWeekend;
                 if (generateNew && Math.random() > 0.8) generateNew = false; // 20% chance of work on weekday
 
@@ -342,8 +294,6 @@ function HoursTab() {
                         const p1End = "11:59pm";
 
                         // Day 2: 12:00am - Remainder
-                        // Calculate remainder time.
-                        // Simple mock: just pick a random end time AM next day (e.g. 2am, 3am)
                         const endH = (startH + duration) % 24;
                         const p2End = fmtTime(endH, rMin());
 
@@ -366,29 +316,49 @@ function HoursTab() {
                 // Save if we have any segments (either carry over or new)
                 if (segments.length > 0) {
                     const totalHours = calculateShiftTotal(segments);
-                    grouped[emp].shifts.push({
+                    newShifts[emp].push({
                         date: new Date(tempCurrent),
                         employee: emp,
                         segments: segments,
                         hours: totalHours
                     });
-
-                    // Only add to total if in the selected pay period
-                    if (tempCurrent >= start && tempCurrent <= end) {
-                        grouped[emp].total += totalHours;
-                    }
                 }
             });
             tempCurrent.setDate(tempCurrent.getDate() + 1);
         }
-        setEmployeeData(grouped);
-    }, [viewMonth, viewPeriod]);
+        setEmployeeShifts(newShifts);
+    }, [viewMonth]); // Only re-run when month changes
+
+    // 3. Derived State: Pay Period & Totals (Recalculated on render when viewPeriod or employeeShifts change)
+    // We can do this directly in render body since it's cheap
+    const payPeriodStart = viewPeriod === 'first'
+        ? new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1)
+        : new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 16);
+
+    const payPeriodEnd = viewPeriod === 'first'
+        ? new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 15)
+        : new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0);
+
+    payPeriodStart.setHours(0, 0, 0, 0);
+    payPeriodEnd.setHours(23, 59, 59, 999);
+
+    const employeeDisplayData = Object.entries(employeeShifts).reduce((acc, [emp, shifts]) => {
+        let total = 0;
+        shifts.forEach(s => {
+            const shiftDate = new Date(s.date); // Copy
+            shiftDate.setHours(0, 0, 0, 0);
+            if (shiftDate >= payPeriodStart && shiftDate <= payPeriodEnd) {
+                total += s.hours;
+            }
+        });
+        acc[emp] = { shifts, total };
+        return acc;
+    }, {} as Record<string, { shifts: Shift[], total: number }>);
 
 
     const renderCalendar = (shifts: Shift[], employeeName: string) => {
-        if (!payPeriodInfo) return null;
-
-        const { start, end } = payPeriodInfo;
+        const start = payPeriodStart;
+        const end = payPeriodEnd;
         const year = start.getFullYear();
         const month = start.getMonth();
 
@@ -609,8 +579,36 @@ function HoursTab() {
 
     return (
         <div className="space-y-8">
+            {/* Header Controls */}
             <div className="flex justify-between items-center mb-6">
-                <h3 className="text-2xl font-bold text-on-surface">Employee Hours</h3>
+                {/* Left: Employee Navigation */}
+                <div className="flex items-center gap-4 bg-surface md-card p-1 rounded-lg border-[#8f96a3]/20">
+                    <button
+                        onClick={() => setCurrentEmployeeIndex(prev => prev > 0 ? prev - 1 : prev)}
+                        className={`p-1 rounded-full transition-colors ${currentEmployeeIndex === 0
+                            ? 'opacity-0 pointer-events-none'
+                            : 'hover:bg-surface-variant/20 text-outline'
+                            }`}
+                        disabled={currentEmployeeIndex === 0}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                    </button>
+                    <span className="text-sm font-bold text-on-surface min-w-[120px] text-center select-none">
+                        {Object.keys(employeeDisplayData)[currentEmployeeIndex]}
+                    </span>
+                    <button
+                        onClick={() => setCurrentEmployeeIndex(prev => prev < Object.keys(employeeDisplayData).length - 1 ? prev + 1 : prev)}
+                        className={`p-1 rounded-full transition-colors ${currentEmployeeIndex === Object.keys(employeeDisplayData).length - 1
+                            ? 'opacity-0 pointer-events-none'
+                            : 'hover:bg-surface-variant/20 text-outline'
+                            }`}
+                        disabled={currentEmployeeIndex === Object.keys(employeeDisplayData).length - 1}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
+                    </button>
+                </div>
+
+                {/* Right: Date Controls */}
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-4 bg-surface md-card p-1 rounded-lg border-[#8f96a3]/20">
                         {/* Month Navigation */}
@@ -626,7 +624,11 @@ function HoursTab() {
                             </span>
                             <button
                                 onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))}
-                                className="p-1 rounded-full hover:bg-surface-variant/20 text-outline transition-colors"
+                                className={`p-1 rounded-full transition-colors ${viewMonth.getTime() >= new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()
+                                    ? 'opacity-0 pointer-events-none'
+                                    : 'hover:bg-surface-variant/20 text-outline'
+                                    }`}
+                                disabled={viewMonth.getTime() >= new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime()}
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
                             </button>
@@ -636,12 +638,12 @@ function HoursTab() {
                         <div className="w-px h-6 bg-outline/10"></div>
 
                         {/* Period Toggle */}
-                        <div className="flex bg-surface-variant/10 rounded p-0.5">
+                        <div className="flex bg-surface-variant/20 rounded p-0.5">
                             <button
                                 onClick={() => setViewPeriod('first')}
                                 className={`px-3 py-1 text-xs font-medium rounded transition-all ${viewPeriod === 'first'
-                                    ? 'bg-background shadow text-primary'
-                                    : 'text-outline/60 hover:text-outline'
+                                    ? 'bg-surface shadow text-on-surface font-bold'
+                                    : 'text-outline hover:text-outline/80'
                                     }`}
                             >
                                 1st - 15th
@@ -649,8 +651,8 @@ function HoursTab() {
                             <button
                                 onClick={() => setViewPeriod('second')}
                                 className={`px-3 py-1 text-xs font-medium rounded transition-all ${viewPeriod === 'second'
-                                    ? 'bg-background shadow text-primary'
-                                    : 'text-outline/60 hover:text-outline'
+                                    ? 'bg-surface shadow text-on-surface font-bold'
+                                    : 'text-outline hover:text-outline/80'
                                     }`}
                             >
                                 16th - End
@@ -660,18 +662,26 @@ function HoursTab() {
                 </div>
             </div>
 
-            {Object.entries(employeeData).map(([name, data]) => (
-                <div key={name} className="md-card p-6 gap-4 flex flex-col">
-                    <div className="flex justify-between items-center">
-                        <h4 className="font-bold text-lg text-on-surface">{name}</h4>
-                        <span className="text-sm font-medium text-outline bg-surface-variant/20 px-3 py-1 rounded-full">
-                            Total: <span className="text-primary font-bold ml-1">{data.total.toFixed(2)} hrs</span>
-                        </span>
-                    </div>
+            {(() => {
+                const employees = Object.keys(employeeDisplayData);
+                const currentEmpName = employees[currentEmployeeIndex];
+                const currentData = employeeDisplayData[currentEmpName];
 
-                    {renderCalendar(data.shifts, name)}
-                </div>
-            ))}
+                if (!currentEmpName || !currentData) return <div>No employee data</div>;
+
+                return (
+                    <div key={currentEmpName} className="md-card p-6 gap-4 flex flex-col">
+                        <div className="flex justify-between items-center">
+                            <h4 className="font-bold text-lg text-on-surface">Hours Overview</h4>
+                            <span className="text-sm font-medium text-outline bg-surface-variant/20 px-3 py-1 rounded-full">
+                                Total: <span className="text-primary font-bold ml-1">{currentData.total.toFixed(2)} hrs</span>
+                            </span>
+                        </div>
+
+                        {renderCalendar(currentData.shifts, currentEmpName)}
+                    </div>
+                );
+            })()}
         </div>
     );
 }
