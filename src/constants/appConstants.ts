@@ -42,22 +42,7 @@ export const STATUS_MAP: Record<string, string> = {
   Resolved: "Resolved",
 };
 
-// Status conversion functions
-export const convertStatus = (status: string): string => {
-  if (!status) return "";
-  return STATUS_MAP[status] || status;
-};
 
-export const convertStatusToOriginal = (displayStatus: string): string => {
-  if (!displayStatus) return "";
-  // Find the original status that maps to this display status
-  for (const [original, display] of Object.entries(STATUS_MAP)) {
-    if (display === displayStatus) {
-      return original;
-    }
-  }
-  return displayStatus; // Return as-is if no mapping found
-};
 
 // User roles and permissions
 export const USER_ROLES = {

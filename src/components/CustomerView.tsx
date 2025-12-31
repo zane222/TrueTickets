@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Plus, Edit, Loader2 } from "lucide-react";
-import { convertStatus, EMPTY_ARRAY } from "../constants/appConstants.js";
+import { EMPTY_ARRAY } from "../constants/appConstants.js";
 import {
   formatPhone,
   fmtDate,
@@ -311,7 +311,7 @@ function CustomerView({
                     </div>
                     <div className="col-span-4 truncate">{ticket.subject}</div>
                     <div className="col-span-2 truncate">
-                      {convertStatus(ticket.status || "")}
+                      {ticket.status}
                     </div>
                     <div className="col-span-2 truncate">
                       {ticket.device}
@@ -332,7 +332,7 @@ function CustomerView({
                     </div>
                     <div className="font-medium">{ticket.subject}</div>
                     <div className="flex justify-between items-center text-md">
-                      <span>{convertStatus(ticket.status || "")}</span>
+                      <span>{ticket.status}</span>
                       <span className="text-outline">
                         {ticket.device}
                       </span>

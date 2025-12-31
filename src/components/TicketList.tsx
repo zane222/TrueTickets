@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { STATUSES, DEVICES, convertStatus, EMPTY_ARRAY } from "../constants/appConstants.js";
+import { STATUSES, DEVICES, EMPTY_ARRAY } from "../constants/appConstants.js";
 import { cx, fmtDate } from "../utils/appUtils.jsx";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
@@ -39,7 +39,7 @@ function TicketListItem({
           </div>
           <div className="col-span-5 truncate">{ticket.subject}</div>
           <div className="col-span-2 truncate">
-            {convertStatus(ticket.status || "")}
+            {ticket.status}
           </div>
           <div className="col-span-1 truncate">
             {ticket.device}
@@ -67,7 +67,7 @@ function TicketListItem({
           </div>
           <div className="flex justify-between items-center">
             <div className="text-md truncate text-outline">
-              {convertStatus(ticket.status || "")}
+              {ticket.status}
             </div>
             <div className="text-md truncate ml-2 text-outline">
               {ticket.device}
@@ -277,8 +277,8 @@ export function TicketListView({
             {(items || [])
               .filter(
                 (ticket) =>
-                  !convertStatus(ticket.status || "") ||
-                  !statusHidden.has(convertStatus(ticket.status || "")),
+                  !ticket.status ||
+                  !statusHidden.has(ticket.status),
               )
               .map((ticket) => (
                 <TicketListItem key={ticket.ticket_number} ticket={ticket} goTo={goTo} />

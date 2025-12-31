@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { formatPhone, fmtDate } from "../utils/appUtils.jsx";
-import { convertStatus, EMPTY_ARRAY } from "../constants/appConstants.js";
+import { EMPTY_ARRAY } from "../constants/appConstants.js";
 import { useApi } from "../hooks/useApi";
 import NavigationButton from "./ui/NavigationButton";
 import { useHotkeys } from "../hooks/useHotkeys";
@@ -429,14 +429,14 @@ function SearchModal({
                       <div className="col-span-7 truncate">
                         <HighlightText text={item.subject} highlight={search} />
                       </div>
-                      <div className="col-span-2 truncate">{convertStatus(item.status || "")}</div>
+                      <div className="col-span-2 truncate">{item.status}</div>
                       <div className="col-span-2 truncate">{item.customer?.full_name}</div>
                     </div>
                     <div className="sm:hidden px-4 py-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="font-semibold text-md font-mono">#{item.ticket_number}</div>
                         <div className="text-md px-2 py-1 rounded-full" style={{ backgroundColor: "var(--md-sys-color-surface-variant)", color: "var(--md-sys-color-on-surface-variant)" }}>
-                          {convertStatus(item.status || "")}
+                          {item.status}
                         </div>
                       </div>
                       <div className="text-md truncate">

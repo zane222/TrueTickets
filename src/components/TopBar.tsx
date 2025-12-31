@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { Search, UserPlus, User, LogOut } from "lucide-react";
+import { Search, UserPlus, User, LogOut, Clock } from "lucide-react";
 import NavigationButton from "./ui/NavigationButton";
 
 
@@ -136,6 +136,17 @@ export function TopBar({
                     Manage Users
                   </motion.button>
                 )}
+                <motion.button
+                  onClick={() => console.log("Clock In/Out clicked")}
+                  className="flex items-center w-full px-4 py-2 text-md rounded-md transition-colors duration-200 text-on-surface"
+                  whileHover={{
+                    backgroundColor: "rgba(255, 255, 255, 0.08)",
+                  }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Clock className="w-4 h-4 mr-3" />
+                  Clock In/Out
+                </motion.button>
                 <motion.button
                   onClick={onLogout}
                   className="flex items-center w-full px-4 py-2 text-md rounded-md transition-colors duration-200 text-on-surface"

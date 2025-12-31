@@ -10,8 +10,6 @@ import {
 } from "aws-amplify/auth";
 import {
   STATUSES,
-  convertStatus,
-  convertStatusToOriginal,
   EMPTY_ARRAY,
 } from "../constants/appConstants.js";
 import {
@@ -29,6 +27,7 @@ import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
 import { TicketCard } from "./TicketCard";
+import { TicketDocument } from "./TicketDocument";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import { InlineErrorMessage } from "./ui/InlineErrorMessage";
 import type { Ticket, Comment, UpdateTicket, PostAttachment, PostComment } from "../types/api";
@@ -54,6 +53,7 @@ function TicketView({
 
   const [loading, setLoading] = useState(true);
   const ticketCardRef = useRef<HTMLDivElement | null>(null);
+  const documentRef = useRef<HTMLDivElement | null>(null);
   const pdfIntervalRef = useRef<number | null>(null);
   const parentContainerRef = useRef<HTMLDivElement | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
@@ -330,15 +330,12 @@ function TicketView({
   }, [windowWidth, ticket]);
 
   const updateTicketStatus = async (status: string): Promise<void> => {
-    if (!ticket || updatingStatus || convertStatus(ticket.status || "") === status)
+    if (!ticket || updatingStatus || ticket.status === status)
       return; // Prevent multiple updates or updating to the same status
     setUpdatingStatus(status);
     try {
-      // Convert the display status back to the original status before uploading
-      const originalStatus = convertStatusToOriginal(status);
-
       const updateData: UpdateTicket = {
-        status: originalStatus,
+        status: status,
         subject: null,
         password: null,
         items_left: null,
@@ -347,7 +344,7 @@ function TicketView({
 
       await api.put(`/tickets?number=${ticket.ticket_number}`, updateData);
 
-      const updatedTicket = { ...ticket, status: originalStatus };
+      const updatedTicket = { ...ticket, status: status };
       setTicket(updatedTicket);
 
       // Restart polling with the updated ticket data
@@ -444,6 +441,79 @@ function TicketView({
     }
   };
 
+  const generateDocumentPDF = async () => {
+    if (!documentRef.current || !ticket) return;
+
+    // Determine filename based on type
+    const status = ticket.status;
+    let type = "Estimate";
+    if (status === "Resolved") {
+      type = "Receipt";
+    } else if (status === "Ready") {
+      type = "Invoice";
+    }
+    const filename = `${type}_${ticket.ticket_number}.pdf`;
+
+    // PDF Configuration
+    const isReceipt = type === "Receipt";
+    let opt = {};
+
+    if (isReceipt) {
+      // Calculate height based on content
+      // 96 DPI assumption for screen to print conversion is standard for html2pdf/html2canvas
+      const elementHeightPx = documentRef.current.offsetHeight;
+      const heightInInches = elementHeightPx / 96;
+
+      opt = {
+        margin: 0,
+        filename: filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        // Add a small buffer to height to prevent cutting off
+        jsPDF: { unit: 'in', format: [3.15, heightInInches + 0.5], orientation: 'portrait' }
+      };
+    } else {
+      // Standard Letter Size for Invoice/Estimate
+      opt = {
+        margin: 0,
+        filename: filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+    }
+
+    try {
+      html2pdf()
+        .set(opt)
+        .from(documentRef.current)
+        .output("bloburl")
+        .then(function (pdf) {
+          const iframe = document.createElement("iframe");
+          iframe.style.position = "fixed";
+          iframe.style.width = "0";
+          iframe.style.height = "0";
+          iframe.style.border = "none";
+          iframe.src = pdf;
+          document.body.appendChild(iframe);
+
+          iframe.onload = function () {
+            iframe.contentWindow?.print();
+            // Cleanup after 1 minute to allow time for printing
+            setTimeout(() => {
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+              }
+              URL.revokeObjectURL(pdf);
+            }, 60000);
+          };
+        });
+    } catch (err: unknown) {
+      console.error("Error generating Document PDF:", err);
+      _error("PDF Generation Failed", "Error generating document.");
+    }
+  };
+
   const hotkeyMap = useMemo(
     () => ({
       h: () => goTo("/"),
@@ -495,6 +565,28 @@ function TicketView({
     ticket.customer?.phone_numbers?.[0]?.number || ""
   );
 
+  const addSystemComment = async (text: string) => {
+    if (!ticket) return;
+    try {
+      let techName = "True Tickets";
+      try {
+        const user = await getCurrentUser();
+        techName = user.username || "True Tickets";
+      } catch (e) {
+        console.error("Error getting user for system comment:", e);
+      }
+
+      const payload: PostComment = {
+        comment_body: text,
+        tech_name: techName,
+      };
+      await api.post(`/tickets/comment?ticket_number=${ticket.ticket_number}`, payload);
+      setRefreshKey((prev) => prev + 1);
+    } catch (err) {
+      console.error("Error posting system comment:", err);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
       {/* Top Action Buttons */}
@@ -514,7 +606,7 @@ function TicketView({
           tabIndex={-1}
         >
           <Printer className="w-5 h-5" />
-          Print PDF
+          Print Label
         </button>
         <NavigationButton
           onClick={() => goTo(`/&${ticket.ticket_number}?edit`)}
@@ -525,6 +617,21 @@ function TicketView({
           <Edit className="w-5 h-5" />
           Edit Ticket
         </NavigationButton>
+      </div>
+
+      {/* Hidden Document Template for Printing */}
+      <div className="absolute top-0 left-0 overflow-hidden w-0 h-0">
+        <div ref={documentRef}>
+          <TicketDocument
+            ticket={ticket}
+            type={(() => {
+              const s = ticket.status;
+              if (s === "Resolved") return "Receipt";
+              if (s === "Ready") return "Invoice";
+              return "Estimate";
+            })()}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -562,9 +669,9 @@ function TicketView({
               ].map((statusRow, rowIndex) => (
                 <div key={rowIndex} className="flex gap-2 w-full">
                   {statusRow.map((status) => {
-                    const active = convertStatus(ticket.status || "") === status;
+                    const active = ticket.status === status;
                     const isUpdating = updatingStatus === status;
-                    const isLocked = convertStatus(ticket.status || "") === "Resolved" && (ticket.line_items || []).length > 0;
+                    const isLocked = ticket.status === "Resolved" && (ticket.line_items || []).length > 0;
 
                     return (
                       <motion.button
@@ -606,7 +713,7 @@ function TicketView({
                 <p className="text-md font-semibold">Line Items</p>
                 <div className="flex items-center gap-2">
                   {(() => {
-                    const currentStatus = convertStatus(ticket.status || "");
+                    const currentStatus = ticket.status;
                     const printLabel = currentStatus === "Ready"
                       ? "Print Invoice"
                       : currentStatus === "Resolved"
@@ -615,11 +722,11 @@ function TicketView({
 
                     return (
                       <button
-                        onClick={() => {/* TODO */ }}
-                        className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm touch-manipulation"
+                        onClick={generateDocumentPDF}
+                        className="md-btn-surface elev-1 inline-flex items-center justify-center gap-2 py-2 text-base touch-manipulation w-auto"
                         tabIndex={-1}
                       >
-                        <Printer className="w-4 h-4" />
+                        <Printer className="w-5 h-5" />
                         {printLabel}
                       </button>
                     );
@@ -629,7 +736,7 @@ function TicketView({
 
               <div className="space-y-3">
                 {(() => {
-                  const isLocked = convertStatus(ticket.status || "") === "Resolved" && (ticket.line_items || []).length > 0;
+                  const isLocked = ticket.status === "Resolved" && (ticket.line_items || []).length > 0;
 
                   return (
                     <>
@@ -683,7 +790,7 @@ function TicketView({
                           type="button"
                           className="md-btn-surface elev-1 text-sm py-1.5 px-3 w-fit"
                           onClick={() => {
-                            if (convertStatus(ticket.status || "") === "Resolved") {
+                            if (ticket.status === "Resolved") {
                               alert("Please change status from Resolved first.");
                               return;
                             }
@@ -713,8 +820,9 @@ function TicketView({
 
                                 {isLocked ? (
                                   <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                       if (confirm("Refund payment and unresolve ticket due to issue?")) {
+                                        await addSystemComment("[Payment Refunded]");
                                         console.log("Payment Refunded at:", new Date().toLocaleString());
                                         updateTicketStatus("In Progress");
                                       }
@@ -725,11 +833,17 @@ function TicketView({
                                   </button>
                                 ) : (
                                   <button
-                                    onClick={() => {
-                                      if (convertStatus(ticket.status || "") === "Resolved") {
+                                    onClick={async () => {
+                                      if (ticket.status === "Resolved") {
                                         alert("Please change status from Resolved first.");
                                         return;
                                       }
+
+                                      // Construct Receipt
+                                      const lines = (ticket.line_items || []).map((item: any) => `- ${item.subject}: $${(parseFloat(item.price) || 0).toFixed(2)}`).join("\n");
+                                      const receipt = `[Payment Taken]\n${lines}\nTax: $${tax.toFixed(2)}\nTotal: $${total.toFixed(2)}`;
+
+                                      await addSystemComment(receipt);
                                       console.log("Payment Taken at:", new Date().toLocaleString());
                                       updateTicketStatus("Resolved");
                                     }}
