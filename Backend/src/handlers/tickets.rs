@@ -276,8 +276,8 @@ pub async fn handle_create_ticket(
     loop {
         // 1. Get current counter value
         let counter_get = client.get_item()
-            .table_name("Counters")
-            .key("counter_name", AttributeValue::S("ticket_number".to_string()))
+            .table_name("Config")
+            .key("pk", AttributeValue::S("ticket_number_counter".to_string()))
             .consistent_read(true)
             .send()
             .await
@@ -300,8 +300,8 @@ pub async fn handle_create_ticket(
 
         // 2. Transact: Atomic increment (if matches current) + Puts
         let update_counter = aws_sdk_dynamodb::types::Update::builder()
-            .table_name("Counters")
-            .key("counter_name", AttributeValue::S("ticket_number".to_string()))
+            .table_name("Config")
+            .key("pk", AttributeValue::S("ticket_number_counter".to_string()))
             .update_expression("SET counter_value = :new")
             .condition_expression("counter_value = :old OR attribute_not_exists(counter_value)")
             .expression_attribute_values(":new", AttributeValue::N(next_val.to_string()))
@@ -532,8 +532,8 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
 
     // 1. Get current counter
     let counter_output = client.get_item()
-        .table_name("Counters")
-        .key("counter_name", AttributeValue::S("ticket_number".to_string()))
+        .table_name("Config")
+        .key("pk", AttributeValue::S("ticket_number_counter".to_string()))
         .consistent_read(true)
         .send()
         .await

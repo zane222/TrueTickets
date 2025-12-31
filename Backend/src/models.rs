@@ -107,3 +107,28 @@ pub struct UpdateCustomerRequest {
     pub email: Option<String>,
     pub phone_numbers: Option<Vec<PhoneNumber>>,
 }
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct StoreConfig {
+    pub store_name: String,
+    pub tax_rate: f64,
+    pub address: String,
+    pub city: String,
+    pub state: String,
+    pub zip: String,
+    pub phone: String,
+    pub email: String,
+    pub disclaimer: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateStoreConfigRequest {
+    pub store_name: String,
+    pub tax_rate: f64,
+    pub address: String,
+    pub city: String,
+    pub state: String,
+    pub zip: String,
+    pub phone: String,
+    pub email: String,
+    pub disclaimer: String,
+}

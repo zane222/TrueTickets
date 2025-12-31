@@ -18,11 +18,11 @@ use handlers::{
     handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_tickets_by_customer_id,
     handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix,
-    handle_migrate_tickets
+    handle_migrate_tickets, handle_get_store_config, handle_update_store_config
 };
 use models::{
     CreateTicketRequest, UpdateTicketRequest,
-    CreateCustomerRequest, UpdateCustomerRequest
+    CreateCustomerRequest, UpdateCustomerRequest, UpdateStoreConfigRequest
 };
 use http::{error_response, handle_options, success_response, parse_json_body, get_value_in_json};
 
@@ -368,6 +368,34 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             }
 
             match handle_update_customer(customer_id, req.full_name, req.email, req.phone_numbers, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/store_config", "GET") => {
+            match handle_get_store_config(&dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/store_config", "PUT") => {
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return *resp,
+            };
+
+            let req: UpdateStoreConfigRequest = match serde_json::from_value(body) {
+                Ok(r) => r,
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse store config update request: {:?}", e), None),
+            };
+
+            // Check permissions (Admin, Owner, Manager)
+            let user_groups = get_user_groups_from_event(&event);
+            if !can_invite_users(&user_groups) { // can_invite_users covers Admin, Owner, Manager
+                return error_response(403, "Insufficient permissions", "You do not have permission to update store config", None);
+            }
+
+            match handle_update_store_config(req, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }

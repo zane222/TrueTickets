@@ -5,6 +5,7 @@ pub mod user_management;
 pub mod tickets;
 pub mod customers;
 pub mod migration;
+pub mod store_config;
 
 // Re-export handler functions for convenience
 pub use user_management::{handle_list_users, handle_update_user_group, handle_user_invitation};
@@ -20,3 +21,4 @@ pub use customers::{
     handle_search_customers_by_name, handle_get_customer_by_id
 };
 pub use migration::handle_migrate_tickets;
+pub use store_config::{handle_get_store_config, handle_update_store_config};

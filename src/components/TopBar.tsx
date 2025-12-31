@@ -1,56 +1,21 @@
-import { useEffect, useRef } from "react";
-import { motion } from "framer-motion";
-import { Search, UserPlus, User, LogOut, Clock, Settings } from "lucide-react";
+import { Search, Settings } from "lucide-react";
 import NavigationButton from "./ui/NavigationButton";
+import { useStoreConfig } from "../context/StoreConfigContext";
 
 
 interface TopBarProps {
   onHome: () => void;
   onSearchClick: () => void;
-  onNewCustomer: () => void;
-  showUserMenu: boolean;
-  setShowUserMenu: (show: boolean) => void;
-  canInviteUsers: boolean;
-  canManageUsers: boolean;
-  canAccessSettings: boolean;
-  onInviteUser: () => void;
-  onManageUsers: () => void;
   onSettings: () => void;
   onLogout: () => void;
-  userName: string | null;
 }
 
 export function TopBar({
   onHome,
   onSearchClick,
-  onNewCustomer,
-  showUserMenu,
-  setShowUserMenu,
-  canInviteUsers,
-  canManageUsers,
-  canAccessSettings,
-  onInviteUser,
-  onManageUsers,
   onSettings,
-  onLogout,
-  userName,
 }: TopBarProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowUserMenu(false);
-      }
-    };
-
-    if (showUserMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }
-  }, [showUserMenu, setShowUserMenu]);
+  const { config } = useStoreConfig();
 
   return (
     <div className="sticky top-0 z-30 w-full material-app-bar backdrop-blur-md">
@@ -62,7 +27,7 @@ export function TopBar({
           tabIndex={-1}
         >
           <span className="hidden sm:inline">
-            True Tickets - Computer and Cellphone Inc
+            True Tickets{config.store_name ? ` - ${config.store_name}` : ""}
           </span>
           <span className="sm:hidden">True Tickets</span>
           <span className="ml-2 text-xs font-normal text-outline opacity-70">
@@ -74,111 +39,21 @@ export function TopBar({
             onClick={onSearchClick}
             targetUrl={`${window.location.origin}/`}
             title="Search"
-            className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
+            className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 rounded-full touch-manipulation"
             tabIndex={-1}
           >
-            <Search className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
+            <Search className="w-6 h-6" />
           </NavigationButton>
+
           <NavigationButton
-            onClick={onNewCustomer}
-            targetUrl={`${window.location.origin}/newcustomer`}
-            title="New Customer"
-            className="md-btn-primary elev-2 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
+            onClick={onSettings}
+            targetUrl={`${window.location.origin}/settings`}
+            title="Settings"
+            className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 rounded-full touch-manipulation"
             tabIndex={-1}
           >
-            <UserPlus className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
+            <Settings className="w-6 h-6" />
           </NavigationButton>
-
-          {/* User menu dropdown */}
-          <div className="relative" ref={menuRef}>
-            <motion.button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
-              whileTap={{ scale: 0.95 }}
-              tabIndex={-1}
-            >
-              <User className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
-            </motion.button>
-
-            {showUserMenu && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="absolute right-0 mt-2 w-48 md-card py-1 z-50"
-              >
-                {/* User info header */}
-                <div className="px-4 py-2 border-b border-outline/20">
-                  <div className="text-sm font-medium text-on-surface">
-                    {userName || "User"}
-                  </div>
-                  <div className="text-xs text-outline">Signed in</div>
-                </div>
-
-                {canInviteUsers && (
-                  <motion.button
-                    onClick={onInviteUser}
-                    className="flex items-center w-full px-4 py-2 text-md rounded-md transition-colors duration-100 text-on-surface"
-                    whileHover={{
-                      backgroundColor: "rgba(255, 255, 255, 0.08)",
-                    }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <UserPlus className="w-4 h-4 mr-3" />
-                    Add User
-                  </motion.button>
-                )}
-                {canManageUsers && (
-                  <motion.button
-                    onClick={onManageUsers}
-                    className="flex items-center w-full px-4 py-2 text-md rounded-md transition-colors duration-100 text-on-surface"
-                    whileHover={{
-                      backgroundColor: "rgba(255, 255, 255, 0.08)",
-                    }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <User className="w-4 h-4 mr-3" />
-                    Manage Users
-                  </motion.button>
-                )}
-                <motion.button
-                  onClick={() => console.log("Clock In/Out clicked")}
-                  className="flex items-center w-full px-4 py-2 text-md rounded-md transition-colors duration-200 text-on-surface"
-                  whileHover={{
-                    backgroundColor: "rgba(255, 255, 255, 0.08)",
-                  }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Clock className="w-4 h-4 mr-3" />
-                  Clock In/Out
-                </motion.button>
-                <motion.button
-                  onClick={onLogout}
-                  className="flex items-center w-full px-4 py-2 text-md rounded-md transition-colors duration-200 text-on-surface"
-                  whileHover={{
-                    backgroundColor: "rgba(255, 255, 255, 0.08)",
-                  }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <LogOut className="w-4 h-4 mr-3" />
-                  Sign Out
-                </motion.button>
-              </motion.div>
-            )}
-          </div>
-
-          {/* Settings Button */}
-          {canAccessSettings && (
-            <NavigationButton
-              onClick={onSettings}
-              targetUrl={`${window.location.origin}/settings`}
-              title="Settings"
-              className="md-btn-surface elev-1 inline-flex items-center justify-center w-12 h-12 sm:w-11 sm:h-11 rounded-full touch-manipulation"
-              tabIndex={-1}
-            >
-              <Settings className="w-6 h-6 sm:w-5.5 sm:h-5.5" />
-            </NavigationButton>
-          )}
-
         </div>
       </div>
     </div>

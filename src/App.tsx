@@ -11,20 +11,14 @@ import { KeyBindsModal } from "./components/ui/KeyBindsModal";
 import { KeyBindsProvider } from "./components/KeyBindsProvider";
 import { TopBar } from "./components/TopBar";
 import { useKeyBindsContext } from "./hooks/useKeyBindsContext";
-import { InviteUserModal } from "./components/ui/InviteUserModal";
-import { ManageUsersModal } from "./components/ui/ManageUsersModal";
 import SearchModal from "./components/SearchModal";
 import TicketEditor from "./components/TicketEditor";
 import TicketView from "./components/TicketView";
 import CustomerView from "./components/CustomerView";
 import NewCustomer from "./components/NewCustomer";
 import { TicketListView } from "./components/TicketList";
-import {
-  CAN_INVITE_USERS_GROUPS,
-  CAN_MANAGE_USERS_GROUPS,
-  CAN_ACCESS_SETTINGS_GROUPS,
-} from "./constants/authConstants";
 import SettingsPage from "./components/SettingsPage";
+import { StoreConfigProvider } from "./context/StoreConfigContext";
 import type { ApiContextValue } from "./types/components";
 
 /**
@@ -158,7 +152,7 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
  *************************/
 function App() {
   const api = useApi();
-  const { userGroups = [], refreshUserGroups, userName } = useUserGroups();
+  const { refreshUserGroups } = useUserGroups();
   const { path, navigate } = useRoute();
   const {
     warning: _warning,
@@ -167,7 +161,6 @@ function App() {
     clearDataChangedWarnings,
   } = useAlertMethods();
   const [showSearch, setShowSearch] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
 
   // Force refresh user groups on component mount
   useEffect(() => {
@@ -187,42 +180,6 @@ function App() {
     clearDataChangedWarnings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
-  const [showInviteUser, setShowInviteUser] = useState(false);
-  const [showUserManagement, setShowUserManagement] = useState(false);
-
-  // Listen for search events from child components
-  useEffect(() => {
-    const handleOpenSearch = () => setShowSearch(true);
-    window.addEventListener("openSearch", handleOpenSearch);
-    return () => window.removeEventListener("openSearch", handleOpenSearch);
-  }, []);
-
-  // User permission checks
-  const canInviteUsers = userGroups.some((group) =>
-    CAN_INVITE_USERS_GROUPS.includes(group),
-  );
-
-  const canManageUsers = userGroups.some((group) =>
-    CAN_MANAGE_USERS_GROUPS.includes(group),
-  );
-
-  const canAccessSettings = userGroups.some((group) =>
-    CAN_ACCESS_SETTINGS_GROUPS.includes(group),
-  );
-
-  // User management handlers
-  const handleInviteUserClick = () => setShowInviteUser(true);
-  const handleManageUsersClick = () => setShowUserManagement(true);
-  const handleLogout = async () => {
-    try {
-      await signOut();
-      // Force a page reload to ensure clean logout state
-      window.location.reload();
-    } catch (err) {
-      console.error("Logout error:", err);
-    }
-  };
-
   const route = useMemo(() => {
     const url = new URL(window.location.origin + path);
     let pathname = url.pathname;
@@ -250,22 +207,22 @@ function App() {
   // Get keybinds from context
   const { keybinds } = useKeyBindsContext();
 
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      window.location.reload();
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
+
   return (
     <div className="min-h-screen material-surface">
       <TopBar
         onHome={() => navigate("/")}
         onSearchClick={() => setShowSearch(true)}
-        onNewCustomer={() => navigate("/newcustomer")}
-        showUserMenu={showUserMenu}
-        setShowUserMenu={setShowUserMenu}
-        canInviteUsers={canInviteUsers}
-        canManageUsers={canManageUsers}
-        canAccessSettings={canAccessSettings}
-        onInviteUser={handleInviteUserClick}
-        onManageUsers={handleManageUsersClick}
-        onSettings={() => navigate("/settings#config")}
+        onSettings={() => navigate("/settings")}
         onLogout={handleLogout}
-        userName={userName}
       />
 
       <KeyBindsModal keybinds={keybinds} />
@@ -280,7 +237,6 @@ function App() {
         <NewCustomer
           goTo={navigate}
           showSearch={showSearch}
-
         />
       )}
       {route.view === "customer-edit" && (
@@ -311,16 +267,6 @@ function App() {
         onClose={() => setShowSearch(false)}
         goTo={navigate}
       />
-
-      {/* User Management Modals */}
-      <InviteUserModal
-        isOpen={showInviteUser}
-        onClose={() => setShowInviteUser(false)}
-      />
-      <ManageUsersModal
-        isOpen={showUserManagement}
-        onClose={() => setShowUserManagement(false)}
-      />
     </div>
   );
 }
@@ -328,7 +274,9 @@ function App() {
 function AppWithProviders() {
   return (
     <KeyBindsProvider>
-      <App />
+      <StoreConfigProvider>
+        <App />
+      </StoreConfigProvider>
     </KeyBindsProvider>
   );
 }

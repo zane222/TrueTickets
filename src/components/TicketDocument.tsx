@@ -1,6 +1,7 @@
 import React from "react";
 import type { Ticket } from "../types/api";
 import { formatPhone, fmtDateAndTime } from "../utils/appUtils";
+import { useStoreConfig } from "../context/StoreConfigContext";
 
 interface TicketDocumentProps {
     ticket: Ticket;
@@ -9,12 +10,15 @@ interface TicketDocumentProps {
 
 export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentProps>(
     ({ ticket, type }, ref) => {
+        const { config } = useStoreConfig();
+        const taxRate = config.tax_rate / 100;
+
         // Calculate totals
         const subtotal = (ticket.line_items || []).reduce(
             (acc: number, item: any) => acc + (parseFloat(item.price) || 0),
             0
         );
-        const tax = subtotal * 0.0825;
+        const tax = subtotal * taxRate;
         const total = subtotal + tax;
 
         const phone = formatPhone(ticket.customer?.phone_numbers?.[0]?.number || "");
@@ -30,10 +34,10 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                     <div className="flex flex-col gap-4 text-xs font-medium">
                         {/* Header */}
                         <div className="text-center border-b border-[#d1d5db] pb-4">
-                            <h2 className="text-xl font-bold text-[#111827] uppercase mb-1">True Tickets</h2>
-                            <p className="text-[#4b5563]">123 Repair Lane</p>
-                            <p className="text-[#4b5563]">Tech City, TX 75000</p>
-                            <p className="text-[#4b5563]">(555) 123-4567</p>
+                            <h2 className="text-xl font-bold text-[#111827] uppercase mb-1">{config.store_name}</h2>
+                            <p className="text-[#4b5563]">{config.address}</p>
+                            <p className="text-[#4b5563]">{config.city}, {config.state} {config.zip}</p>
+                            <p className="text-[#4b5563]">{config.phone}</p>
                             <div className="mt-2 text-[#111827]">
                                 <p className="font-bold text-lg uppercase">{type}</p>
                                 <p className="text-[#6b7280]">#{ticket.ticket_number}</p>
@@ -73,7 +77,7 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                                 <span>${subtotal.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between w-full text-[#4b5563]">
-                                <span>Tax (8.25%)</span>
+                                <span>Tax ({config.tax_rate}%)</span>
                                 <span>${tax.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between w-full text-[#111827] font-bold text-base mt-2">
@@ -85,7 +89,7 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                         {/* Disclaimer */}
                         <div className="text-center text-[10px] text-[#6b7280] leading-tight">
                             <p className="font-bold uppercase mb-1">Thank You!</p>
-                            <p>30-day warranty on repairs. Physical/Liquid damage not covered.</p>
+                            <p>{config.disclaimer}</p>
                         </div>
                     </div>
                 ) : (
@@ -100,11 +104,11 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                                 <p className="text-[#6b7280] font-medium text-sm">#{ticket.ticket_number}</p>
                             </div>
                             <div className="text-right text-[#4b5563] text-sm leading-relaxed">
-                                <h2 className="text-xl font-bold text-[#111827] mb-1">True Tickets</h2>
-                                <p>123 Repair Lane</p>
-                                <p>Tech City, TX 75000</p>
-                                <p>(555) 123-4567</p>
-                                <p>support@truetickets.com</p>
+                                <h2 className="text-xl font-bold text-[#111827] mb-1">{config.store_name}</h2>
+                                <p>{config.address}</p>
+                                <p>{config.city}, {config.state} {config.zip}</p>
+                                <p>{config.phone}</p>
+                                <p>{config.email}</p>
                             </div>
                         </div>
 
@@ -174,7 +178,7 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                                     <span className="font-medium">${subtotal.toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-[#4b5563] text-sm border-b border-[#d1d5db] pb-3">
-                                    <span>Tax (8.25%)</span>
+                                    <span>Tax ({config.tax_rate}%)</span>
                                     <span className="font-medium">${tax.toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between text-[#111827] text-xl font-bold pt-2">
@@ -188,7 +192,7 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                         <div className="absolute bottom-12 left-12 right-12 text-center text-[#6b7280] text-xs leading-relaxed border-t pt-6">
                             <p className="mb-2 font-bold uppercase tracking-wider">Thank you for your business!</p>
                             <p>
-                                Please note: All repairs are guaranteed for 30 days. Physical damage and liquid damage are not covered under warranty.
+                                {config.disclaimer}
                                 {type === "Estimate" && " This is an estimate only and prices are subject to change upon further diagnosis."}
                             </p>
                         </div>
@@ -200,3 +204,4 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
 );
 
 TicketDocument.displayName = "TicketDocument";
+

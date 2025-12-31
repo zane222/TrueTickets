@@ -450,8 +450,8 @@ pub async fn handle_migrate_tickets(
 
     // Update counter using the input parameter directly
     let _ = db_client.update_item()
-        .table_name("Counters")
-        .key("counter_name", AttributeValue::S("ticket_number".to_string()))
+        .table_name("Config")
+        .key("pk", AttributeValue::S("ticket_number_counter".to_string()))
         .update_expression("SET counter_value = :new")
         .expression_attribute_values(":new", AttributeValue::N(latest_ticket_number.to_string()))
         .condition_expression("attribute_not_exists(counter_value) OR counter_value <= :new")

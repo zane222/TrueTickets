@@ -95,3 +95,15 @@ export interface PostAttachment {
   ticket_id: string;
   image_data: string;
 }
+
+export interface StoreConfig {
+  store_name: string;
+  tax_rate: number;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone: string;
+  email: string;
+  disclaimer: string;
+}
