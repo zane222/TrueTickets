@@ -3,7 +3,7 @@ import { useAlertMethods } from "../ui/AlertSystem";
 import apiClient from "../../api/apiClient";
 import { USER_MANAGEMENT_ERRORS, USER_MANAGEMENT_SUCCESS } from "../../constants/authConstants";
 import type { PostInviteUser } from "../../types/api";
-import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 
 export default function InviteUserTab() {
     const [email, setEmail] = useState("");
@@ -66,54 +66,57 @@ export default function InviteUserTab() {
     };
 
     return (
-        <div className="md-card p-6 w-full max-w-md mx-auto">
-            <h3 className="text-lg font-medium mb-4 text-primary">Add User</h3>
-            <form onSubmit={handleSubmit}>
-                <div className="mb-4">
-                    <label
-                        htmlFor="inviteFirstName"
-                        className="block text-md font-medium mb-2 text-on-surface"
-                    >
-                        First Name
-                    </label>
-                    <input
-                        id="inviteFirstName"
-                        type="text"
-                        required
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        className="md-input"
-                        placeholder="Enter first name"
-                    />
-                </div>
-                <div className="mb-4">
-                    <label
-                        htmlFor="inviteEmail"
-                        className="block text-md font-medium mb-2 text-on-surface"
-                    >
-                        Email Address
-                    </label>
-                    <input
-                        id="inviteEmail"
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="md-input"
-                        placeholder="Enter email address"
-                    />
-                </div>
-                <div className="flex justify-end space-x-3">
-                    <motion.button
-                        type="submit"
-                        disabled={loading}
-                        className="md-btn-primary elev-1"
-                        whileTap={{ scale: 0.95 }}
-                    >
-                        {loading ? "Adding..." : "Add User"}
-                    </motion.button>
-                </div>
-            </form>
+        <div className="space-y-6">
+            <h3 className="text-2xl font-bold text-on-surface mb-6">Invite User</h3>
+
+            <div className="md-card p-6 grid gap-6">
+                <form onSubmit={handleSubmit} className="grid gap-6">
+                    <div className="grid gap-2">
+                        <label
+                            htmlFor="inviteFirstName"
+                            className="text-sm font-medium text-outline"
+                        >
+                            First Name
+                        </label>
+                        <input
+                            id="inviteFirstName"
+                            type="text"
+                            required
+                            value={firstName}
+                            onChange={(e) => setFirstName(e.target.value)}
+                            className="md-input w-full max-w-md"
+                            placeholder="Enter first name"
+                        />
+                    </div>
+                    <div className="grid gap-2">
+                        <label
+                            htmlFor="inviteEmail"
+                            className="text-sm font-medium text-outline"
+                        >
+                            Email Address
+                        </label>
+                        <input
+                            id="inviteEmail"
+                            type="email"
+                            required
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="md-input w-full max-w-md"
+                            placeholder="Enter email address"
+                        />
+                    </div>
+                    <div className="pt-4">
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="md-btn-primary px-8 flex items-center gap-2"
+                        >
+                            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {loading ? "Adding..." : "Add User"}
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     );
 }

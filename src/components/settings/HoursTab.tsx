@@ -391,7 +391,9 @@ export default function HoursTab() {
     };
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
+            <h3 className="text-2xl font-bold text-on-surface mb-6">Employee Hours</h3>
+
             {/* Header Controls */}
             <div className="flex justify-between items-center mb-6">
                 {/* Left: Employee Navigation */}

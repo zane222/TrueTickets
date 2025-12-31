@@ -141,26 +141,22 @@ export default function ManageUsersTab() {
     };
 
     return (
-        <div className="md-card p-6 w-full max-w-4xl mx-auto flex flex-col">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-medium text-primary">
-                    User Management
-                </h3>
-            </div>
+        <div className="space-y-6">
+            <h3 className="text-2xl font-bold text-on-surface mb-6">Manage Users</h3>
 
             {usersLoading ? (
-                <div className="flex justify-center py-8">
+                <div className="flex justify-center p-12">
                     <LoadingSpinnerWithText text="Loading users..." size="md" />
                 </div>
             ) : (
-                <div className="space-y-4">
+                <div className="grid gap-4">
                     {users.map((user) => (
                         <div
                             key={user.username}
                             className="md-row-box p-4 flex items-center justify-between"
                         >
                             <div className="flex-1">
-                                <div className="font-medium">
+                                <div className="text-lg font-medium text-on-surface">
                                     {user.given_name || user.email || user.username}
                                 </div>
                                 {user.email && (
@@ -214,7 +210,7 @@ export default function ManageUsersTab() {
                         </div>
                     ))}
                     {users.length === 0 && (
-                        <div className="text-center py-8 text-outline">
+                        <div className="text-center py-12 md-card text-outline">
                             No users found
                         </div>
                     )}
@@ -222,56 +218,72 @@ export default function ManageUsersTab() {
             )}
 
             {showUserEdit && selectedUser && (
-                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
-                        className="md-card p-6 w-full max-w-md"
+                        className="md-card p-8 w-full max-w-md shadow-2xl"
                     >
-                        <h3 className="text-lg font-medium mb-4 text-primary">
-                            Edit User:{" "}
-                            {selectedUser.given_name ||
-                                selectedUser.email ||
-                                selectedUser.username}
+                        <h3 className="text-xl font-bold mb-6 text-on-surface">
+                            {selectedUser.groups[0] === "delete" ? "Delete User" : "Edit Permissions"}
                         </h3>
-                        <div className="space-y-4">
+
+                        <div className="space-y-6">
                             <div>
-                                <label className="block text-md font-medium mb-2 text-on-surface">
-                                    User Group
-                                </label>
-                                <select
-                                    className="md-input"
-                                    value={selectedUser.groups?.[0] || USER_GROUP_IDS.EMPLOYEE}
-                                    onChange={(e) => {
-                                        setSelectedUser({
-                                            ...selectedUser,
-                                            groups: [e.target.value],
-                                        });
-                                    }}
-                                >
-                                    <option value={USER_GROUP_IDS.EMPLOYEE}>
-                                        {getGroupDisplayName(USER_GROUP_IDS.EMPLOYEE)}
-                                    </option>
-                                    <option value={USER_GROUP_IDS.MANAGER}>
-                                        {getGroupDisplayName(USER_GROUP_IDS.MANAGER)}
-                                    </option>
-                                    <option value={USER_GROUP_IDS.OWNER}>
-                                        {getGroupDisplayName(USER_GROUP_IDS.OWNER)}
-                                    </option>
-                                    <option value={USER_GROUP_IDS.APPLICATION_ADMIN}>
-                                        {getGroupDisplayName(USER_GROUP_IDS.APPLICATION_ADMIN)}
-                                    </option>
-                                    <option value="delete">Delete User</option>
-                                </select>
+                                <div className="mb-4 p-4 rounded-lg bg-surface-variant/30 border border-outline/10">
+                                    <div className="text-sm font-medium text-outline mb-1">User</div>
+                                    <div className="text-lg font-medium text-on-surface">
+                                        {selectedUser.given_name || selectedUser.email || selectedUser.username}
+                                    </div>
+                                    {selectedUser.email && (
+                                        <div className="text-sm text-outline">{selectedUser.email}</div>
+                                    )}
+                                </div>
+
+                                {selectedUser.groups[0] !== "delete" ? (
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium text-outline">
+                                            Role / Permission Group
+                                        </label>
+                                        <select
+                                            className="md-input w-full"
+                                            value={selectedUser.groups?.[0] || USER_GROUP_IDS.EMPLOYEE}
+                                            onChange={(e) => {
+                                                setSelectedUser({
+                                                    ...selectedUser,
+                                                    groups: [e.target.value],
+                                                });
+                                            }}
+                                        >
+                                            <option value={USER_GROUP_IDS.EMPLOYEE}>
+                                                {getGroupDisplayName(USER_GROUP_IDS.EMPLOYEE)}
+                                            </option>
+                                            <option value={USER_GROUP_IDS.MANAGER}>
+                                                {getGroupDisplayName(USER_GROUP_IDS.MANAGER)}
+                                            </option>
+                                            <option value={USER_GROUP_IDS.OWNER}>
+                                                {getGroupDisplayName(USER_GROUP_IDS.OWNER)}
+                                            </option>
+                                            <option value={USER_GROUP_IDS.APPLICATION_ADMIN}>
+                                                {getGroupDisplayName(USER_GROUP_IDS.APPLICATION_ADMIN)}
+                                            </option>
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <div className="text-on-surface">
+                                        Are you sure you want to remove this user? This will revoke all their access immediately.
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex justify-end space-x-3">
+
+                            <div className="flex justify-end gap-3 pt-2">
                                 <button
                                     onClick={() => {
                                         setShowUserEdit(false);
                                         setSelectedUser(null);
                                     }}
-                                    className="md-btn-surface elev-1"
+                                    className="md-btn-surface px-6"
                                 >
                                     Cancel
                                 </button>
@@ -282,14 +294,14 @@ export default function ManageUsersTab() {
                                             selectedUser.groups[0] || ""
                                         )
                                     }
-                                    className={`elev-1 ${selectedUser.groups[0] === "delete"
+                                    className={`px-6 ${selectedUser.groups[0] === "delete"
                                         ? "md-btn-error"
                                         : "md-btn-primary"
                                         }`}
                                 >
                                     {selectedUser.groups[0] === "delete"
-                                        ? "Delete User"
-                                        : "Update Group"}
+                                        ? "Remove User"
+                                        : "Save Changes"}
                                 </button>
                             </div>
                         </div>
