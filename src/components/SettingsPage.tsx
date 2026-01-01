@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Clock, DollarSign, Store, ArrowLeft, UserPlus, Users, LogOut } from "lucide-react";
+import { Clock, DollarSign, Store, ArrowLeft, UserPlus, Users, LogOut, Timer } from "lucide-react";
+import apiClient from "../api/apiClient";
 import NavigationButton from "./ui/NavigationButton";
 import ConfigTab from "./settings/ConfigTab";
 import HoursTab from "./settings/HoursTab";
@@ -39,10 +40,7 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
         if (hash === "invite" && canInvite) return "invite";
         if (hash === "manage" && canManage) return "manage";
 
-        // Default based on priority
-        if (canAccessConfig) return "config";
-        if (canViewHours) return "hours";
-        if (canInvite) return "invite";
+        // Default to none (shows sidebar on mobile, placeholder on desktop)
         return "none";
     });
 
@@ -72,7 +70,42 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
             }
         };
         loadUser();
+        loadUser();
     }, []);
+
+    const [isClockedIn, setIsClockedIn] = useState(false);
+    const [loadingClock, setLoadingClock] = useState(true);
+    const [clockError, setClockError] = useState(false);
+
+    useEffect(() => {
+        const fetchClockStatus = async () => {
+            try {
+                const res = await apiClient.get<{ clocked_in: boolean }>('/am_i_clocked_in');
+                setIsClockedIn(res.clocked_in);
+                setClockError(false);
+            } catch (err) {
+                console.error("Failed to fetch clock status", err);
+                setClockError(true);
+            } finally {
+                setLoadingClock(false);
+            }
+        };
+        fetchClockStatus();
+    }, []);
+
+    const handleClockToggle = async () => {
+        setLoadingClock(true);
+        setClockError(false);
+        try {
+            const res = await apiClient.post<{ clocked_in: boolean }>('/clock_in', {});
+            setIsClockedIn(res.clocked_in);
+        } catch (err) {
+            console.error("Failed to toggle clock", err);
+            setClockError(true);
+        } finally {
+            setLoadingClock(false);
+        }
+    };
 
     const handleLogout = async () => {
         try {
@@ -94,9 +127,9 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
             else if (hash === "manage" && canManage) setActiveTabRaw("manage");
             else {
                 // Fallback if current tab becomes invalid
-                if (canAccessConfig) setActiveTabRaw("config");
-                else if (canViewHours) setActiveTabRaw("hours");
-                else if (canInvite) setActiveTabRaw("invite");
+                if (canAccessConfig) setActiveTabRaw("none");
+                else if (canViewHours) setActiveTabRaw("none");
+                else if (canInvite) setActiveTabRaw("none");
                 else setActiveTabRaw("none");
             }
         };
@@ -108,7 +141,7 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
     return (
         <div className="flex h-[calc(100vh-80px)] overflow-hidden">
             {/* Sidebar */}
-            <div className="w-64 bg-surface border-r border-[#8f96a3]/20 flex flex-col p-4 gap-3">
+            <div className={`w-full md:w-64 bg-surface border-r border-[#8f96a3]/20 flex-col p-4 gap-3 ${activeTab !== 'none' ? 'hidden md:flex' : 'flex'}`}>
                 <NavigationButton
                     onClick={() => goTo("/")}
                     targetUrl={`${window.location.origin}/`}
@@ -192,6 +225,22 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
                             <div className="text-xs text-outline truncate" title={userInfo.email}>{userInfo.email}</div>
                         </div>
                     )}
+
+                    <button
+                        onClick={handleClockToggle}
+                        disabled={loadingClock}
+                        className={`w-full flex items-center justify-center px-4 py-3 mb-4 text-sm font-medium rounded-xl transition-all duration-200 ${loadingClock
+                            ? "bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20"
+                            : clockError
+                                ? "bg-red-500/10 text-red-500 border border-red-500/50"
+                                : isClockedIn
+                                    ? "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20"
+                                    : "bg-green-500/10 text-green-500 hover:bg-green-500/20"
+                            }`}
+                    >
+                        <Timer className="w-5 h-5 mr-3" />
+                        {loadingClock ? "Loading..." : (clockError ? "Error" : (isClockedIn ? "Clock Out" : "Clock In"))}
+                    </button>
                     <button
                         onClick={handleLogout}
                         className="md-btn-surface w-full flex items-center justify-center px-4 py-3 text-sm font-medium text-white hover:bg-white/5 transition-all duration-200"
@@ -203,8 +252,17 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 overflow-auto bg-background p-8">
-                <div className="max-w-4xl mx-auto">
+            <div className={`flex-1 overflow-auto bg-background p-4 md:p-8 ${activeTab === 'none' ? 'hidden md:block' : 'block'}`}>
+                {activeTab !== 'none' && (
+                    <button
+                        onClick={() => setActiveTab('none')}
+                        className="md:hidden flex items-center gap-2 mb-6 text-on-surface hover:text-primary transition-colors"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                        <span className="font-bold">Back to Menu</span>
+                    </button>
+                )}
+                <div className="max-w-4xl mx-auto h-full">
                     {activeTab === "config" && canAccessConfig && <ConfigTab />}
                     {activeTab === "hours" && canViewHours && <HoursTab />}
                     {activeTab === "income" && canViewIncome && <IncomeTab />}

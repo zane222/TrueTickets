@@ -9,6 +9,12 @@ export interface LineItem {
   price: number;
 }
 
+export interface ClockLog {
+  user: string;
+  out: boolean;
+  timestamp: number;
+}
+
 
 // TinyTicket interfaces for lists
 export interface TinyTicket {

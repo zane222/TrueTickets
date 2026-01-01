@@ -9,17 +9,10 @@ use serde_json::Value;
 pub fn get_user_groups_from_event(event: &Request) -> Vec<String> {
     // Since the API Gateway Authorizer has already validated the token to let the request through,
     // we can trust the content of the token provided in the header.
-    if let Some(auth_header) = event.headers().get("Authorization") {
-        if let Ok(auth_str) = auth_header.to_str() {
-            let token = if auth_str.starts_with("Bearer ") {
-                &auth_str[7..]
-            } else {
-                auth_str
-            };
-            
-            if let Some(claims) = parse_jwt_payload(token) && let Some(groups) = claims.get("cognito:groups") {
-                return parse_groups_value(groups);
-            }
+    if let Some(auth_str) = event.headers().get("Authorization").and_then(|h| h.to_str().ok()) {
+        let token = auth_str.strip_prefix("Bearer ").unwrap_or(auth_str);
+        if let Some(claims) = parse_jwt_payload(token) && let Some(groups) = claims.get("cognito:groups") {
+            return parse_groups_value(groups);
         }
     }
     
@@ -81,7 +74,7 @@ pub fn can_invite_users(user_groups: &[String]) -> bool {
 }
 
 /// Check if user can manage users
-pub fn can_manage_users(user_groups: &[String]) -> bool {
+pub fn is_admin_or_owner(user_groups: &[String]) -> bool {
     let allowed_groups = ["TrueTickets-Cacell-ApplicationAdmin", "TrueTickets-Cacell-Owner"];
     user_groups
         .iter()
@@ -99,4 +92,20 @@ pub fn generate_temp_password() -> String {
 
     // Add required special characters to ensure complexity
     format!("{:?}A1!", digits)
+}
+
+/// Extract given name from the Cognito authorizer context or Authorization header
+pub fn get_given_name_from_event(event: &Request) -> Option<String> {
+    if let Some(auth_str) = event.headers().get("Authorization").and_then(|h| h.to_str().ok()) {
+        let token = auth_str.strip_prefix("Bearer ").unwrap_or(auth_str);
+        if let Some(claims) = parse_jwt_payload(token) {
+             if let Some(name) = claims.get("given_name").or(claims.get("custom:given_name")) {
+                 return name.as_str().map(|s| s.to_string());
+             }
+             if let Some(username) = claims.get("username").or(claims.get("cognito:username")) {
+                  return username.as_str().map(|s| s.to_string());
+             }
+        }
+    }
+    None
 }

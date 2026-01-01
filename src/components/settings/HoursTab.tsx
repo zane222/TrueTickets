@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import apiClient from '../../api/apiClient';
+import { ClockLog } from '../../types';
 
 interface Shift {
     date: Date;
     employee: string;
-    segments: { start: string, end: string }[];
+    segments: { start: string, end: string, isVirtual?: boolean }[];
     hours: number;
 }
 
@@ -27,81 +29,6 @@ const calculateShiftTotal = (segments: { start: string, end: string }[]) => {
 };
 
 export default function HoursTab() {
-
-    // Helper to generate mock shifts
-    const generateMockShifts = (date: Date) => {
-        const year = date.getFullYear();
-        const month = date.getMonth();
-        const employees = ["John Doe", "Jane Smith"];
-        const newShifts: Record<string, Shift[]> = {};
-
-        employees.forEach(emp => { newShifts[emp] = []; });
-
-        const monthStart = new Date(year, month, 1);
-        const monthEnd = new Date(year, month + 1, 0);
-        monthEnd.setHours(23, 59, 59, 999);
-
-        const tempCurrent = new Date(monthStart);
-        tempCurrent.setHours(0, 0, 0, 0);
-
-        const carryOver: Record<string, { start: string, end: string }[]> = {};
-        employees.forEach(emp => { carryOver[emp] = []; });
-
-        while (tempCurrent <= monthEnd) {
-            const isWeekend = tempCurrent.getDay() === 0 || tempCurrent.getDay() === 6;
-
-            employees.forEach(emp => {
-                const segments: { start: string, end: string }[] = [];
-
-                if (carryOver[emp].length > 0) {
-                    segments.push(...carryOver[emp]);
-                    carryOver[emp] = [];
-                }
-
-                let generateNew = !isWeekend;
-                if (generateNew && Math.random() > 0.8) generateNew = false;
-
-                if (generateNew) {
-                    const fmtTime = (h: number, m: number) => {
-                        const ampm = h >= 12 ? 'pm' : 'am';
-                        const h12 = h % 12 || 12;
-                        return `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
-                    }
-                    const rMin = () => Math.floor(Math.random() * 60);
-                    const randType = Math.random();
-
-                    if (randType > 0.85) {
-                        const startH = 17 + Math.floor(Math.random() * 5);
-                        const duration = 6 + Math.floor(Math.random() * 4);
-                        const p1Start = fmtTime(startH, rMin());
-                        const p1End = "11:59pm";
-                        const endH = (startH + duration) % 24;
-                        const p2End = fmtTime(endH, rMin());
-                        segments.push({ start: p1Start, end: p1End });
-                        carryOver[emp].push({ start: "12:00am", end: p2End });
-                    } else if (randType > 0.5) {
-                        segments.push({ start: fmtTime(9, rMin()), end: fmtTime(12, rMin()) });
-                        segments.push({ start: fmtTime(13, rMin()), end: fmtTime(17, rMin()) });
-                    } else {
-                        segments.push({ start: fmtTime(9, rMin()), end: fmtTime(17, rMin()) });
-                    }
-                }
-
-                if (segments.length > 0) {
-                    const totalHours = calculateShiftTotal(segments);
-                    newShifts[emp].push({
-                        date: new Date(tempCurrent),
-                        employee: emp,
-                        segments: segments,
-                        hours: totalHours
-                    });
-                }
-            });
-            tempCurrent.setDate(tempCurrent.getDate() + 1);
-        }
-        return newShifts;
-    };
-
     // 1. Generate Periods on Mount
     const [viewMonth, setViewMonth] = useState(() => {
         const d = new Date();
@@ -110,13 +37,136 @@ export default function HoursTab() {
         return d;
     });
 
-    // Initialize shifts based on initial viewMonth
-    const [employeeShifts, setEmployeeShifts] = useState<Record<string, Shift[]>>(() => generateMockShifts(viewMonth));
+    // Initialize shifts
+    const [employeeShifts, setEmployeeShifts] = useState<Record<string, Shift[]>>({});
+    const [employeeWages, setEmployeeWages] = useState<Record<string, number>>({});
+
+    useEffect(() => {
+        const fetchLogs = async () => {
+            try {
+                const year = viewMonth.getFullYear();
+                const month = viewMonth.getMonth() + 1; // 1-indexed
+                // Expecting { clock_logs: ClockLog[], wages: {name: string, wage: number}[] }
+                const response = await apiClient.get<{ clock_logs: ClockLog[], wages: { name: string, wage: number }[] }>(`/clock_logs?year=${year}&month=${month}`);
+
+                const logs = response.clock_logs || [];
+                const wages = response.wages || [];
+
+                // Store wages map
+                const wageMap: Record<string, number> = {};
+                wages.forEach(w => {
+                    wageMap[w.name] = w.wage;
+                });
+                setEmployeeWages(wageMap);
+
+                // Process logs into shifts
+                const shiftsByUser: Record<string, Shift[]> = {};
+
+                // Group by user
+                const logsByUser: Record<string, ClockLog[]> = {};
+                logs.forEach(log => {
+                    if (!logsByUser[log.user]) logsByUser[log.user] = [];
+                    logsByUser[log.user].push(log);
+                });
+
+                Object.keys(logsByUser).forEach(user => {
+                    const userLogs = logsByUser[user].sort((a, b) => a.timestamp - b.timestamp);
+                    const shifts: Shift[] = [];
+
+                    let currentStart: number | null = null;
+
+                    userLogs.forEach(log => {
+                        if (!log.out) {
+                            // Clock In
+                            if (currentStart === null) {
+                                currentStart = log.timestamp;
+                            }
+                        } else {
+                            // Clock Out
+                            if (currentStart !== null) {
+                                // Create segment
+                                const startDate = new Date(currentStart * 1000);
+                                const endDate = new Date(log.timestamp * 1000);
+
+                                // Format time "9:30am"
+                                const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+
+                                const segment = {
+                                    start: fmt(startDate),
+                                    end: fmt(endDate)
+                                };
+
+                                // Check if we already have a shift for this day
+                                const dateKey = startDate.toLocaleDateString();
+                                let shift = shifts.find(s => s.date.toLocaleDateString() === dateKey);
+
+                                if (!shift) {
+                                    shift = {
+                                        date: startDate,
+                                        employee: user,
+                                        segments: [],
+                                        hours: 0
+                                    };
+                                    shifts.push(shift);
+                                }
+
+                                shift.segments.push(segment);
+                                shift.hours = calculateShiftTotal(shift.segments);
+
+                                currentStart = null;
+                            }
+                        }
+                    });
+
+                    // Handle currently clocked-in state (virtual clock out at current time)
+                    if (currentStart !== null) {
+                        const startDate = new Date(currentStart * 1000);
+                        const endDate = new Date(); // use current time
+
+                        // Format time "9:30am"
+                        const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+
+                        const segment = {
+                            start: fmt(startDate),
+                            end: fmt(endDate),
+                            isVirtual: true
+                        };
+
+                        // Check if we already have a shift for this day
+                        const dateKey = startDate.toLocaleDateString();
+                        let shift = shifts.find(s => s.date.toLocaleDateString() === dateKey);
+
+                        if (!shift) {
+                            shift = {
+                                date: startDate,
+                                employee: user,
+                                segments: [],
+                                hours: 0
+                            };
+                            shifts.push(shift);
+                        }
+
+                        shift.segments.push(segment);
+                        shift.hours = calculateShiftTotal(shift.segments);
+                    }
+
+                    shiftsByUser[user] = shifts;
+                });
+
+                setEmployeeShifts(shiftsByUser);
+
+            } catch (err) {
+                console.error("Failed to fetch clock logs", err);
+            }
+        };
+
+        fetchLogs();
+    }, [viewMonth]);
 
     const [viewPeriod, setViewPeriod] = useState<'first' | 'second'>(() => new Date().getDate() <= 15 ? 'first' : 'second');
     const [currentEmployeeIndex, setCurrentEmployeeIndex] = useState(0);
 
-    const handleUpdateShift = (employeeName: string, date: Date, newSegments: { start: string, end: string }[]) => {
+    const handleUpdateShift = (employeeName: string, date: Date, newSegments: { start: string, end: string, isVirtual?: boolean }[]) => {
         setEmployeeShifts(prev => {
             const newShifts = { ...prev };
             const empShifts = [...newShifts[employeeName]];
@@ -137,7 +187,7 @@ export default function HoursTab() {
     const handleMonthChange = (direction: -1 | 1) => {
         const newDate = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + direction, 1);
         setViewMonth(newDate);
-        setEmployeeShifts(generateMockShifts(newDate));
+        // Data fetch is triggered by useEffect on viewMonth
     };
 
     // 3. Derived State: Pay Period & Totals (Recalculated on render when viewPeriod or employeeShifts change)
@@ -259,7 +309,7 @@ export default function HoursTab() {
                                                             <span className="text-xs text-outline opacity-70">{shift.hours.toFixed(2)}h Total</span>
                                                         </div>
                                                         <div className="space-y-2">
-                                                            {shift.segments.map((seg, segIdx) => {
+                                                            {shift.segments.filter(s => !s.isVirtual).map((seg, segIdx) => {
                                                                 const duration = parseTimeStr(seg.end) - parseTimeStr(seg.start);
                                                                 return (
                                                                     <div key={segIdx} className="flex items-center gap-2 group/item">
@@ -372,8 +422,14 @@ export default function HoursTab() {
 
                                                             {/* Main End Label - Centered Bottom */}
                                                             <div className={`text-xs font-semibold whitespace-nowrap mt-1 ${textColor}`}>
-                                                                <span className="text-outline/60 ml-1 font-normal">Out </span>
-                                                                {overallEnd}
+                                                                {shift.segments[shift.segments.length - 1].isVirtual ? (
+                                                                    <span className="text-outline/60 ml-1 font-normal">Still Clocked In</span>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="text-outline/60 ml-1 font-normal">Out </span>
+                                                                        {overallEnd}
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         </>
                                                     );
@@ -493,7 +549,7 @@ export default function HoursTab() {
                                     Total: <span className="text-primary font-bold ml-1">{currentData.total.toFixed(2)} hrs</span>
                                 </span>
                                 <span className="text-sm font-medium text-outline bg-surface-variant/20 px-3 py-1 rounded-full">
-                                    Est. Payroll: <span className="text-green-500 font-bold ml-1">${(currentData.total * 20).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    Est. Payroll: <span className="text-green-500 font-bold ml-1">${(currentData.total * (employeeWages[currentEmpName] || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </span>
                             </div>
                         </div>

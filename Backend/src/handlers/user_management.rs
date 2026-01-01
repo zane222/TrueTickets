@@ -5,8 +5,9 @@ use aws_sdk_cognitoidentityprovider::Client as CognitoClient;
 use aws_sdk_cognitoidentityprovider::types::AttributeType;
 use serde_json::{json, Value};
 
-use crate::auth::{get_user_groups_from_event, can_manage_users, generate_temp_password};
+use crate::auth::{get_user_groups_from_event, is_admin_or_owner, generate_temp_password};
 use crate::http::error_response;
+use crate::models::UserResponse;
 
 /// Handle user invitation
 pub async fn handle_user_invitation(
@@ -108,10 +109,14 @@ pub async fn handle_user_invitation(
 }
 
 /// Handle listing all users
-pub async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) -> Result<Value, Response<Body>> {
+pub async fn handle_list_users(
+    event: &Request,
+    cognito_client: &CognitoClient,
+    dynamodb_client: &aws_sdk_dynamodb::Client,
+) -> Result<Value, Response<Body>> {
     // Check user permissions
     let user_groups = get_user_groups_from_event(event);
-    if !can_manage_users(&user_groups) {
+    if !is_admin_or_owner(&user_groups) {
         return Err(error_response(403, "Insufficient Permissions", &format!("You do not have permission to view users, you are a {:?}", user_groups), Some("Only ApplicationAdmin and Owner can view users")));
     }
 
@@ -126,10 +131,13 @@ pub async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) 
         .await
         .map_err(|e| error_response(500, "Cognito Error", &format!("Failed to list users: {:?}", e), None))?;
 
-    let mut users = vec![];
+    let mut users_list: Vec<UserResponse> = vec![];
+    let mut usernames = vec![];
 
+    // First pass: Collect basic info and usernames
     for user in response.users() {
         let username = user.username().unwrap_or("").to_string();
+        usernames.push(username.clone());
 
         // Get user groups
         let user_groups = match cognito_client
@@ -161,18 +169,40 @@ pub async fn handle_list_users(event: &Request, cognito_client: &CognitoClient) 
             }
         }
 
-        users.push(json!({
-            "username": username,
-            "email": email,
-            "given_name": given_name,
-            "enabled": user.enabled(),
-            "groups": user_groups,
-            "created": user.user_create_date().map(|d| d.to_string()),
-            "user_status": format!("{:?}", user.user_status()),
-        }));
+        users_list.push(UserResponse {
+            username,
+            email,
+            given_name,
+            enabled: user.enabled(),
+            groups: user_groups,
+            created: user.user_create_date().map(|d| d.to_string()),
+            user_status: format!("{:?}", user.user_status()),
+            wage: 0.0, // Placeholder
+        });
     }
 
-    Ok(json!(users))
+    // Batch Get Wages if we have users
+    let mut names_to_fetch = vec![];
+    for user in &users_list {
+         if let Some(name) = &user.given_name {
+             names_to_fetch.push(name.clone());
+         }
+    }
+
+    if !names_to_fetch.is_empty() {
+        let wage_map = crate::db_utils::get_wages_for_users(names_to_fetch, dynamodb_client).await;
+
+        // Update users list with wages
+        for user in &mut users_list {
+            if let Some(name) = &user.given_name {
+                if let Some(w) = wage_map.get(name) {
+                    user.wage = *w;
+                }
+            }
+        }
+    }
+
+    Ok(json!(users_list))
 }
 
 /// Handle updating user group

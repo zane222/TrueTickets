@@ -10,7 +10,7 @@ use aws_sdk_cognitoidentityprovider::Client as CognitoClient;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use aws_sdk_s3::Client as S3Client;
 
-use auth::{can_invite_users, can_manage_users, get_user_groups_from_event};
+use auth::{can_invite_users, is_admin_or_owner, get_user_groups_from_event};
 use handlers::{
     handle_list_users, handle_update_user_group, handle_upload_attachment, handle_user_invitation,
     handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
@@ -82,7 +82,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             }
         }
         ("/users", "GET") => {
-            match handle_list_users(&event, cognito_client).await {
+            match handle_list_users(&event, cognito_client, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -104,7 +104,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
 
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
-            if !can_manage_users(&user_groups) {
+            if !is_admin_or_owner(&user_groups) {
                 return error_response(403, "Insufficient permissions", "You do not have permission to manage users", Some("Only ApplicationAdmin and Owner can manage users"));
             }
 
@@ -148,10 +148,32 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         // -------------------------
         // FINANCIALS
         // -------------------------
+        ("/clock_logs", "GET") => {
+            // Check user permissions
+            let user_groups = get_user_groups_from_event(&event);
+            if !is_admin_or_owner(&user_groups) {
+                return error_response(403, "Insufficient permissions", "You do not have permission to view clock logs", Some("Only ApplicationAdmin and Owner can view clock logs"));
+            }
+
+            let params = event.query_string_parameters();
+            let year = match params.first("year").and_then(|y| y.parse::<i32>().ok()) {
+                Some(val) => val,
+                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'year' parameter", None),
+            };
+            let month = match params.first("month").and_then(|m| m.parse::<u32>().ok()) {
+                Some(val) => val,
+                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'month' parameter", None),
+            };
+
+            match handlers::handle_get_clock_logs(year, month, &dynamodb_client).await{
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
         ("/get_revenue_payroll_and_purchases", "GET") => {
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
-            if !can_manage_users(&user_groups) {
+            if !is_admin_or_owner(&user_groups) {
                 return error_response(403, "Insufficient permissions", "You do not have permission to view financials", Some("Only ApplicationAdmin and Owner can view financials"));
             }
 
@@ -165,15 +187,15 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 None => return error_response(400, "Invalid Parameter", "Missing or invalid 'month' parameter", None),
             };
 
-            match handlers::get_revenue_payroll_and_purchases(year, month).await {
+            match handlers::get_revenue_payroll_and_purchases(year, month, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
-                Err(e) => error_response(500, "Internal Server Error", &e.to_string(), None),
+                Err(resp) => resp,
             }
         }
         ("/financials/purchases", "PUT") => {
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
-            if !can_manage_users(&user_groups) {
+            if !is_admin_or_owner(&user_groups) {
                 return error_response(403, "Insufficient permissions", "You do not have permission to manage financials", Some("Only ApplicationAdmin and Owner can manage financials"));
             }
 
@@ -192,9 +214,61 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => return *resp,
             };
 
-            match handlers::update_purchases(year, month, body).await {
+            match handlers::update_purchases(year, month, body, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
-                Err(e) => error_response(500, "Internal Server Error", &e.to_string(), None),
+                Err(resp) => resp,
+            }
+        }
+        ("/clock_in", "POST") => {
+            // Extract given_name from token
+            let given_name = match auth::get_given_name_from_event(&event) {
+                Some(name) => name,
+                None => return error_response(401, "Unauthorized", "Could not determine user name from token", None),
+            };
+
+            match handlers::handle_clock_in(given_name, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/am_i_clocked_in", "GET") => {
+            // Extract given_name from token
+            let given_name = match auth::get_given_name_from_event(&event) {
+                Some(name) => name,
+                None => return error_response(401, "Unauthorized", "Could not determine user name from token", None),
+            };
+
+            match handlers::handle_am_i_clocked_in(given_name, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/update-user-wage", "POST") => {
+            // Check permissions (Admin, Owner, Manager)
+            let user_groups = get_user_groups_from_event(&event);
+            if !can_invite_users(&user_groups) { // can_invite_users covers Admin, Owner, Manager
+                return error_response(403, "Insufficient permissions", "You do not have permission to update wages", None);
+            }
+
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return *resp,
+            };
+
+            let given_name: String = match get_value_in_json(&body, "given_name") {
+                Ok(val) => val,
+                Err(resp) => return *resp,
+            };
+
+            // Wages can be integer or float, get as f64
+            let wage = match body.get("wage").and_then(|v| v.as_f64()) {
+                Some(w) => w,
+                None => return error_response(400, "Invalid Parameter", "wage must be a number", None),
+            };
+
+            match handlers::handle_update_user_wage(given_name, wage, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
             }
         }
         // -------------------------
@@ -302,7 +376,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 return error_response(400, "Empty Update", "At least one field must be provided for update", None);
             }
 
-            match handle_update_ticket(ticket_number, req.subject, req.status, req.password, req.items_left, req.line_items, req.device, &dynamodb_client).await {
+            match handle_update_ticket(ticket_number, req, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -477,7 +551,7 @@ async fn main() -> Result<(), lambda_http::Error> {
 mod tests {
     use super::*;
     use crate::http::{get_cors_preflight_headers, success_response};
-    use crate::auth::{can_invite_users, can_manage_users, generate_temp_password};
+    use crate::auth::{can_invite_users, is_admin_or_owner, generate_temp_password};
 
     #[test]
     fn test_cors_headers() {
@@ -526,15 +600,15 @@ mod tests {
     }
 
     #[test]
-    fn test_can_manage_users() {
+    fn test_is_admin_or_owner() {
         let admin_groups = vec!["TrueTickets-Cacell-ApplicationAdmin".to_string()];
-        assert!(can_manage_users(&admin_groups));
+        assert!(is_admin_or_owner(&admin_groups));
 
         let owner_groups = vec!["TrueTickets-Cacell-Owner".to_string()];
-        assert!(can_manage_users(&owner_groups));
+        assert!(is_admin_or_owner(&owner_groups));
 
         let manager_groups = vec!["TrueTickets-Cacell-Manager".to_string()];
-        assert!(!can_manage_users(&manager_groups));
+        assert!(!is_admin_or_owner(&manager_groups));
     }
 
     #[test]

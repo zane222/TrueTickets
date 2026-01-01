@@ -360,10 +360,6 @@ pub async fn handle_migrate_tickets(
 
         cust_txn_items.push(TransactWriteItem::builder().put(put_customer).build());
 
-
-
-        // CustomerNames table write removed - using GSI now
-
         // CustomerPhoneIndex table
         if let Some(ref p) = api_cust.phone {
             let put_phone = Put::builder()

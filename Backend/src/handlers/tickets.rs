@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::http::error_response;
 use crate::models::{
     TicketWithoutCustomer, Ticket, Customer, CounterValue,
-    TicketNumberOnly, LineItem, TinyTicket, TinyTicketWithoutCustomer
+    TicketNumberOnly, TinyTicket, TinyTicketWithoutCustomer, UpdateTicketRequest
 };
 use crate::db_utils::DynamoDbBuilderExt;
 
@@ -94,8 +94,6 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
         .index_name("CustomerIdIndex")
         .key_condition_expression("customer_id = :cid")
         .expression_attribute_values(":cid", AttributeValue::S(customer_id))
-        .projection_expression("ticket_number, subject, customer_id, #st, device, created_at, last_updated, password")
-        .expression_attribute_names("#st", "status")
         .send()
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query tickets for customer: {:?}", e), None))?;
@@ -376,14 +374,18 @@ pub async fn handle_create_ticket(
 
 pub async fn handle_update_ticket(
     ticket_number: String,
-    subject: Option<String>,
-    status: Option<String>,
-    password: Option<String>,
-    items_left: Option<Vec<String>>,
-    line_items: Option<Vec<LineItem>>,
-    device: Option<String>,
+    req: UpdateTicketRequest,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
+    let (subject, status, password, items_left, line_items, device) = (
+        req.subject,
+        req.status,
+        req.password,
+        req.items_left,
+        req.line_items,
+        req.device,
+    );
+
     let mut txn_items = Vec::new();
 
     // If status or device is updated, we need to update the composite key status_device

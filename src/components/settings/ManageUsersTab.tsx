@@ -18,12 +18,14 @@ type UserWithGroups = CognitoUser;
 
 interface SelectedUser extends UserWithGroups {
     groups: string[];
+    wage?: number;
 }
 
 export default function ManageUsersTab() {
     const [users, setUsers] = useState<UserWithGroups[]>([]);
     const [usersLoading, setUsersLoading] = useState(false);
     const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
+    const [wageInput, setWageInput] = useState<string>("");
     const [showUserEdit, setShowUserEdit] = useState(false);
     const [currentUser, setCurrentUser] = useState<AmplifyAuthUser | null>(null);
     const { success, error } = useAlertMethods();
@@ -93,13 +95,15 @@ export default function ManageUsersTab() {
         loadUsers();
     }, [loadUsers]);
 
-    const updateUserGroup = async (username: string, newGroup: string) => {
+    const updateUserGroup = async (username: string, newGroup: string, newWage?: number) => {
         try {
+            // Find user to get given_name
+            const user = users.find((u) => u.username === username);
+            const displayName =
+                user?.given_name || user?.email || user?.username || username;
+
             // If deleting user, show confirmation dialog
             if (newGroup === "delete") {
-                const user = users.find((u) => u.username === username);
-                const displayName =
-                    user?.given_name || user?.email || user?.username || username;
                 if (
                     !confirm(
                         `Are you sure you want to delete user ${displayName}? This action cannot be undone.`
@@ -107,6 +111,16 @@ export default function ManageUsersTab() {
                 ) {
                     return;
                 }
+            }
+
+            // Update wage if provided and not deleting
+            if (newWage !== undefined && newGroup !== "delete") {
+                const wagePayload = {
+                    username: username, // For reference if needed
+                    given_name: user?.given_name || displayName, // Use given_name as primary key
+                    wage: newWage
+                };
+                await apiClient.post("/update-user-wage", wagePayload);
             }
 
             const payload: PostUpdateUserGroup = {
@@ -122,7 +136,7 @@ export default function ManageUsersTab() {
             } else {
                 success(
                     USER_MANAGEMENT_SUCCESS.USER_UPDATED,
-                    "User group updated successfully"
+                    "User updated successfully"
                 );
             }
 
@@ -130,7 +144,7 @@ export default function ManageUsersTab() {
             setShowUserEdit(false);
             setSelectedUser(null);
         } catch (err) {
-            console.error("Error updating user group:", err);
+            console.error("Error updating user:", err);
             if (newGroup === "delete") {
                 error("Delete Failed", USER_MANAGEMENT_ERRORS.DELETE_FAILED);
             } else {
@@ -177,6 +191,7 @@ export default function ManageUsersTab() {
                                         <button
                                             onClick={() => {
                                                 setSelectedUser(user as SelectedUser);
+                                                setWageInput(((user as any).wage || 0).toString());
                                                 setShowUserEdit(true);
                                             }}
                                             disabled={currentUser?.username === user.username}
@@ -207,6 +222,7 @@ export default function ManageUsersTab() {
                                         <button
                                             onClick={() => {
                                                 setSelectedUser(user as SelectedUser);
+                                                setWageInput(((user as any).wage || 0).toString());
                                                 setShowUserEdit(true);
                                             }}
                                             disabled={currentUser?.username === user.username}
@@ -292,7 +308,8 @@ export default function ManageUsersTab() {
                                                     type="number"
                                                     className="md-input w-full !pl-9 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                     placeholder="20.00"
-                                                    defaultValue="20.00"
+                                                    value={wageInput}
+                                                    onChange={(e) => setWageInput(e.target.value)}
                                                 />
                                             </div>
                                         </div>
@@ -329,7 +346,8 @@ export default function ManageUsersTab() {
                                         onClick={() =>
                                             updateUserGroup(
                                                 selectedUser.username || "",
-                                                selectedUser.groups[0] || ""
+                                                selectedUser.groups[0] || "",
+                                                wageInput ? parseFloat(wageInput) : 0
                                             )
                                         }
                                         className={`px-6 ${selectedUser.groups[0] === "delete"

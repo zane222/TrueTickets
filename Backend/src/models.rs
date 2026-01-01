@@ -26,6 +26,9 @@ pub struct LineItem {
 pub struct TicketWithoutCustomer {
     pub ticket_number: i64,
     pub subject: String,
+    #[allow(dead_code)] // subject_lower is not read, but is needed for serde::dynamo to write to
+    #[serde(skip_serializing, default)]
+    pub subject_lower: String,
     #[serde(skip_serializing)]
     pub customer_id: String,
     pub status: String,
@@ -72,6 +75,8 @@ pub struct Ticket {
 pub struct Customer {
     pub customer_id: String,
     pub full_name: String,
+    #[allow(dead_code)] // full_name_lower is not read, but is needed for serde::dynamo to write to
+    #[serde(skip_serializing, default)]
     pub full_name_lower: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
@@ -158,4 +163,39 @@ pub struct UpdateStoreConfigRequest {
     pub phone: String,
     pub email: String,
     pub disclaimer: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PurchaseItem {
+    pub name: String,
+    pub amount: f64,
+    pub category: String, // e.g., "Parts", "Office Supplies", "Rent", "Payroll" (though payroll is calculated separately usually)
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MonthPurchases {
+    pub month_year: String, // PK: YYYY-MM
+    pub items: Vec<PurchaseItem>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TimeEntry {
+    pub month_year: String, // PK: YYYY-MM
+    pub entry_id: String,   // SK: name_timestamp
+    pub user_name: String,
+    pub timestamp: i64,
+    pub is_clock_out: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct UserResponse {
+    pub username: String,
+    pub email: Option<String>,
+    pub given_name: Option<String>,
+    pub enabled: bool,
+    pub groups: Vec<String>,
+    pub created: Option<String>,
+    pub user_status: String,
+    pub wage: f64,
 }

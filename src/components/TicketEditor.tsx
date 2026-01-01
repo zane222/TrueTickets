@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { DEVICES, ITEMS_LEFT, EMPTY_ARRAY } from "../constants/appConstants.js";
 import { useApi } from "../hooks/useApi";
 import { useAlertMethods } from "./ui/AlertSystem";
@@ -38,7 +38,6 @@ function TicketEditor({
   const [isDeviceManual, setIsDeviceManual] = useState(true);
   const [timeEstimate, setTimeEstimate] = useState("");
   const [itemsLeft, setItemsLeft] = useState<string[]>([]);
-  const [lineItems, setLineItems] = useState<{ subject: string; price: number }[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
   const [customerName, setCustomerName] = useState<string>("");
 
@@ -83,9 +82,6 @@ function TicketEditor({
         }
         if (Array.isArray(ticket.items_left) && ticket.items_left.length > 0) {
           setItemsLeft(ticket.items_left);
-        }
-        if (Array.isArray(ticket.line_items) && ticket.line_items.length > 0) {
-          setLineItems(ticket.line_items);
         }
       } catch (error) {
         console.error(error);
@@ -181,7 +177,7 @@ function TicketEditor({
           subject: finalSubject,
           password: password || null,
           items_left: itemsLeft.length > 0 ? itemsLeft : null,
-          line_items: lineItems.length > 0 ? lineItems : [],
+          line_items: null,
           status: null, // Editor doesn't handle status change currently
           device: deviceIdx !== null ? DEVICES[deviceIdx] : null,
         };
@@ -327,64 +323,7 @@ function TicketEditor({
           </div>
         </div>
 
-        {/* Line Items Section */}
-        <div className="pt-4 border-t border-outline">
-          <div className="flex items-center justify-between mb-4">
-            <label className="text-lg font-bold text-primary">Line Items</label>
-            <button
-              type="button"
-              onClick={() => setLineItems([...lineItems, { subject: "", price: 0 }])}
-              className="md-btn-surface elev-1 text-sm py-1.5 px-3 w-fit"
-              tabIndex={-1}
-            >
-              + Add Line Item
-            </button>
-          </div>
-          <div className="space-y-3">
-            {lineItems.map((item, index) => (
-              <div key={index} className="flex gap-3 items-center">
-                <input
-                  type="text"
-                  placeholder="Subject"
-                  value={item.subject}
-                  onChange={(e) => {
-                    const next = [...lineItems];
-                    next[index] = { ...next[index], subject: e.target.value };
-                    setLineItems(next);
-                  }}
-                  className="md-input flex-grow"
-                />
-                <div className="relative w-32">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant/70">$</span>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={item.price || ""}
-                    onChange={(e) => {
-                      const next = [...lineItems];
-                      next[index] = { ...next[index], price: parseFloat(e.target.value) || 0 };
-                      setLineItems(next);
-                    }}
-                    className="md-input w-full pl-6 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLineItems(lineItems.filter((_, i) => i !== index))}
-                  className="p-2 text-on-surface-variant hover:text-error transition-colors"
-                  tabIndex={-1}
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            ))}
-            {lineItems.length === 0 && (
-              <div className="text-center py-4 text-outline text-sm italic">
-                No line items added yet.
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Line Items Section - REMOVED */}
       </div>
     </div>
   );

@@ -22,7 +22,7 @@ interface PurchaseItem {
 }
 
 interface FinancialData {
-    all_revinue: RevenueItem[];
+    all_revenue: RevenueItem[];
     employees_payroll: PayrollItem[];
     purchases: PurchaseItem[];
 }
@@ -70,7 +70,7 @@ export default function IncomeTab() {
     const stats = useMemo(() => {
         if (!data) return { revenue: 0, payroll: 0, purchases: 0, net: 0 };
 
-        const revenue = data.all_revinue.reduce((acc, item) => acc + item.amount, 0);
+        const revenue = data.all_revenue.reduce((acc, item) => acc + item.amount, 0);
         const payroll = data.employees_payroll.reduce((acc, item) => acc + item.amount, 0);
         // Use localPurchases for calculation to reflect edits immediately in summary
         const purchases = localPurchases.reduce((acc, item) => acc + (item.amount || 0), 0);
