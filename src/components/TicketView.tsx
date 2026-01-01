@@ -354,9 +354,9 @@ function TicketView({
 
       await api.put(`/tickets?number=${ticket.ticket_number}`, updateData);
 
-      const updatedTicket = { ...ticket, status: status };
-      setTicket(updatedTicket);
+      setTicket(prev => prev ? { ...prev, status: status } : null);
 
+      const updatedTicket = { ...ticket, status: status };
       // Restart polling with the updated ticket data
       _resetPolling(updatedTicket);
     } catch (err: unknown) {
@@ -580,8 +580,43 @@ function TicketView({
     try {
       let techName = "True Tickets";
       try {
+        // Try to get user attributes directly
+        const userAttributes = await fetchUserAttributes();
+        // Also try ID token
+        const session = await fetchAuthSession();
+        const idTokenPayload = session.tokens?.idToken?.payload;
+
+        // Try multiple sources for the name (safely coerce to strings)
+        const tryString = (v: unknown): string | undefined =>
+          typeof v === "string" && v.trim() ? v : undefined;
+
+        // Normalize unknown shapes into plain objects we can index safely.
+        const uaUnknown = userAttributes as unknown;
+        const uaObj =
+          uaUnknown && typeof uaUnknown === "object"
+            ? (uaUnknown as Record<string, unknown>)
+            : {};
+        const idUnknown = idTokenPayload as unknown;
+        const idObj =
+          idUnknown && typeof idUnknown === "object"
+            ? (idUnknown as Record<string, unknown>)
+            : {};
+
+        const attrName =
+          tryString(uaObj["custom:given_name"]) ??
+          tryString(uaObj["given_name"]) ??
+          tryString(uaObj["name"]);
+
+        const idName =
+          tryString(idObj["custom:given_name"]) ??
+          tryString(idObj["given_name"]) ??
+          tryString(idObj["name"]);
+
         const user = await getCurrentUser();
-        techName = user.username || "True Tickets";
+        // Safely extract username from currentUser if it's an object with a string username
+        let currentUserName: string | undefined = user.username;
+
+        techName = attrName ?? idName ?? currentUserName ?? "True Tickets";
       } catch (e) {
         console.error("Error getting user for system comment:", e);
       }
@@ -904,9 +939,12 @@ function TicketView({
                                         return;
                                       }
 
+                                      // Ensure items are saved first
+                                      await saveLineItems(ticket.line_items || []);
+
                                       // Construct Receipt
                                       const lines = (ticket.line_items || []).map((item: any) => `- ${item.subject}: $${(parseFloat(item.price) || 0).toFixed(2)}`).join("\n");
-                                      const receipt = `[Payment Taken]\n${lines}\nTax: $${tax.toFixed(2)}\nTotal: $${total.toFixed(2)}`;
+                                      const receipt = `[Payment Taken]\n${lines}\nTotal: $${total.toFixed(2)}`;
 
                                       await addSystemComment(receipt);
                                       console.log("Payment Taken at:", new Date().toLocaleString());
@@ -1214,6 +1252,8 @@ const CommentsBox = React.memo(({
             const body = (comment.comment_body ?? "").trim();
             return body !== "Ticket marked as Pre-Diagnosed.";
           })
+          .slice()
+          .reverse()
           .map((comment, index) => (
             <div key={index} className="md-row-box p-3 relative">
               {/* Top bar details: tech + time */}

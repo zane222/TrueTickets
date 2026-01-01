@@ -14,7 +14,7 @@ import {
     CAN_VIEW_INCOME_GROUPS,
     CAN_ACCESS_CONFIG_GROUPS
 } from "../constants/authConstants";
-import { signOut } from "aws-amplify/auth";
+import { signOut, fetchUserAttributes, getCurrentUser } from "aws-amplify/auth";
 
 interface SettingsPageProps {
     goTo: (path: string) => void;
@@ -50,6 +50,29 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
         setActiveTabRaw(tab);
         window.location.hash = tab;
     };
+
+    const [userInfo, setUserInfo] = useState<{ name: string; email: string } | null>(null);
+
+    useEffect(() => {
+        const loadUser = async () => {
+            try {
+                const attrs = await fetchUserAttributes();
+                const user = await getCurrentUser();
+
+                // Safely extract attributes
+                const unknownAttrs = attrs as Record<string, unknown>;
+                const getString = (key: string) => typeof unknownAttrs[key] === 'string' ? unknownAttrs[key] as string : undefined;
+
+                const name = getString('name') || getString('custom:given_name') || getString('given_name') || user.username || "User";
+                const email = getString('email') || "";
+
+                setUserInfo({ name, email });
+            } catch (e) {
+                console.error("Failed to load user info", e);
+            }
+        };
+        loadUser();
+    }, []);
 
     const handleLogout = async () => {
         try {
@@ -89,9 +112,11 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
                 <NavigationButton
                     onClick={() => goTo("/")}
                     targetUrl={`${window.location.origin}/`}
-                    className="flex items-center gap-2 px-2 mb-2 text-xl font-bold text-on-surface hover:text-primary transition-colors group w-fit"
+                    className="flex items-center gap-3 mb-6 px-2 text-xl font-bold text-on-surface hover:text-primary transition-colors group w-fit"
                 >
-                    <ArrowLeft className="w-6 h-6 group-hover:-translate-x-1 transition-transform" />
+                    <div className="p-2 rounded-lg md-btn-surface elev-1 group-hover:border-primary/50 transition-colors">
+                        <ArrowLeft className="w-5 h-5" />
+                    </div>
                     Settings
                 </NavigationButton>
 
@@ -161,9 +186,15 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
                 )}
 
                 <div className="mt-auto pt-4 border-t border-outline/20">
+                    {userInfo && (
+                        <div className="px-1 mb-4">
+                            <div className="text-sm font-bold text-on-surface">{userInfo.name}</div>
+                            <div className="text-xs text-outline truncate" title={userInfo.email}>{userInfo.email}</div>
+                        </div>
+                    )}
                     <button
                         onClick={handleLogout}
-                        className="flex items-center w-full px-4 py-3 rounded-xl text-sm font-medium text-error hover:bg-error/10 transition-all duration-200"
+                        className="md-btn-surface w-full flex items-center justify-center px-4 py-3 text-sm font-medium text-white hover:bg-white/5 transition-all duration-200"
                     >
                         <LogOut className="w-5 h-5 mr-3" />
                         Sign Out
