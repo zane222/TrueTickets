@@ -148,71 +148,82 @@ export default function ManageUsersTab() {
                     <LoadingSpinnerWithText text="Loading users..." size="md" />
                 </div>
             ) : (
-                <div className="grid gap-4">
-                    {users.map((user) => (
-                        <div
-                            key={user.username}
-                            className="md-row-box p-4 flex items-center justify-between"
-                        >
-                            <div className="flex-1">
-                                <div className="text-lg font-medium text-on-surface">
-                                    {user.given_name || user.email || user.username}
+                <div className="md-card overflow-hidden">
+                    {/* Header */}
+                    <div className="hidden sm:grid grid-cols-12 text-sm tracking-wider px-5 py-3 text-on-surface border-b border-white/5 bg-surface-variant/20">
+                        <div className="col-span-4 font-semibold">User</div>
+                        <div className="col-span-4 font-semibold">Email</div>
+                        <div className="col-span-3 font-semibold">Role</div>
+                        <div className="col-span-1 font-semibold text-right"></div>
+                    </div>
+
+                    <div className="divide-y divide-white/5">
+                        {users.map((user) => (
+                            <div
+                                key={user.username}
+                                className="group hover:bg-surface-variant/10 transition-colors duration-150"
+                            >
+                                <div className="hidden sm:grid grid-cols-12 items-center px-5 py-3">
+                                    <div className="col-span-4 font-medium text-on-surface truncate pr-2">
+                                        {user.given_name || user.username}
+                                    </div>
+                                    <div className="col-span-4 text-outline truncate pr-2">
+                                        {user.email}
+                                    </div>
+                                    <div className="col-span-3 text-outline truncate">
+                                        {getGroupDisplayNames(user.groups)}
+                                    </div>
+                                    <div className="col-span-1 flex justify-end">
+                                        <button
+                                            onClick={() => {
+                                                setSelectedUser(user as SelectedUser);
+                                                setShowUserEdit(true);
+                                            }}
+                                            disabled={currentUser?.username === user.username}
+                                            className={`md-btn-surface text-sm px-4 py-1.5 shadow-sm transition-all ${currentUser?.username === user.username
+                                                ? "opacity-50 cursor-not-allowed"
+                                                : ""
+                                                }`}
+                                        >
+                                            Edit
+                                        </button>
+                                    </div>
                                 </div>
-                                {user.email && (
-                                    <div className="text-sm text-outline">{user.email}</div>
-                                )}
-                                <div className="text-md text-outline">
-                                    {getGroupDisplayNames(user.groups)}
+
+                                {/* Mobile View */}
+                                <div className="sm:hidden p-4 space-y-2">
+                                    <div className="flex justify-between items-start">
+                                        <div className="font-medium text-on-surface">
+                                            {user.given_name || user.username}
+                                        </div>
+                                        <div className="text-sm text-outline">
+                                            {getGroupDisplayNames(user.groups)}
+                                        </div>
+                                    </div>
+                                    {user.email && (
+                                        <div className="text-sm text-outline truncate">{user.email}</div>
+                                    )}
+                                    <div className="flex justify-end pt-2 border-t border-white/5">
+                                        <button
+                                            onClick={() => {
+                                                setSelectedUser(user as SelectedUser);
+                                                setShowUserEdit(true);
+                                            }}
+                                            disabled={currentUser?.username === user.username}
+                                            className={`md-btn-primary text-sm px-4 py-1.5 w-full ${currentUser?.username === user.username ? "opacity-50" : ""}`}
+                                        >
+                                            Edit
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex space-x-2">
-                                <button
-                                    onClick={() => {
-                                        setSelectedUser(user as SelectedUser);
-                                        setShowUserEdit(true);
-                                    }}
-                                    disabled={currentUser?.username === user.username}
-                                    className={`md-btn-surface text-md px-3 py-1 ${currentUser?.username === user.username
-                                        ? "opacity-50 cursor-not-allowed"
-                                        : ""
-                                        }`}
-                                >
-                                    Edit
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setSelectedUser({
-                                            ...user,
-                                            groups: ["delete"],
-                                        } as SelectedUser);
-                                        setShowUserEdit(true);
-                                    }}
-                                    disabled={currentUser?.username === user.username}
-                                    className={`md-btn-surface text-md px-3 py-1 ${currentUser?.username === user.username
-                                        ? "opacity-50 cursor-not-allowed"
-                                        : ""
-                                        }`}
-                                    style={{
-                                        backgroundColor:
-                                            currentUser?.username === user.username
-                                                ? "var(--md-sys-color-surface-variant)"
-                                                : "var(--md-sys-color-error)",
-                                        color:
-                                            currentUser?.username === user.username
-                                                ? "var(--md-sys-color-on-surface-variant)"
-                                                : "var(--md-sys-color-on-error)",
-                                    }}
-                                >
-                                    Remove
-                                </button>
+                        ))}
+                        {users.length === 0 && (
+                            <div className="text-center py-12 text-outline">
+                                No users found
                             </div>
-                        </div>
-                    ))}
-                    {users.length === 0 && (
-                        <div className="text-center py-12 md-card text-outline">
-                            No users found
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -225,12 +236,12 @@ export default function ManageUsersTab() {
                         className="md-card p-8 w-full max-w-md shadow-2xl"
                     >
                         <h3 className="text-xl font-bold mb-6 text-on-surface">
-                            {selectedUser.groups[0] === "delete" ? "Delete User" : "Edit Permissions"}
+                            {selectedUser.groups[0] === "delete" ? "Delete User" : "Edit User"}
                         </h3>
 
                         <div className="space-y-6">
                             <div>
-                                <div className="mb-4 p-4 rounded-lg bg-surface-variant/30 border border-outline/10">
+                                <div className="mb-4 p-4 rounded-lg bg-surface-variant/30 border border-white/10">
                                     <div className="text-sm font-medium text-outline mb-1">User</div>
                                     <div className="text-lg font-medium text-on-surface">
                                         {selectedUser.given_name || selectedUser.email || selectedUser.username}
@@ -279,7 +290,7 @@ export default function ManageUsersTab() {
                                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-outline font-medium">$</span>
                                                 <input
                                                     type="number"
-                                                    className="md-input w-full pl-12"
+                                                    className="md-input w-full !pl-9 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                     placeholder="20.00"
                                                     defaultValue="20.00"
                                                 />
@@ -293,32 +304,44 @@ export default function ManageUsersTab() {
                                 )}
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-2">
-                                <button
-                                    onClick={() => {
-                                        setShowUserEdit(false);
-                                        setSelectedUser(null);
-                                    }}
-                                    className="md-btn-surface px-6"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() =>
-                                        updateUserGroup(
-                                            selectedUser.username || "",
-                                            selectedUser.groups[0] || ""
-                                        )
-                                    }
-                                    className={`px-6 ${selectedUser.groups[0] === "delete"
-                                        ? "md-btn-error"
-                                        : "md-btn-primary"
-                                        }`}
-                                >
-                                    {selectedUser.groups[0] === "delete"
-                                        ? "Remove User"
-                                        : "Save Changes"}
-                                </button>
+                            <div className="flex items-center justify-between pt-4 mt-2">
+                                {selectedUser.groups[0] !== "delete" ? (
+                                    <button
+                                        onClick={() => setSelectedUser({ ...selectedUser, groups: ["delete"] })}
+                                        className="bg-[var(--md-sys-color-error)] text-[var(--md-sys-color-on-error)] px-4 py-2 rounded-full text-sm font-medium hover:brightness-110 transition-all shadow-sm"
+                                    >
+                                        Delete User
+                                    </button>
+                                ) : (
+                                    <div></div> /* Spacer */
+                                )}
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => {
+                                            setShowUserEdit(false);
+                                            setSelectedUser(null);
+                                        }}
+                                        className="md-btn-surface px-6"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={() =>
+                                            updateUserGroup(
+                                                selectedUser.username || "",
+                                                selectedUser.groups[0] || ""
+                                            )
+                                        }
+                                        className={`px-6 ${selectedUser.groups[0] === "delete"
+                                            ? "md-btn-error"
+                                            : "md-btn-primary"
+                                            }`}
+                                    >
+                                        {selectedUser.groups[0] === "delete"
+                                            ? "Remove User"
+                                            : "Save Changes"}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </motion.div>

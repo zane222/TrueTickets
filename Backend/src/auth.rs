@@ -1,30 +1,71 @@
 //! Authorization and permission checking utilities
 
-use lambda_http::{Request, RequestExt};
+use lambda_http::{Request};
 use rand::Rng;
+use base64::{Engine as _, engine::general_purpose};
+use serde_json::Value;
 
-/// Extract user groups from the Cognito authorizer context
+/// Extract user groups from the Cognito authorizer context or Authorization header
 pub fn get_user_groups_from_event(event: &Request) -> Vec<String> {
-    // Get user groups from the request context (populated by Cognito authorizer)
-    let request_context = event.request_context();
-    if let Some(authorizer) = request_context.authorizer()
-        && let Some(claims) = authorizer.fields.get("claims")
-        && let Some(groups) = claims.get("cognito:groups")
-    {
-        if let Some(groups_str) = groups.as_str() {
-            return groups_str
-                .split(',')
-                .map(|g| g.trim().to_string())
-                .filter(|g| !g.is_empty())
-                .collect();
-        } else if let Some(groups_array) = groups.as_array() {
-            return groups_array
-                .iter()
-                .filter_map(|g| g.as_str().map(|s| s.to_string()))
-                .collect();
+    // Since the API Gateway Authorizer has already validated the token to let the request through,
+    // we can trust the content of the token provided in the header.
+    if let Some(auth_header) = event.headers().get("Authorization") {
+        if let Ok(auth_str) = auth_header.to_str() {
+            let token = if auth_str.starts_with("Bearer ") {
+                &auth_str[7..]
+            } else {
+                auth_str
+            };
+            
+            if let Some(claims) = parse_jwt_payload(token) && let Some(groups) = claims.get("cognito:groups") {
+                return parse_groups_value(groups);
+            }
         }
     }
+    
     vec![]
+}
+
+/// Helper to parse groups from a JSON value (string or array)
+fn parse_groups_value(groups: &Value) -> Vec<String> {
+    if let Some(groups_str) = groups.as_str() {
+        return groups_str
+            .split(',')
+            .map(|g| g.trim().to_string())
+            .filter(|g| !g.is_empty())
+            .collect();
+    } else if let Some(groups_array) = groups.as_array() {
+        return groups_array
+            .iter()
+            .filter_map(|g| g.as_str().map(|s| s.to_string()))
+            .collect();
+    }
+    vec![]
+}
+
+/// Helper to decode and parse JWT payload (without validation)
+fn parse_jwt_payload(token: &str) -> Option<Value> {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    
+    // JWT payload is the second part
+    let payload_part = parts[1];
+    
+    // Base64 decode (URL safe)
+    // Add padding if needed
+    let padding = match payload_part.len() % 4 {
+        2 => "==",
+        3 => "=",
+        _ => "",
+    };
+    let padded_payload = format!("{}{}", payload_part, padding);
+    
+    match general_purpose::URL_SAFE_NO_PAD.decode(payload_part).or_else(|_| general_purpose::STANDARD.decode(&padded_payload)) {
+        Ok(decoded) => serde_json::from_slice(&decoded).ok(),
+        Err(_) => None,
+    }
 }
 
 /// Check if user can invite other users
