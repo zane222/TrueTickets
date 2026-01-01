@@ -71,7 +71,7 @@ function CustomerView({
     },
   ], []);
 
-  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : customerViewKeybinds);
+  useRegisterKeybinds(showSearch ? EMPTY_ARRAY : customerViewKeybinds);
 
 
 

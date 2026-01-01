@@ -1,5 +1,5 @@
 import React from "react";
-import type { Ticket } from "../types/api";
+import type { Ticket, LineItem } from "../types/api";
 import { formatPhone, fmtDateAndTime } from "../utils/appUtils";
 import { useStoreConfig } from "../context/StoreConfigContext";
 
@@ -15,7 +15,7 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
 
         // Calculate totals
         const subtotal = (ticket.line_items || []).reduce(
-            (acc: number, item: any) => acc + (parseFloat(item.price) || 0),
+            (acc: number, item: LineItem) => acc + (Number(item.price) || 0),
             0
         );
         const tax = subtotal * taxRate;
@@ -59,10 +59,10 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                                 <span>Item</span>
                                 <span>Amt</span>
                             </div>
-                            {(ticket.line_items || []).map((item: any, index: number) => (
+                            {(ticket.line_items || []).map((item: LineItem, index: number) => (
                                 <div key={index} className="flex justify-between py-1">
                                     <span className="truncate pr-2">{item.subject}</span>
-                                    <span>${(parseFloat(item.price) || 0).toFixed(2)}</span>
+                                    <span>${(Number(item.price) || 0).toFixed(2)}</span>
                                 </div>
                             ))}
                             {(ticket.line_items || []).length === 0 && (
@@ -154,10 +154,10 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                                     </tr>
                                 </thead>
                                 <tbody className="text-[#374151] text-sm">
-                                    {(ticket.line_items || []).map((item: any, index: number) => (
+                                    {(ticket.line_items || []).map((item: LineItem, index: number) => (
                                         <tr key={index} className="border-b border-[#e5e7eb]">
                                             <td className="py-4 font-medium">{item.subject}</td>
-                                            <td className="py-4 text-right">${(parseFloat(item.price) || 0).toFixed(2)}</td>
+                                            <td className="py-4 text-right">${(Number(item.price) || 0).toFixed(2)}</td>
                                         </tr>
                                     ))}
                                     {(ticket.line_items || []).length === 0 && (

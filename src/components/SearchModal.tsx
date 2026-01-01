@@ -9,6 +9,31 @@ import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import type { Ticket, Customer } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
+const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
+const isLikelyPhone = (digits: string) => digits.length >= 7 && digits.length <= 11;
+
+const formatPhoneLive = (value: string): string => {
+  const digits = parsePhoneNumber(value);
+  const hasLetters = /[a-zA-Z]/.test(value);
+
+  // Only format if 7-10 digits and NO letters are present
+  if (hasLetters || digits.length < 7 || digits.length > 10) {
+    return value;
+  }
+
+  if (digits.length <= 6) {
+    return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  }
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+};
+
+const isCustomer = (item: Ticket | Customer): item is Customer => {
+  // Check for property specific to Customer and NOT in Ticket.
+  // Ticket has 'customer' object. Customer does NOT have 'customer' object.
+  // Customer has 'full_name' at top level. Ticket has 'subject'.
+  return 'full_name' in item && !('subject' in item);
+};
+
 function SearchModal({
   open,
   onClose,
@@ -31,6 +56,125 @@ function SearchModal({
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentSearchQueryRef = useRef<string>("");
+
+  const searchTicketNumber = React.useCallback(
+    async (query: string, signal: AbortSignal) => {
+      // Use backend suffix search if query is 3 digits
+      if (query.length === 3) {
+        const url = `/tickets?ticket_number_last_3_digits=${encodeURIComponent(query)}`;
+        try {
+          const tickets = await api.get<Ticket[]>(url);
+          if (!signal.aborted && currentSearchQueryRef.current === query) {
+            setResults(tickets || []);
+            setStatus(tickets?.length === 0 ? "No results found" : "");
+            setLoading(false);
+            if (pendingSubmit.current && tickets && tickets.length > 0) {
+              pendingSubmit.current = false;
+              onClose();
+              goTo(`/&${tickets[0].ticket_number}`);
+            }
+          }
+        } catch (_) { // eslint-disable-line @typescript-eslint/no-unused-vars
+          if (!signal.aborted) {
+            setResults([]);
+            setStatus("No results found");
+            setLoading(false);
+          }
+        }
+      } else {
+        const url = `/tickets?search_by_number=${encodeURIComponent(query)}`;
+        try {
+          const { ticket } = await api.get<{ ticket: Ticket | null }>(url);
+          if (!signal.aborted && currentSearchQueryRef.current === query) {
+            const res = ticket ? [ticket] : [];
+            setResults(res);
+            setStatus(res.length === 0 ? "No results found" : "");
+            setLoading(false);
+            if (pendingSubmit.current && ticket) {
+              pendingSubmit.current = false;
+              onClose();
+              goTo(`/&${ticket.ticket_number}`);
+            }
+          }
+        } catch (_) { // eslint-disable-line @typescript-eslint/no-unused-vars
+          if (!signal.aborted) {
+            setResults([]);
+            setStatus("No results found");
+            setLoading(false);
+          }
+        }
+      }
+    }, [api, onClose, goTo]
+  );
+
+  const performSearch = useCallback(
+    async (query: string, signal: AbortSignal) => {
+      try {
+        const trimmedQuery = query.trim();
+        const phoneDigits = parsePhoneNumber(trimmedQuery);
+
+        if (isLikelyPhone(phoneDigits)) {
+          setSearchType("customers");
+          const customers = await api.get<Customer[]>(
+            `/customers?phone_number=${encodeURIComponent(phoneDigits)}`
+          );
+          if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
+            setResults(customers || []);
+            setStatus(customers?.length === 0 ? "No results found" : "");
+            setLoading(false);
+            if (pendingSubmit.current && customers && customers.length > 0) {
+              pendingSubmit.current = false;
+              onClose();
+              goTo(`/$${customers[0].customer_id}`);
+            }
+          }
+        } else if (/^\d+$/.test(trimmedQuery) && trimmedQuery.length === 3) {
+          setSearchType("tickets");
+          await searchTicketNumber(trimmedQuery, signal);
+          return;
+        } else if (/^\d+$/.test(trimmedQuery) && trimmedQuery.length <= 6) {
+          setSearchType("tickets");
+          await searchTicketNumber(trimmedQuery, signal);
+        } else {
+          // General query
+          // Check what /query_all returns: { tickets: [], customers: [] }
+          const queryResult = await api.get<{ tickets: Ticket[], customers: Customer[] }>(`/query_all?query=${encodeURIComponent(trimmedQuery)}`);
+
+          if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
+            const customers = queryResult.customers || [];
+            const tickets = queryResult.tickets || [];
+
+            if (customers.length > 0) {
+              setSearchType("customers");
+              setResults(customers);
+              setStatus("");
+              if (pendingSubmit.current) {
+                pendingSubmit.current = false;
+                onClose();
+                goTo(`/$${customers[0].customer_id}`);
+              }
+            } else {
+              setSearchType("tickets");
+              setResults(tickets);
+              setStatus(tickets.length === 0 ? "No results found" : "");
+              if (pendingSubmit.current && tickets.length > 0) {
+                pendingSubmit.current = false;
+                onClose();
+                goTo(`/&${tickets[0].ticket_number}`);
+              }
+            }
+            setLoading(false);
+          }
+        }
+      } catch (err) { // eslint-disable-line @typescript-eslint/no-unused-vars
+        if (!signal.aborted) {
+          setResults([]);
+          setStatus("No results found");
+          setLoading(false);
+        }
+      }
+    }, [searchTicketNumber, api, onClose, goTo]
+  );
 
   const handleNewCustomer = useCallback(() => {
     const query = search.trim();
@@ -58,7 +202,7 @@ function SearchModal({
     { key: "C", description: "Close search", category: "Navigation" },
   ], []);
 
-  useRegisterKeybinds(open ? searchKeybinds : (EMPTY_ARRAY as any));
+  useRegisterKeybinds(open ? searchKeybinds : EMPTY_ARRAY);
 
   const hotkeyMap = useMemo(() => ({
     'n': () => handleNewCustomer(),
@@ -146,6 +290,7 @@ function SearchModal({
     return () => {
       clearTimeout(timeoutId);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, searchType]);
 
   useEffect(() => {
@@ -163,168 +308,7 @@ function SearchModal({
     }
   }, [loading, results, searchType, onClose, goTo]);
 
-  const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
-  const isLikelyPhone = (digits: string) => digits.length >= 7 && digits.length <= 11;
 
-  const formatPhoneLive = (value: string): string => {
-    const digits = parsePhoneNumber(value);
-    const hasLetters = /[a-zA-Z]/.test(value);
-
-    // Only format if 7-10 digits and NO letters are present
-    if (hasLetters || digits.length < 7 || digits.length > 10) {
-      return value;
-    }
-
-    if (digits.length <= 6) {
-      return `${digits.slice(0, 3)}-${digits.slice(3)}`;
-    }
-    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-  };
-
-  const searchTicketNumber = React.useCallback(
-    async (query: string, signal: AbortSignal) => {
-      // Use backend suffix search if query is 3 digits
-      if (query.length === 3) {
-        const url = `/tickets?ticket_number_last_3_digits=${encodeURIComponent(query)}`;
-        try {
-          const tickets = await api.get<Ticket[]>(url, { silent: true });
-          if (!signal.aborted && currentSearchQueryRef.current === query) {
-            setResults(tickets || []);
-            setStatus(tickets?.length === 0 ? "No results found" : "");
-            setLoading(false);
-            if (pendingSubmit.current && tickets && tickets.length > 0) {
-              pendingSubmit.current = false;
-              onClose();
-              goTo(`/&${tickets[0].ticket_number}`);
-            }
-          }
-        } catch (e) {
-          if (!signal.aborted) {
-            setResults([]);
-            setStatus("No results found");
-            setLoading(false);
-          }
-        }
-      } else {
-        const url = `/tickets?search_by_number=${encodeURIComponent(query)}`;
-        try {
-          const { ticket } = await api.get<{ ticket: Ticket | null }>(url, { silent: true });
-          if (!signal.aborted && currentSearchQueryRef.current === query) {
-            const res = ticket ? [ticket] : [];
-            setResults(res);
-            setStatus(res.length === 0 ? "No results found" : "");
-            setLoading(false);
-            if (pendingSubmit.current && ticket) {
-              pendingSubmit.current = false;
-              onClose();
-              goTo(`/&${ticket.ticket_number}`);
-            }
-          }
-        } catch (e) {
-          if (!signal.aborted) {
-            setResults([]);
-            setStatus("No results found");
-            setLoading(false);
-          }
-        }
-      }
-    }, [api, onClose, goTo]
-  );
-
-  const performSearch = useCallback(
-    async (query: string, signal: AbortSignal) => {
-      try {
-        const trimmedQuery = query.trim();
-        const phoneDigits = parsePhoneNumber(trimmedQuery);
-
-        if (isLikelyPhone(phoneDigits)) {
-          setSearchType("customers");
-          const customers = await api.get<Customer[]>(
-            `/customers?phone_number=${encodeURIComponent(phoneDigits)}`,
-            { silent: true }
-          );
-          if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
-            setResults(customers || []);
-            setStatus(customers?.length === 0 ? "No results found" : "");
-            setLoading(false);
-            if (pendingSubmit.current && customers && customers.length > 0) {
-              pendingSubmit.current = false;
-              onClose();
-              goTo(`/$${customers[0].customer_id}`);
-            }
-          }
-        } else if (/^\d+$/.test(trimmedQuery) && trimmedQuery.length === 3) {
-          setSearchType("tickets");
-          await searchTicketNumber(trimmedQuery, signal);
-          return;
-        } else if (/^\d+$/.test(trimmedQuery) && trimmedQuery.length <= 6) {
-          setSearchType("tickets");
-          await searchTicketNumber(trimmedQuery, signal);
-        } else {
-          // General query
-          // Check what /query_all returns: { tickets: [], customers: [] }
-          const queryResult = await api.get<{ tickets: Ticket[], customers: Customer[] }>(`/query_all?query=${encodeURIComponent(trimmedQuery)}`, { silent: true });
-
-          if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
-            const customers = queryResult.customers || [];
-            const tickets = queryResult.tickets || [];
-
-            if (customers.length > 0) {
-              setSearchType("customers");
-              setResults(customers);
-              setStatus("");
-              if (pendingSubmit.current) {
-                pendingSubmit.current = false;
-                onClose();
-                goTo(`/$${customers[0].customer_id}`);
-              }
-            } else {
-              setSearchType("tickets");
-              setResults(tickets);
-              setStatus(tickets.length === 0 ? "No results found" : "");
-              if (pendingSubmit.current && tickets.length > 0) {
-                pendingSubmit.current = false;
-                onClose();
-                goTo(`/&${tickets[0].ticket_number}`);
-              }
-            }
-            setLoading(false);
-          }
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name !== "AbortError") {
-          console.error("Search error:", err);
-        }
-        if (!signal.aborted) {
-          // Check if it's a 404 (not found) vs other errors
-          const is404 = err && typeof err === 'object' && 'status' in err && (err as any).status === 404;
-
-          if (!is404 && !(err instanceof Error && err.name === "AbortError")) {
-            // Unexpected error - dispatch error event manually
-            const errorMessage = err && typeof err === 'object' && 'message' in err
-              ? (err as Error).message
-              : 'An error occurred while searching';
-            window.dispatchEvent(
-              new CustomEvent("api-error", {
-                detail: { message: errorMessage },
-              }),
-            );
-          }
-
-          setResults([]);
-          setStatus("No results found");
-          setLoading(false);
-        }
-      }
-    }, [searchTicketNumber, api, onClose, goTo]
-  );
-
-  const isCustomer = (item: Ticket | Customer): item is Customer => {
-    // Check for property specific to Customer and NOT in Ticket.
-    // Ticket has 'customer' object. Customer does NOT have 'customer' object.
-    // Customer has 'full_name' at top level. Ticket has 'subject'.
-    return 'full_name' in item && !('subject' in item);
-  };
 
   if (!open) return null;
 

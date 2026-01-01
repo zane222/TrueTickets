@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { getCurrentUser } from "aws-amplify/auth";
 import apiClient from "../../api/apiClient";
@@ -19,9 +19,7 @@ interface ManageUsersModalProps {
   onClose: () => void;
 }
 
-interface UserWithGroups extends CognitoUser {
-  // groups is already in CognitoUser as string[]
-}
+type UserWithGroups = CognitoUser;
 
 interface SelectedUser extends UserWithGroups {
   groups: string[];
@@ -57,14 +55,7 @@ export function ManageUsersModal({
     };
   }, []);
 
-  // Load users when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      loadUsers();
-    }
-  }, [isOpen]);
-
-  const loadUsers = async (retryCount = 0) => {
+  const loadUsers = useCallback(async (retryCount = 0) => {
     setUsersLoading(true);
     try {
       const result = await apiClient.get<UserWithGroups[]>("/users");
@@ -103,7 +94,14 @@ export function ManageUsersModal({
     } finally {
       setUsersLoading(false);
     }
-  };
+  }, [error]);
+
+  // Load users when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadUsers();
+    }
+  }, [isOpen, loadUsers]);
 
   const updateUserGroup = async (username: string, newGroup: string) => {
     try {

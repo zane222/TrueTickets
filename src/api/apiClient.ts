@@ -4,12 +4,10 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   headers?: Record<string, string>;
-  silent?: boolean;
 }
 
 export interface ApiRequestConfig {
   headers?: Record<string, string>;
-  silent?: boolean;
 }
 
 interface ApiError extends Error {
@@ -60,62 +58,7 @@ class ApiClient {
     }
   }
 
-  private async retryWithFreshToken<T>(
-    url: string,
-    method: string,
-    body: unknown,
-    options: RequestOptions,
-    isMultipart: boolean,
-  ): Promise<T> {
-    const newHeaders = await this.getAuthHeaders(isMultipart, true);
-    const mergedRetryHeaders = {
-      ...newHeaders,
-      ...(options.headers || {}),
-    };
-    const retryResponse = await fetch(url, {
-      method,
-      headers: mergedRetryHeaders,
-      body: isMultipart ? (body as BodyInit) : body ? JSON.stringify(body) : null,
-    });
 
-    if (retryResponse.status === 304) {
-      return {} as T;
-    }
-
-    if (!retryResponse.ok) {
-      // Read retry response body once and parse if possible
-      let retryParsed: unknown = null;
-      try {
-        const t = await retryResponse.text();
-        try {
-          retryParsed = t ? JSON.parse(t) : null;
-        } catch {
-          retryParsed = t ? t : null;
-        }
-      } catch {
-        retryParsed = null;
-      }
-      const err: ApiError = new Error(
-        (retryParsed &&
-          typeof retryParsed === "object" &&
-          "error" in retryParsed
-          ? (retryParsed as { error?: string }).error
-          : null) ||
-        `${retryResponse.status} ${retryResponse.statusText}`,
-      );
-      err.status = retryResponse.status;
-      err.body = retryParsed;
-      throw err;
-    }
-
-    // Check content type to determine how to parse response
-    const contentType = retryResponse.headers.get("content-type") || "";
-    if (contentType.includes("image") || contentType.includes("application/octet-stream")) {
-      return (await retryResponse.blob()) as T;
-    }
-
-    return (await retryResponse.json()) as T;
-  }
 
   async request<T = unknown>(
     path: string,
@@ -178,7 +121,7 @@ class ApiClient {
             message?: string;
           } | null;
           const errorMessage = errorBody?.details || errorBody?.message;
-          if (errorMessage && !options.silent) {
+          if (errorMessage) {
             // Dispatch a custom event for the UI to handle
             window.dispatchEvent(
               new CustomEvent("api-error", {
@@ -207,27 +150,7 @@ class ApiClient {
       return (await response.json()) as T;
     } catch (error) {
       // Network errors (Failed to fetch) are expected when offline and will be handled silently by callers like useChangeDetection
-      // Only log unexpected errors
-      if (error instanceof Error && (error.message === "Failed to fetch" || error.message === "Unauthorized")) {
-        // If we haven't retried yet, assume it might be a CORS error due to expired token
-        // and try to refresh the session once.
-        console.warn(
-          "Authentication or network error detected. Attempting to refresh session and retry request...",
-        );
-        try {
-          return await this.retryWithFreshToken<T>(
-            url,
-            method,
-            body,
-            options,
-            isMultipart,
-          );
-        } catch (retryError) {
-          // If the retry also fails, throw the retry error (likely the same network error)
-          throw retryError;
-        }
-      }
-      // Log other unexpected errors for debugging
+      // Log unexpected errors
       console.error("API request failed:", error);
       throw error;
     }
@@ -235,7 +158,7 @@ class ApiClient {
 
   // API methods (generic)
   async get<T = unknown>(path: string, config: ApiRequestConfig = {}): Promise<T> {
-    const options: RequestOptions = { method: "GET", silent: config.silent ?? false };
+    const options: RequestOptions = { method: "GET" };
     if (config.headers) {
       options.headers = config.headers;
     }
@@ -243,7 +166,7 @@ class ApiClient {
   }
 
   async post<T = unknown>(path: string, body?: unknown, config: ApiRequestConfig = {}): Promise<T> {
-    const options: RequestOptions = { method: "POST", body, silent: config.silent ?? false };
+    const options: RequestOptions = { method: "POST", body };
     if (config.headers) {
       options.headers = config.headers;
     }
@@ -251,7 +174,7 @@ class ApiClient {
   }
 
   async put<T = unknown>(path: string, body?: unknown, config: ApiRequestConfig = {}): Promise<T> {
-    const options: RequestOptions = { method: "PUT", body, silent: config.silent ?? false };
+    const options: RequestOptions = { method: "PUT", body };
     if (config.headers) {
       options.headers = config.headers;
     }
@@ -259,7 +182,7 @@ class ApiClient {
   }
 
   async del<T = unknown>(path: string, config: ApiRequestConfig = {}): Promise<T> {
-    const options: RequestOptions = { method: "DELETE", silent: config.silent ?? false };
+    const options: RequestOptions = { method: "DELETE" };
     if (config.headers) {
       options.headers = config.headers;
     }

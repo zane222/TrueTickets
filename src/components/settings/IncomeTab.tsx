@@ -1,14 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAlertMethods } from "../ui/AlertSystem";
 
-interface Ticket {
-    ticket_number: number;
-    status: string;
-    subject: string;
-    [key: string]: any;
-}
+import type { Ticket } from "../../types/api";
 
 interface RevenueItem {
     ticket: Ticket;
@@ -44,7 +39,7 @@ export default function IncomeTab() {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<FinancialData | null>(null);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             // endpoint expects 1-based month (1-12)
@@ -54,17 +49,17 @@ export default function IncomeTab() {
                 `/get_revenue_payroll_and_purchases?year=${year}&month=${month}`
             );
             setData(response);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
             showError("Fetch Failed", "Could not load financial data.");
         } finally {
             setLoading(false);
         }
-    };
+    }, [api, viewMonth, showError]);
 
     useEffect(() => {
         fetchData();
-    }, [viewMonth]);
+    }, [fetchData]);
 
     const stats = useMemo(() => {
         if (!data) return { revenue: 0, payroll: 0, purchases: 0, net: 0 };

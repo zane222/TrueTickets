@@ -81,4 +81,4 @@ export const UI_CONSTANTS: Record<string, number> = {
 };
 
 // Generic constants
-export const EMPTY_ARRAY: readonly any[] = Object.freeze([]);
+export const EMPTY_ARRAY: readonly never[] = Object.freeze([]);

@@ -33,8 +33,9 @@ export default function ConfigTab() {
         try {
             await updateConfig(localConfig);
             info("Settings Saved", "Store configuration has been updated successfully.");
-        } catch (err: any) {
-            alertError("Save Failed", err.message || "Could not save settings.");
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            alertError("Save Failed", errorMessage || "Could not save settings.");
         } finally {
             setSaving(false);
         }

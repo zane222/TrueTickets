@@ -7,9 +7,9 @@ import type { KeyBind } from '../components/ui/KeyBindsModal';
  * Automatically sets them in the global keybinds context
  * @param keybinds - Array of keybinds to register
  */
-export function useRegisterKeybinds(keybinds: KeyBind[]) {
+export function useRegisterKeybinds(keybinds: readonly KeyBind[]) {
   const { setKeybinds } = useKeyBindsContext();
-  const prevKeybindsRef = useRef<KeyBind[]>([]);
+  const prevKeybindsRef = useRef<readonly KeyBind[]>([]);
 
   useEffect(() => {
     // Check if keybinds actually changed to prevent infinite loops
@@ -17,7 +17,7 @@ export function useRegisterKeybinds(keybinds: KeyBind[]) {
       keybinds.some((kb, i) => kb.key !== prevKeybindsRef.current[i]?.key);
 
     if (hasChanged) {
-      setKeybinds(keybinds);
+      setKeybinds([...keybinds]);
       prevKeybindsRef.current = keybinds;
     }
 

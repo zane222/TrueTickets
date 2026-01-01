@@ -207,7 +207,7 @@ export function TicketListView({
     },
   ], []);
 
-  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : ticketListKeybinds);
+  useRegisterKeybinds(showSearch ? EMPTY_ARRAY : ticketListKeybinds);
 
   const hotkeyMap = useMemo(() => ({
     h: () => goTo("/"),

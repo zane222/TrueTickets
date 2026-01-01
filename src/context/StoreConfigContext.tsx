@@ -12,6 +12,7 @@ interface StoreConfigContextValue {
 
 const StoreConfigContext = createContext<StoreConfigContextValue | null>(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useStoreConfig = () => {
     const context = useContext(StoreConfigContext);
     if (!context) throw new Error("useStoreConfig must be used within StoreConfigProvider");
@@ -46,9 +47,9 @@ export const StoreConfigProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 setConfig(DEFAULT_CONFIG);
             }
             setError(null);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Failed to fetch store config:", err);
-            setError(err.message || "Failed to fetch store config");
+            setError((err instanceof Error ? err.message : String(err)) || "Failed to fetch store config");
         } finally {
             setLoading(false);
         }
@@ -58,7 +59,7 @@ export const StoreConfigProvider: React.FC<{ children: React.ReactNode }> = ({ c
         try {
             await api.put("/store_config", update);
             setConfig(prev => ({ ...prev, ...update }));
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Failed to update store config:", err);
             throw err;
         }

@@ -81,7 +81,7 @@ export default function NewCustomer({
     { key: "C", description: "Cancel", category: "Navigation" },
   ], []);
 
-  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : keybinds);
+  useRegisterKeybinds(showSearch ? EMPTY_ARRAY : keybinds);
 
   const hotkeyMap = useMemo(() => ({
     h: () => goTo("/"),

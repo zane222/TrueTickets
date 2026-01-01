@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { getCurrentUser } from "aws-amplify/auth";
 import apiClient from "../../api/apiClient";
@@ -14,8 +14,7 @@ import {
 import type { AmplifyAuthUser } from "../../types";
 import type { CognitoUser, PostUpdateUserGroup } from "../../types/api";
 
-interface UserWithGroups extends CognitoUser {
-}
+type UserWithGroups = CognitoUser;
 
 interface SelectedUser extends UserWithGroups {
     groups: string[];
@@ -48,12 +47,7 @@ export default function ManageUsersTab() {
         };
     }, []);
 
-    // Load users on mount
-    useEffect(() => {
-        loadUsers();
-    }, []);
-
-    const loadUsers = async (retryCount = 0) => {
+    const loadUsers = useCallback(async (retryCount = 0) => {
         setUsersLoading(true);
         try {
             const result = await apiClient.get<UserWithGroups[]>("/users");
@@ -92,7 +86,12 @@ export default function ManageUsersTab() {
         } finally {
             setUsersLoading(false);
         }
-    };
+    }, [error]);
+
+    // Load users on mount
+    useEffect(() => {
+        loadUsers();
+    }, [loadUsers]);
 
     const updateUserGroup = async (username: string, newGroup: string) => {
         try {

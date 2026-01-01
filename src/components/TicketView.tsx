@@ -30,7 +30,7 @@ import { TicketCard } from "./TicketCard";
 import { TicketDocument } from "./TicketDocument";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import { InlineErrorMessage } from "./ui/InlineErrorMessage";
-import type { Ticket, Comment, UpdateTicket, PostAttachment, PostComment } from "../types/api";
+import type { Ticket, Comment, UpdateTicket, PostAttachment, PostComment, LineItem } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 interface TicketViewProps {
@@ -268,7 +268,7 @@ function TicketView({
     },
   ], []);
 
-  useRegisterKeybinds(showSearch ? (EMPTY_ARRAY as any) : ticketViewKeybinds);
+  useRegisterKeybinds(showSearch ? EMPTY_ARRAY : ticketViewKeybinds);
 
 
 
@@ -338,7 +338,7 @@ function TicketView({
     }
   }, [windowWidth, ticket]);
 
-  const updateTicketStatus = async (status: string): Promise<void> => {
+  const updateTicketStatus = useCallback(async (status: string): Promise<void> => {
     if (!ticket || updatingStatus || ticket.status === status)
       return; // Prevent multiple updates or updating to the same status
     setUpdatingStatus(status);
@@ -366,7 +366,7 @@ function TicketView({
     } finally {
       setUpdatingStatus(null);
     }
-  };
+  }, [ticket, updatingStatus, api, _resetPolling, _error]);
 
   useEffect(() => {
     // Stop any existing polling when ID changes
@@ -405,7 +405,7 @@ function TicketView({
     return () => window.removeEventListener("refreshTicket", handleRefresh);
   }, []);
 
-  const generatePDF = async () => {
+  const generatePDF = useCallback(async () => {
     if (!ticketCardRef.current) return;
 
     try {
@@ -449,7 +449,7 @@ function TicketView({
         "Error generating PDF. Please try again.",
       );
     }
-  };
+  }, [_error]);
 
   const generateDocumentPDF = async () => {
     if (!documentRef.current || !ticket) return;
@@ -634,7 +634,7 @@ function TicketView({
 
 
 
-  const saveLineItems = async (items: any[]) => {
+  const saveLineItems = async (items: LineItem[]) => {
     if (!ticket) return;
     setSaveStatus('saving');
     try {
@@ -656,7 +656,7 @@ function TicketView({
     }
   };
 
-  const triggerAutoSave = (newItems: any[]) => {
+  const triggerAutoSave = (newItems: LineItem[]) => {
     setSaveStatus('still typing');
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -831,7 +831,7 @@ function TicketView({
 
                   return (
                     <>
-                      {(ticket.line_items || []).map((item: any, index: number) => (
+                      {(ticket.line_items || []).map((item: LineItem, index: number) => (
                         <div key={index} className="flex gap-3 items-center">
                           <input
                             type="text"
@@ -870,7 +870,7 @@ function TicketView({
                             <button
                               onClick={() => {
                                 const itemToDelete = (ticket.line_items || [])[index];
-                                const newItems = (ticket.line_items || []).filter((_: any, i: number) => i !== index);
+                                const newItems = (ticket.line_items || []).filter((_: LineItem, i: number) => i !== index);
                                 setTicket({ ...ticket, line_items: newItems });
                                 const isEmpty = !itemToDelete.subject && !itemToDelete.price;
                                 if (!isEmpty) {
@@ -907,7 +907,7 @@ function TicketView({
                       {(ticket.line_items || []).length > 0 && (
                         <div className="flex flex-col items-end">
                           {(() => {
-                            const subtotal = (ticket.line_items || []).reduce((acc: number, item: any) => acc + (parseFloat(item.price) || 0), 0);
+                            const subtotal = (ticket.line_items || []).reduce((acc: number, item: LineItem) => acc + (parseFloat(item.price as unknown as string) || 0), 0);
                             const tax = subtotal * 0.0825;
                             const total = subtotal + tax;
 
@@ -943,7 +943,7 @@ function TicketView({
                                       await saveLineItems(ticket.line_items || []);
 
                                       // Construct Receipt
-                                      const lines = (ticket.line_items || []).map((item: any) => `- ${item.subject}: $${(parseFloat(item.price) || 0).toFixed(2)}`).join("\n");
+                                      const lines = (ticket.line_items || []).map((item: LineItem) => `- ${item.subject}: $${(parseFloat(item.price as unknown as string) || 0).toFixed(2)}`).join("\n");
                                       const receipt = `[Payment Taken]\n${lines}\nTotal: $${total.toFixed(2)}`;
 
                                       await addSystemComment(receipt);

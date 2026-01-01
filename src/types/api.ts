@@ -4,6 +4,11 @@ export interface PhoneNumber {
   no_english?: boolean;
 }
 
+export interface LineItem {
+  subject: string;
+  price: number;
+}
+
 export interface TicketWithoutCustomer {
   ticket_number: number;
   subject: string;
@@ -15,7 +20,7 @@ export interface TicketWithoutCustomer {
   comments?: Comment[];
   attachments?: string[];
   items_left?: string[];
-  line_items?: { subject: string; price: number }[];
+  line_items?: LineItem[];
 }
 
 export interface Ticket extends TicketWithoutCustomer {
@@ -61,7 +66,7 @@ export interface UpdateTicket {
   status: string | null;
   password: string | null;
   items_left: string[] | null;
-  line_items: { subject: string; price: number }[] | null;
+  line_items: LineItem[] | null;
   device: string | null;
 }
 
