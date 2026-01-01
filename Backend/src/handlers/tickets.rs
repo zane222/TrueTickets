@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::http::error_response;
 use crate::models::{
     TicketWithoutCustomer, Ticket, Customer, CounterValue,
-    TicketNumberOnly, LineItem
+    TicketNumberOnly, LineItem, TinyTicket, TinyTicketWithoutCustomer
 };
 use crate::db_utils::DynamoDbBuilderExt;
 
@@ -55,17 +55,34 @@ pub async fn handle_get_ticket_by_number(
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {:?}", e), None))?;
 
     // 3. Compose response
-    let full_ticket = Ticket {
-        details: ticket_nocust,
-        customer,
-    };
-
-    let val = serde_json::to_value(&full_ticket)
-        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize ticket: {:?}", e), None))?;
-
     if searching {
+        let tiny_details = TinyTicketWithoutCustomer {
+            ticket_number: ticket_nocust.ticket_number,
+            subject: ticket_nocust.subject,
+            customer_id: ticket_nocust.customer_id,
+            status: ticket_nocust.status,
+            device: ticket_nocust.device,
+            created_at: ticket_nocust.created_at,
+        };
+
+        let tiny_ticket = TinyTicket {
+            details: tiny_details,
+            customer_name: customer.full_name,
+        };
+
+        let val = serde_json::to_value(&tiny_ticket)
+            .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize tiny ticket: {:?}", e), None))?;
+        
         Ok(json!({ "ticket": val }))
     } else {
+        let full_ticket = Ticket {
+            details: ticket_nocust,
+            customer,
+        };
+
+        let val = serde_json::to_value(&full_ticket)
+            .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize ticket: {:?}", e), None))?;
+
         Ok(val)
     }
 }
@@ -77,6 +94,8 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
         .index_name("CustomerIdIndex")
         .key_condition_expression("customer_id = :cid")
         .expression_attribute_values(":cid", AttributeValue::S(customer_id))
+        .projection_expression("ticket_number, subject, customer_id, #st, device, created_at, last_updated, password")
+        .expression_attribute_names("#st", "status")
         .send()
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query tickets for customer: {:?}", e), None))?;
@@ -92,57 +111,61 @@ pub async fn handle_search_tickets_by_subject(
     query: &str,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
-    // Search TicketSubjects (lowercase)
-    // BatchGet Tickets
+    // get all ticket numbers that match the query, the GSI only has the ticket number.
+    // we have to do a batch get to get the customer_id from the ticket by the ticket number, 
+    // then again to get the customer name from the customer by the customer_id
+
+    // 1. Build the query and get the resulting ticket numbers
     let mut filter_exprs = Vec::new();
     let mut expr_vals = HashMap::new();
     expr_vals.insert(":pk".to_string(), AttributeValue::S("ALL".to_string()));
 
     for (i, word) in query.split_whitespace().map(|q| q.to_lowercase()).enumerate() {
         let key = format!(":q{}", i);
-        filter_exprs.push(format!("contains(s, {})", key));
+        filter_exprs.push(format!("contains(subject_lower, {})", key));
         expr_vals.insert(key, AttributeValue::S(word));
     }
 
-    if filter_exprs.is_empty() {
-        return Ok(json!([]));
-    }
+    if filter_exprs.is_empty() { return Ok(json!([])); }
 
     let filter_expression = filter_exprs.join(" AND ");
 
-    let mut query_builder = client.query()
-        .table_name("TicketSubjects")
-        .index_name("TicketNumberIndex")
+    let mut base_query_builder = client.query()
+        .table_name("Tickets")
+        .index_name("TicketSearchIndex")
         .key_condition_expression("gsi_pk = :pk")
         .filter_expression(filter_expression)
         .scan_index_forward(false)
-        .projection_expression("ticket_number"); // Only need the key
+        .projection_expression("ticket_number");
+
     for (k, v) in expr_vals {
-        query_builder = query_builder.expression_attribute_values(k, v);
+        base_query_builder = base_query_builder.expression_attribute_values(k, v);
     }
 
-    // can only read 1mb per request, so do this to make requests automatically for when it needs to read more
-    let mut paginator = query_builder
-        .into_paginator()
-        .items()
-        .send();
+    let mut ticket_numbers: Vec<String> = Vec::with_capacity(15);
+    let mut last_evaluated_key = None;
 
-    // collect the ticket numbers into a Vec
-    let mut ticket_numbers: Vec<String> = Vec::new();
     loop {
-        if ticket_numbers.len() >= 15 {
-            break;
+        let mut query_builder = base_query_builder.clone();
+        if let Some(key) = last_evaluated_key {
+            query_builder = query_builder.set_exclusive_start_key(Some(key));
         }
-        let page = paginator.try_next().await
-            .map_err(|e| error_response(500, "Pagination Error", &format!("Failed to get next page of ticket subjects: {:?}", e), None))?;
 
-        match page {
-            Some(item) => {
+        let output = query_builder.send().await
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query ticket subjects: {:?}", e), None))?;
+
+        if let Some(items) = output.items {
+            for item in items {
                 let tn: TicketNumberOnly = serde_dynamo::from_item(item)
                     .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket subject search result: {:?}", e), None))?;
                 ticket_numbers.push(tn.ticket_number.to_string());
-            },
-            None => break,
+                if ticket_numbers.len() >= 15 { break; }
+            }
+        }
+
+        last_evaluated_key = output.last_evaluated_key;
+        if last_evaluated_key.is_none() || ticket_numbers.len() >= 15 {
+            break;
         }
     }
 
@@ -161,6 +184,8 @@ pub async fn handle_search_tickets_by_subject(
 
     let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
+        .projection_expression("ticket_number, subject, customer_id, #st, device, created_at")
+        .expression_attribute_names("#st", "status")
         .build()
         .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {:?}", e), None))?;
 
@@ -176,13 +201,13 @@ pub async fn handle_search_tickets_by_subject(
 
     let responses = output.responses.unwrap_or_else(HashMap::new);
     let ticket_items = responses.get("Tickets").cloned().unwrap_or_else(Vec::new);
-    let mut tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
+    let mut tickets_nocust: Vec<TinyTicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {:?}", e), None))?;
 
     // BatchGetItem doesn't guarantee order results in the same order as the requests so sorting is needed
     tickets_nocust.sort_by_key(|ticket| ticket.ticket_number);
 
-    let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
+    let tickets = get_customers_to_merge_into_tickets(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {:?}", e), None))
@@ -200,10 +225,10 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Result<Value, Respons
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to query recent tickets: {:?}", e), None))?;
 
-    let tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(output.items.unwrap_or_else(Vec::new))
+    let tickets_nocust: Vec<TinyTicketWithoutCustomer> = serde_dynamo::from_items(output.items.unwrap_or_else(Vec::new))
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {:?}", e), None))?;
 
-    let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
+    let tickets = get_customers_to_merge_into_tickets(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize recent tickets: {:?}", e), None))
@@ -246,7 +271,7 @@ pub async fn handle_get_recent_tickets_filtered(
 
         if items.is_empty() { continue; }
 
-        let parsed: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(items)
+        let parsed: Vec<TinyTicketWithoutCustomer> = serde_dynamo::from_items(items)
             .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to parse filtered tickets: {:?}", e), None))?;
 
         all_tickets_nocust.extend(parsed);
@@ -256,7 +281,7 @@ pub async fn handle_get_recent_tickets_filtered(
     all_tickets_nocust.sort_by(|a, b| b.ticket_number.cmp(&a.ticket_number));
     all_tickets_nocust.truncate(20);
 
-    let tickets = batch_fetch_and_merge_customers(all_tickets_nocust, client).await?;
+    let tickets = get_customers_to_merge_into_tickets(all_tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize filtered recent tickets: {:?}", e), None))
@@ -314,6 +339,7 @@ pub async fn handle_create_ticket(
             .item("ticket_number", AttributeValue::N(ticket_number.clone()))
             .item("gsi_pk", AttributeValue::S("ALL".to_string()))
             .item("subject", AttributeValue::S(subject.clone()))
+            .item("subject_lower", AttributeValue::S(subject.to_lowercase()))
             .item("customer_id", AttributeValue::S(customer_id.clone()))
             .item("status", AttributeValue::S(status.clone()))
             .item("device", AttributeValue::S(device.clone()))
@@ -325,18 +351,9 @@ pub async fn handle_create_ticket(
             .build()
             .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {:?}", e), None))?;
 
-        let put_subject = Put::builder()
-            .table_name("TicketSubjects")
-            .item("ticket_number", AttributeValue::N(ticket_number.clone()))
-            .item("gsi_pk", AttributeValue::S("ALL".to_string()))
-            .item("s", AttributeValue::S(subject.to_lowercase()))
-            .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {:?}", e), None))?;
-
         let result = client.transact_write_items()
             .transact_items(TransactWriteItem::builder().update(update_counter).build())
             .transact_items(TransactWriteItem::builder().put(put_ticket).build())
-            .transact_items(TransactWriteItem::builder().put(put_subject).build())
             .send()
             .await;
 
@@ -397,18 +414,6 @@ pub async fn handle_update_ticket(
         }
     }
 
-    if let Some(s) = &subject {
-        let update = aws_sdk_dynamodb::types::Update::builder()
-            .table_name("TicketSubjects")
-            .key("ticket_number", AttributeValue::N(ticket_number.clone()))
-            .update_expression("SET s = :s")
-            .expression_attribute_values(":s", AttributeValue::S(s.to_lowercase())) // Lowercase
-            .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket subjects: {:?}", e), None))?;
-
-        txn_items.push(TransactWriteItem::builder().update(update).build());
-    }
-
     let mut update_parts = Vec::new();
     let mut remove_parts = Vec::new();
     let mut expr_vals = HashMap::new();
@@ -416,7 +421,9 @@ pub async fn handle_update_ticket(
 
     if let Some(s) = subject {
         update_parts.push("subject = :s".to_string());
-        expr_vals.insert(":s".to_string(), AttributeValue::S(s));
+        expr_vals.insert(":s".to_string(), AttributeValue::S(s.clone()));
+        update_parts.push("subject_lower = :sl".to_string());
+        expr_vals.insert(":sl".to_string(), AttributeValue::S(s.to_lowercase()));
     }
     if let Some(st) = status {
         update_parts.push("#st = :st".to_string());
@@ -591,6 +598,8 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
 
     let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
+        .projection_expression("ticket_number, subject, customer_id, #st, device, created_at")
+        .expression_attribute_names("#st", "status")
         .build()
         .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {:?}", e), None))?;
 
@@ -606,23 +615,23 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
 
     let responses = output.responses.unwrap_or_else(HashMap::new);
     let ticket_items = responses.get("Tickets").cloned().unwrap_or_else(Vec::new);
-    let mut tickets_nocust: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
+    let mut tickets_nocust: Vec<TinyTicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {:?}", e), None))?;
 
     // Sort descending by ticket number (most recent first)
     tickets_nocust.sort_by(|a, b| b.ticket_number.cmp(&a.ticket_number));
 
     // 4. Merge customers
-    let tickets = batch_fetch_and_merge_customers(tickets_nocust, client).await?;
+    let tickets = get_customers_to_merge_into_tickets(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {:?}", e), None))
 }
 
-async fn batch_fetch_and_merge_customers(
-    tickets_nocust: Vec<TicketWithoutCustomer>,
+async fn get_customers_to_merge_into_tickets(
+    tickets_nocust: Vec<TinyTicketWithoutCustomer>,
     client: &Client,
-) -> Result<Vec<Ticket>, Response<Body>> {
+) -> Result<Vec<TinyTicket>, Response<Body>> {
     let customer_ids: Vec<String> = tickets_nocust.iter()
         .map(|t| t.customer_id.clone())
         .collect::<HashSet<_>>()
@@ -643,7 +652,7 @@ async fn batch_fetch_and_merge_customers(
 
     let ka = KeysAndAttributes::builder()
         .set_keys(Some(keys))
-        .projection_expression("customer_id, full_name, email, phone_numbers, created_at, last_updated") // Fetch full customer
+        .projection_expression("customer_id, full_name") // Only need ID and Name
         .build()
         .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {:?}", e), None))?;
 
@@ -660,27 +669,27 @@ async fn batch_fetch_and_merge_customers(
     let responses = batch_output.responses.unwrap_or_else(HashMap::new);
     let customer_items = responses.get("Customers").cloned().unwrap_or_else(Vec::new);
 
-    let customers_vec: Vec<Customer> = serde_dynamo::from_items(customer_items)
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customers in batch: {:?}", e), None))?;
-
-    let customer_map: HashMap<String, Customer> = customers_vec.into_iter()
-        .map(|c| (c.customer_id.clone(), c))
-        .collect();
+    // We can use a simpler struct or just serde_json::Value or just get the name manually
+    // But reusing Customer struct is okay if we accept optional fields are missing.
+    // However, Customer struct expects phone_numbers, created_at etc.
+    // So we should just parse into a temporary struct or map.
+    // Or, we create TinyCustomer.
+    // Let's just use Value for flexibility to extract just full_name.
+    
+    let mut customer_names = HashMap::new();
+    for item in customer_items {
+        if let (Some(cid), Some(fname)) = (item.get("customer_id").and_then(|av| av.as_s().ok()), item.get("full_name").and_then(|av| av.as_s().ok())) {
+            customer_names.insert(cid.clone(), fname.clone());
+        }
+    }
 
     let mut tickets = Vec::new();
     for details in tickets_nocust {
-        let customer = customer_map.get(&details.customer_id).cloned();
-        match customer {
-            Some(c) => {
-                tickets.push(Ticket {
-                    details,
-                    customer: c,
-                });
-            }
-            None => {
-                return Err(error_response(500, "Data Integrity Error", &format!("Ticket {:?} refers to missing customer_id {:?}", details.ticket_number, details.customer_id), None));
-            }
-        }
+        let name = customer_names.get(&details.customer_id).cloned().unwrap_or_else(|| "Unknown".to_string());
+        tickets.push(TinyTicket {
+            details,
+            customer_name: name,
+        });
     }
 
     Ok(tickets)

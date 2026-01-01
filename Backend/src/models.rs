@@ -45,6 +45,23 @@ pub struct TicketWithoutCustomer {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TinyTicketWithoutCustomer {
+    pub ticket_number: i64,
+    pub subject: String,
+    pub customer_id: String,
+    pub status: String,
+    pub device: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TinyTicket {
+    #[serde(flatten)]
+    pub details: TinyTicketWithoutCustomer,
+    pub customer_name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Ticket {
     #[serde(flatten)]
     pub details: TicketWithoutCustomer,
@@ -55,6 +72,7 @@ pub struct Ticket {
 pub struct Customer {
     pub customer_id: String,
     pub full_name: String,
+    pub full_name_lower: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     pub phone_numbers: Vec<PhoneNumber>,

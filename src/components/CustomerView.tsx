@@ -96,8 +96,10 @@ function CustomerView({
     try {
       const set = new Set<string>();
       (tickets || []).forEach((ticket) => {
-        const password = (getTicketPassword(ticket) || "").trim();
-        if (password) set.add(password);
+        if ('password' in ticket) {
+          const password = (getTicketPassword(ticket as TicketWithoutCustomer) || "").trim();
+          if (password) set.add(password);
+        }
       });
       return Array.from(set);
     } catch {

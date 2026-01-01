@@ -6,8 +6,10 @@ import { useApi } from "../hooks/useApi";
 import NavigationButton from "./ui/NavigationButton";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
-import type { Ticket, Customer } from "../types/api";
+import type { Customer, TinyTicket } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
+
+
 
 const parsePhoneNumber = (str: string) => (str || "").replace(/\D/g, "");
 const isLikelyPhone = (digits: string) => digits.length >= 7 && digits.length <= 11;
@@ -27,11 +29,10 @@ const formatPhoneLive = (value: string): string => {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
 };
 
-const isCustomer = (item: Ticket | Customer): item is Customer => {
-  // Check for property specific to Customer and NOT in Ticket.
-  // Ticket has 'customer' object. Customer does NOT have 'customer' object.
-  // Customer has 'full_name' at top level. Ticket has 'subject'.
-  return 'full_name' in item && !('subject' in item);
+const isCustomer = (item: TinyTicket | Customer): item is Customer => {
+  // Check for property specific to Customer and NOT in TinyTicket.
+  // TinyTicket has 'ticket_number'. Customer does not.
+  return 'full_name' in item && !('ticket_number' in item);
 };
 
 function SearchModal({
@@ -45,7 +46,7 @@ function SearchModal({
 }) {
   const api = useApi();
   const [search, setSearch] = useState<string>("");
-  const [results, setResults] = useState<(Ticket | Customer)[]>([]);
+  const [results, setResults] = useState<(TinyTicket | Customer)[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [status, setStatus] = useState<string>("Enter a search query");
   const [searchType, setSearchType] = useState<"tickets" | "customers">("tickets");
@@ -63,7 +64,7 @@ function SearchModal({
       if (query.length === 3) {
         const url = `/tickets?ticket_number_last_3_digits=${encodeURIComponent(query)}`;
         try {
-          const tickets = await api.get<Ticket[]>(url);
+          const tickets = await api.get<TinyTicket[]>(url);
           if (!signal.aborted && currentSearchQueryRef.current === query) {
             setResults(tickets || []);
             setStatus(tickets?.length === 0 ? "No results found" : "");
@@ -84,7 +85,7 @@ function SearchModal({
       } else {
         const url = `/tickets?search_by_number=${encodeURIComponent(query)}`;
         try {
-          const { ticket } = await api.get<{ ticket: Ticket | null }>(url);
+          const { ticket } = await api.get<{ ticket: TinyTicket | null }>(url);
           if (!signal.aborted && currentSearchQueryRef.current === query) {
             const res = ticket ? [ticket] : [];
             setResults(res);
@@ -138,7 +139,7 @@ function SearchModal({
         } else {
           // General query
           // Check what /query_all returns: { tickets: [], customers: [] }
-          const queryResult = await api.get<{ tickets: Ticket[], customers: Customer[] }>(`/query_all?query=${encodeURIComponent(trimmedQuery)}`);
+          const queryResult = await api.get<{ tickets: TinyTicket[], customers: Customer[] }>(`/query_all?query=${encodeURIComponent(trimmedQuery)}`);
 
           if (!signal.aborted && currentSearchQueryRef.current === trimmedQuery) {
             const customers = queryResult.customers || [];
@@ -414,7 +415,7 @@ function SearchModal({
                         <HighlightText text={item.subject} highlight={search} />
                       </div>
                       <div className="col-span-2 truncate">{item.status}</div>
-                      <div className="col-span-2 truncate">{item.customer?.full_name}</div>
+                      <div className="col-span-2 truncate">{item.customer_name}</div>
                     </div>
                     <div className="sm:hidden px-4 py-3 space-y-2">
                       <div className="flex items-center justify-between">
@@ -426,7 +427,7 @@ function SearchModal({
                       <div className="text-md truncate">
                         <HighlightText text={item.subject} highlight={search} />
                       </div>
-                      <div className="text-md truncate text-on-surface">{item.customer?.full_name}</div>
+                      <div className="text-md truncate text-on-surface">{item.customer_name}</div>
                     </div>
                   </>
                 )}

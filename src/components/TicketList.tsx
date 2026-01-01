@@ -6,12 +6,12 @@ import { cx, fmtDate } from "../utils/appUtils.jsx";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
-import type { Ticket, ApiContextValue } from "../types";
+import type { TinyTicket, ApiContextValue } from "../types";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
 // Ticket list item component that can use hooks
 interface TicketListItemProps {
-  ticket: Ticket;
+  ticket: TinyTicket;
   goTo: (to: string) => void;
 }
 function TicketListItem({
@@ -48,7 +48,7 @@ function TicketListItem({
             {fmtDate(ticket.created_at)}
           </div>
           <div className="col-span-2 truncate">
-            {ticket.customer?.full_name}
+            {ticket.customer_name}
           </div>
         </div>
 
@@ -74,7 +74,7 @@ function TicketListItem({
             </div>
           </div>
           <div className="text-md truncate text-on-surface">
-            {ticket.customer?.full_name}
+            {ticket.customer_name}
           </div>
         </div>
       </NavigationButton>
@@ -112,7 +112,7 @@ export function TicketListView({
     return saved ? JSON.parse(saved) : true; // default: collapsed
   });
 
-  const [items, setItems] = useState<Ticket[]>([]);
+  const [items, setItems] = useState<TinyTicket[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -172,7 +172,7 @@ export function TicketListView({
       isFetchingRef.current = true;
       setLoading(true);
       try {
-        const tickets = await api.get<Ticket[]>(
+        const tickets = await api.get<TinyTicket[]>(
           `/tickets?get_recent`,
         );
         setItems(tickets || []);

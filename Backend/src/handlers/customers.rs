@@ -92,7 +92,7 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
 
     for (i, word) in query.split_whitespace().map(|q| q.to_lowercase()).enumerate() {
         let key = format!(":q{}", i);
-        filter_exprs.push(format!("contains(n, {})", key));
+        filter_exprs.push(format!("contains(full_name_lower, {})", key));
         expr_vals.insert(key, AttributeValue::S(word));
     }
 
@@ -100,11 +100,17 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
         return Ok(json!([]));
     }
 
+    expr_vals.insert(":pk".to_string(), AttributeValue::S("ALL".to_string()));
+
     let filter_expression = filter_exprs.join(" AND ");
 
-    let mut scan_builder = client.scan()
-        .table_name("CustomerNames")
-        .filter_expression(filter_expression);
+    let mut scan_builder = client.query()
+        .table_name("Customers")
+        .index_name("CustomerSearchIndex")
+        .key_condition_expression("gsi_pk = :pk")
+        .filter_expression(filter_expression)
+        .scan_index_forward(false) // Newest first
+        .projection_expression("customer_id");
 
     for (k, v) in expr_vals {
         scan_builder = scan_builder.expression_attribute_values(k, v);
@@ -151,7 +157,9 @@ pub async fn handle_create_customer(
         .table_name("Customers")
         .condition_expression("attribute_not_exists(customer_id)")
         .item("customer_id", AttributeValue::S(customer_id.clone()))
+        .item("gsi_pk", AttributeValue::S("ALL".to_string()))
         .item("full_name", AttributeValue::S(full_name.clone())) // Stored with original casing
+        .item("full_name_lower", AttributeValue::S(full_name.to_lowercase())) // Lowercase for GSI search
         .item_if_not_empty("email", AttributeValue::S(email.unwrap_or_default()))
         .item("phone_numbers", AttributeValue::L(
             phone_numbers.iter().map(|p| {
@@ -173,14 +181,7 @@ pub async fn handle_create_customer(
 
     txn_items.push(TransactWriteItem::builder().put(put_customer).build());
 
-    let put_name = Put::builder()
-        .table_name("CustomerNames")
-        .item("customer_id", AttributeValue::S(customer_id.clone()))
-        .item("n", AttributeValue::S(full_name.to_lowercase())) // Lowercase for search
-        .build()
-        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer name Put item: {:?}", e), None))?;
-
-    txn_items.push(TransactWriteItem::builder().put(put_name).build());
+    // CustomerNames table write removed - using GSI now
 
     for phone in &phone_numbers {
         let phone_put = Put::builder()
@@ -263,17 +264,7 @@ pub async fn handle_update_customer(
         }
     }
 
-    // 2. Update CustomerNames (if full_name changed)
-    if let Some(fn_val) = &full_name {
-        let update = aws_sdk_dynamodb::types::Update::builder()
-            .table_name("CustomerNames")
-            .key("customer_id", AttributeValue::S(customer_id.clone()))
-            .update_expression("SET n = :fn")
-            .expression_attribute_values(":fn", AttributeValue::S(fn_val.to_lowercase())) // Lowercase for search
-            .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for customer names: {:?}", e), None))?;
-        txn_items.push(TransactWriteItem::builder().update(update).build());
-    }
+    // 2. Update CustomerNames (Removed - using GSI)
 
     // 3. Update Customers (email, phones, last_updated)
     // We ALWAYS update Customers for last_updated
@@ -314,7 +305,11 @@ pub async fn handle_update_customer(
     // Also update full_name in Customers if it changed (original case)
     if let Some(fn_val) = full_name {
         update_parts.push("full_name = :fn".to_string());
-        expr_vals.insert(":fn".to_string(), AttributeValue::S(fn_val));
+        expr_vals.insert(":fn".to_string(), AttributeValue::S(fn_val.clone()));
+
+        // Also update full_name_lower
+        update_parts.push("full_name_lower = :fnl".to_string());
+        expr_vals.insert(":fnl".to_string(), AttributeValue::S(fn_val.to_lowercase()));
     }
 
     // Build update expression with both SET and REMOVE clauses

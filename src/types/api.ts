@@ -9,6 +9,18 @@ export interface LineItem {
   price: number;
 }
 
+
+// TinyTicket interfaces for lists
+export interface TinyTicket {
+  ticket_number: number;
+  subject: string;
+  customer_id: string;
+  status: string;
+  device: string;
+  created_at: number;
+  customer_name: string;
+}
+
 export interface TicketWithoutCustomer {
   ticket_number: number;
   subject: string;

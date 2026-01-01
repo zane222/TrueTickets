@@ -336,7 +336,9 @@ pub async fn handle_migrate_tickets(
         let put_customer = Put::builder()
             .table_name("Customers")
             .item("customer_id", AttributeValue::S(cust_id.clone()))
+            .item("gsi_pk", AttributeValue::S("ALL".to_string()))
             .item("full_name", AttributeValue::S(api_cust.business_and_full_name.clone()))
+            .item("full_name_lower", AttributeValue::S(api_cust.business_and_full_name.to_lowercase()))
             .item_if_not_empty("email", AttributeValue::S(api_cust.email.clone().unwrap_or_default()))
             .item("phone_numbers", AttributeValue::L(
                 phone_numbers.iter().map(|p| {
@@ -358,15 +360,9 @@ pub async fn handle_migrate_tickets(
 
         cust_txn_items.push(TransactWriteItem::builder().put(put_customer).build());
 
-        // CustomerNames table
-        let put_name = Put::builder()
-            .table_name("CustomerNames")
-            .item("customer_id", AttributeValue::S(cust_id.clone()))
-            .item("n", AttributeValue::S(api_cust.business_and_full_name.to_lowercase()))
-            .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer name Put item: {:?}", e), None))?;
 
-        cust_txn_items.push(TransactWriteItem::builder().put(put_name).build());
+
+        // CustomerNames table write removed - using GSI now
 
         // CustomerPhoneIndex table
         if let Some(ref p) = api_cust.phone {
@@ -408,6 +404,7 @@ pub async fn handle_migrate_tickets(
             .item("ticket_number", AttributeValue::N(ticket.number.to_string()))
             .item("gsi_pk", AttributeValue::S("ALL".to_string()))
             .item("subject", AttributeValue::S(ticket.subject.clone()))
+            .item("subject_lower", AttributeValue::S(ticket.subject.to_lowercase()))
             .item("customer_id", AttributeValue::S(ticket.customer_id.to_string()))
             .item("status", AttributeValue::S(status.to_string()))
             .item("device", AttributeValue::S(device.to_string()))
@@ -428,16 +425,6 @@ pub async fn handle_migrate_tickets(
             .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {:?}", e), None))?;
 
         ticket_txn_items.push(TransactWriteItem::builder().put(put_ticket).build());
-
-        let put_subject = Put::builder()
-            .table_name("TicketSubjects")
-            .item("ticket_number", AttributeValue::N(ticket.number.to_string()))
-            .item("gsi_pk", AttributeValue::S("ALL".to_string()))
-            .item("s", AttributeValue::S(ticket.subject.to_lowercase()))
-            .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket subject Put item: {:?}", e), None))?;
-
-        ticket_txn_items.push(TransactWriteItem::builder().put(put_subject).build());
 
         db_client.transact_write_items()
             .set_transact_items(Some(ticket_txn_items))
