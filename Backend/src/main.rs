@@ -170,6 +170,33 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(e) => error_response(500, "Internal Server Error", &e.to_string(), None),
             }
         }
+        ("/financials/purchases", "PUT") => {
+            // Check user permissions
+            let user_groups = get_user_groups_from_event(&event);
+            if !can_manage_users(&user_groups) {
+                return error_response(403, "Insufficient permissions", "You do not have permission to manage financials", Some("Only ApplicationAdmin and Owner can manage financials"));
+            }
+
+            let params = event.query_string_parameters();
+            let year = match params.first("year").and_then(|y| y.parse::<i32>().ok()) {
+                Some(val) => val,
+                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'year' parameter", None),
+            };
+            let month = match params.first("month").and_then(|m| m.parse::<u32>().ok()) {
+                Some(val) => val,
+                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'month' parameter", None),
+            };
+
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return *resp,
+            };
+
+            match handlers::update_purchases(year, month, body).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(e) => error_response(500, "Internal Server Error", &e.to_string(), None),
+            }
+        }
         // -------------------------
         // TICKETS
         // -------------------------

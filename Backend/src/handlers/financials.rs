@@ -46,3 +46,19 @@ pub async fn get_revenue_payroll_and_purchases(
 
     Ok(response)
 }
+
+pub async fn update_purchases(
+    _year: i32,
+    _month: u32,
+    body: Value,
+) -> Result<Value, Value> {
+    // Placeholder logic for updating purchases
+    // In a real implementation, this would save to DynamoDB
+    println!("Received update for purchases: {:?}", body);
+    
+    // Return success
+    Ok(json!({
+        "success": true,
+        "message": "Purchases updated successfully (placeholder)"
+    }))
+}
