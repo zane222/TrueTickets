@@ -302,27 +302,32 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 None => return error_response(400, "Missing query parameter", "Provide a query parameter (e.g., ?number=123)", None),
             };
 
-            let result = match first_parameter.as_str() {
+            let result = match first_parameter.as_str() { // don't add anything to this that needs any actual parameters
                 "number" => handle_get_ticket_by_number(&value, false, &dynamodb_client).await,
                 "search_by_number" => handle_get_ticket_by_number(&value, true, &dynamodb_client).await,
                 "ticket_number_last_3_digits" => handle_get_tickets_by_suffix(&value, &dynamodb_client).await,
                 "subject_query" => handle_search_tickets_by_subject(&value, &dynamodb_client).await,
                 "customer_id" => handle_get_tickets_by_customer_id(value.to_string(), &dynamodb_client).await,
-                "get_recent" => {
-                    // Check for device and status filters
-                    let device = event.query_string_parameters().first("device").map(|s| s.to_string());
-                    let status_param = event.query_string_parameters().first("status").map(|s| s.to_string());
-
-                    if let (Some(d), Some(s)) = (device, status_param) {
-                        // Parse status pipe separated
-                        let statuses: Vec<String> = s.split('|').map(|st| st.trim().to_string()).collect();
-                        handle_get_recent_tickets_filtered(d, statuses, &dynamodb_client).await
-                    } else {
-                        // Global recent
-                        handle_get_recent_tickets(&dynamodb_client).await
-                    }
-                },
                 _ => return error_response(400, "Unknown query parameter", &format!("Unsupported query parameter: {:?}", first_parameter), None),
+            };
+
+            match result {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/tickets/recent", "GET") => {
+            // Check for device and status filters
+            let device = event.query_string_parameters().first("device").map(|s| s.to_string());
+            let status_param = event.query_string_parameters().first("status").map(|s| s.to_string());
+
+            let result = if let (Some(d), Some(s)) = (device, status_param) {
+                // Parse status pipe separated
+                let statuses: Vec<String> = s.split('|').map(|st| st.trim().to_string()).collect();
+                handle_get_recent_tickets_filtered(d, statuses, &dynamodb_client).await
+            } else {
+                // Global recent
+                handle_get_recent_tickets(&dynamodb_client).await
             };
 
             match result {

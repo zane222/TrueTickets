@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { STATUSES, DEVICES, EMPTY_ARRAY } from "../constants/appConstants.js";
-import { cx, fmtDate } from "../utils/appUtils.jsx";
+import { fmtDate } from "../utils/appUtils.jsx";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import NavigationButton from "./ui/NavigationButton";
@@ -20,12 +20,7 @@ function TicketListItem({
 }: TicketListItemProps): React.ReactElement {
   const targetUrl = `${window.location.origin}/&${ticket.ticket_number}`;
   return (
-    <motion.div
-      data-row
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-    >
+    <div data-row>
       <NavigationButton
         onClick={() => goTo(`/&${ticket.ticket_number}`)}
         targetUrl={targetUrl}
@@ -78,7 +73,7 @@ function TicketListItem({
           </div>
         </div>
       </NavigationButton>
-    </motion.div>
+    </div>
   );
 }
 
@@ -93,23 +88,15 @@ export function TicketListView({
   api,
 }: TicketListViewProps): React.ReactElement {
   // Load filter states from localStorage with defaults
-  const [statusHidden, setStatusHidden] = useState(() => {
-    const saved = localStorage.getItem("ticketStatusHidden");
-    return saved ? new Set(JSON.parse(saved)) : new Set(["Resolved"]);
+  const [selectedStatus, setSelectedStatus] = useState<string>(() => {
+    const saved = localStorage.getItem("ticketSelectedStatus");
+    // Default: Diagnosing
+    return saved ? saved : "Diagnosing";
   });
-  const [selectedDevices, _setSelectedDevices] = useState(() => {
-    const saved = localStorage.getItem("ticketSelectedDevices");
-    return saved
-      ? new Set(JSON.parse(saved))
-      : new Set(Array.from({ length: DEVICES.length }, (_, i) => i));
-  });
-  const [statusFilterCollapsed, setStatusFilterCollapsed] = useState(() => {
-    const saved = localStorage.getItem("ticketStatusFilterCollapsed");
-    return saved ? JSON.parse(saved) : true; // default: collapsed
-  });
-  const [deviceFilterCollapsed, _setDeviceFilterCollapsed] = useState(() => {
-    const saved = localStorage.getItem("ticketDeviceFilterCollapsed");
-    return saved ? JSON.parse(saved) : true; // default: collapsed
+  const [selectedDevice, setSelectedDevice] = useState<string>(() => {
+    const saved = localStorage.getItem("ticketSelectedDevice");
+    // Default: All
+    return saved ? saved : "All";
   });
 
   const [items, setItems] = useState<TinyTicket[]>([]);
@@ -119,43 +106,31 @@ export function TicketListView({
   // Save state changes to localStorage
   useEffect(() => {
     localStorage.setItem(
-      "ticketStatusHidden",
-      JSON.stringify([...statusHidden]),
+      "ticketSelectedStatus",
+      selectedStatus,
     );
-  }, [statusHidden]);
+  }, [selectedStatus]);
 
   useEffect(() => {
     localStorage.setItem(
-      "ticketSelectedDevices",
-      JSON.stringify([...selectedDevices]),
+      "ticketSelectedDevice",
+      selectedDevice,
     );
-  }, [selectedDevices]);
+  }, [selectedDevice]);
 
-  useEffect(() => {
+  const selectStatus = (status: string): void => {
+    setSelectedStatus(status);
     localStorage.setItem(
-      "ticketStatusFilterCollapsed",
-      JSON.stringify(statusFilterCollapsed),
+      "ticketSelectedStatus",
+      status,
     );
-  }, [statusFilterCollapsed]);
+  };
 
-  useEffect(() => {
+  const selectDevice = (device: string): void => {
+    setSelectedDevice(device);
     localStorage.setItem(
-      "ticketDeviceFilterCollapsed",
-      JSON.stringify(deviceFilterCollapsed),
-    );
-  }, [deviceFilterCollapsed]);
-
-  const toggleStatus = (status: string): void => {
-    const newStatusHidden = new Set(statusHidden);
-    if (newStatusHidden.has(status)) {
-      newStatusHidden.delete(status);
-    } else {
-      newStatusHidden.add(status);
-    }
-    setStatusHidden(newStatusHidden);
-    localStorage.setItem(
-      "ticketStatusHidden",
-      JSON.stringify([...newStatusHidden]),
+      "ticketSelectedDevice",
+      device,
     );
   };
 
@@ -163,7 +138,7 @@ export function TicketListView({
   const isFetchingRef = useRef<boolean>(false);
 
   const fetchTickets = useCallback(
-    async (): Promise<void> => {
+    async (device: string, status: string): Promise<void> => {
       // Prevent re-entrant calls — if a fetch is already in progress, skip.
       if (isFetchingRef.current) {
         return;
@@ -171,10 +146,18 @@ export function TicketListView({
 
       isFetchingRef.current = true;
       setLoading(true);
+      setItems([]); // Clear the list immediately when loading starts
       try {
-        const tickets = await api.get<TinyTicket[]>(
-          `/tickets?get_recent`,
-        );
+        let url: string;
+        if (device === "All") {
+          // All devices - fetch without device filter
+          url = `/tickets/recent`;
+        } else {
+          // Single device selected - use backend filtering with single status
+          url = `/tickets/recent?device=${encodeURIComponent(device)}&status=${encodeURIComponent(status)}`;
+        }
+        const tickets = await api.get<TinyTicket[]>(url);
+
         setItems(tickets || []);
       } catch (error) {
         console.error(error);
@@ -187,12 +170,11 @@ export function TicketListView({
     [api],
   );
 
+  // Fetch tickets when device or status changes
   useEffect(() => {
-    // Run once on mount to load initial tickets.
-    fetchTickets();
-    // Intentionally ignore fetchTickets in deps to avoid re-running if its identity changes.
+    fetchTickets(selectedDevice, selectedStatus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedDevice, selectedStatus]);
 
   const ticketListKeybinds = useMemo<KeyBind[]>(() => [
     {
@@ -222,44 +204,68 @@ export function TicketListView({
 
   return (
     <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-6">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setStatusFilterCollapsed(!statusFilterCollapsed)}
-            className="flex items-center gap-2 text-md font-medium hover:opacity-80 transition-opacity text-on-surface"
-            tabIndex={-1}
-          >
-            <span>Status filter:</span>
-            {statusFilterCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-          </button>
-          <div
-            className="overflow-hidden transition-all duration-200 ease-in-out"
-            style={{
-              maxHeight: statusFilterCollapsed ? "0px" : "200px",
-              opacity: statusFilterCollapsed ? 0 : 1,
-            }}
-          >
-            <div className="flex flex-wrap gap-1.5 sm:gap-2 pt-2">
-              {STATUSES.map((status, _index) => (
-                <button
-                  key={status}
-                  onClick={() => toggleStatus(status)}
-                  className={cx(
-                    "md-chip text-md sm:text-md px-2 py-1 sm:px-3 sm:py-1.5",
-                    statusHidden.has(status) ? "" : "md-chip--on",
-                  )}
-                  tabIndex={statusFilterCollapsed ? -1 : 0}
+      {/* Device and Status Pickers in same row */}
+      <div className="flex flex-wrap gap-4 mb-4">
+        {/* Device Picker - Single Select (15% wider, 10% taller) */}
+        <div className="md-card p-4 space-y-2 max-w-md">
+          <p className="text-sm font-semibold">Device:</p>
+          <div className="w-full flex flex-wrap gap-1.5">
+            {["All", ...DEVICES].map((device) => {
+              const isSelected = selectedDevice === device;
+
+              return (
+                <motion.button
+                  key={device}
+                  onClick={() => selectDevice(device)}
+                  className={`${isSelected
+                    ? "md-btn-primary px-3"
+                    : device === "All"
+                      ? "md-btn-surface px-2 !border-gray-400"
+                      : "md-btn-surface px-2"
+                    } flex-auto inline-flex items-center justify-center gap-1 py-1.5 text-[13px] font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all hover:brightness-95`}
+                  layout
                 >
-                  {status}
-                </button>
+                  <span>{device}</span>
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Status Picker - Single Select (only show when specific device selected, 15% wider, 10% taller) */}
+        {selectedDevice !== "All" && (
+          <div className="md-card p-4 space-y-2 max-w-xl">
+            <p className="text-sm font-semibold">Status:</p>
+            <div className="w-full flex flex-col gap-1.5">
+              {[
+                [STATUSES[0], STATUSES[2], STATUSES[4], STATUSES[6]], // First row
+                [STATUSES[1], STATUSES[3], STATUSES[5], STATUSES[7]]  // Second row
+              ].map((statusRow, rowIndex) => (
+                <div key={rowIndex} className="flex gap-1.5 w-full">
+                  {statusRow.map((status) => {
+                    const isSelected = selectedStatus === status;
+
+                    return (
+                      <motion.button
+                        key={status}
+                        onClick={() => selectStatus(status)}
+                        className={`${isSelected
+                          ? "md-btn-primary px-3"
+                          : (status === "Ready" || status === "Resolved")
+                            ? "md-btn-surface px-2 !border-gray-400"
+                            : "md-btn-surface px-2"
+                          } flex-auto inline-flex items-center justify-center gap-1 py-1.5 text-[13px] font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all hover:brightness-95`}
+                        layout
+                      >
+                        <span>{status}</span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
               ))}
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="md-card overflow-hidden">
@@ -273,17 +279,10 @@ export function TicketListView({
           <div className="col-span-2 font-semibold">Customer</div>
         </div>
         <div ref={listRef}>
-          <AnimatePresence>
-            {(items || [])
-              .filter(
-                (ticket) =>
-                  !ticket.status ||
-                  !statusHidden.has(ticket.status),
-              )
-              .map((ticket) => (
-                <TicketListItem key={ticket.ticket_number} ticket={ticket} goTo={goTo} />
-              ))}
-          </AnimatePresence>
+          {/* No client-side filtering - backend handles it all */}
+          {(items || []).map((ticket) => (
+            <TicketListItem key={ticket.ticket_number} ticket={ticket} goTo={goTo} />
+          ))}
         </div>
         {loading && (
           <div className="flex items-center justify-center p-6 text-md gap-3">
