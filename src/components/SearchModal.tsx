@@ -50,6 +50,7 @@ function SearchModal({
   const [loading, setLoading] = useState<boolean>(false);
   const [status, setStatus] = useState<string>("Enter a search query");
   const [searchType, setSearchType] = useState<"tickets" | "customers">("tickets");
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
   // Removed latestTicketNumber and its fetching logic as backend now handles suffix search.
 
@@ -57,6 +58,7 @@ function SearchModal({
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const currentSearchQueryRef = useRef<string>("");
+  const resultRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const searchTicketNumber = React.useCallback(
     async (query: string, signal: AbortSignal) => {
@@ -201,6 +203,8 @@ function SearchModal({
   const searchKeybinds = useMemo<KeyBind[]>(() => [
     { key: "N", description: "New customer", category: "Navigation" },
     { key: "C", description: "Close search", category: "Navigation" },
+    { key: "J", description: "Next result", category: "Search" },
+    { key: "K", description: "Previous result", category: "Search" },
   ], []);
 
   useRegisterKeybinds(open ? searchKeybinds : EMPTY_ARRAY);
@@ -209,9 +213,32 @@ function SearchModal({
     'n': () => handleNewCustomer(),
     'c': () => onClose(),
     'escape': () => onClose(),
+    'j': () => {
+      if (results.length === 0) return;
+      setSelectedIndex((prev) => {
+        const newIndex = prev === -1 ? 0 : Math.min(prev + 1, results.length - 1);
+        // Focus the button
+        setTimeout(() => {
+          resultRefs.current[newIndex]?.focus();
+        }, 0);
+        return newIndex;
+      });
+    },
+    'k': () => {
+      if (results.length === 0) return;
+      setSelectedIndex((prev) => {
+        const newIndex = prev === -1 ? 0 : Math.max(prev - 1, 0);
+        // Focus the button
+        setTimeout(() => {
+          resultRefs.current[newIndex]?.focus();
+        }, 0);
+        return newIndex;
+      });
+    },
     'enter': () => {
       if (results.length > 0) {
-        const item = results[0];
+        const index = selectedIndex === -1 ? 0 : selectedIndex;
+        const item = results[index];
         if (isCustomer(item)) {
           goTo(`/$${item.customer_id}`);
         } else {
@@ -220,7 +247,7 @@ function SearchModal({
         onClose();
       }
     }
-  }), [onClose, results, goTo, handleNewCustomer]);
+  }), [onClose, results, goTo, handleNewCustomer, selectedIndex]);
 
   useHotkeys(hotkeyMap);
 
@@ -309,6 +336,10 @@ function SearchModal({
     }
   }, [loading, results, searchType, onClose, goTo]);
 
+  // Reset selected index when results change
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [results]);
 
 
   if (!open) return null;
@@ -380,9 +411,12 @@ function SearchModal({
                 {status}
               </div>
             )}
-            {!loading && results.map((item) => (
+            {!loading && results.map((item, index) => (
               <NavigationButton
                 key={isCustomer(item) ? item.customer_id : item.ticket_number}
+                ref={(el) => {
+                  resultRefs.current[index] = el;
+                }}
                 onClick={() => {
                   onClose();
                   if (isCustomer(item)) goTo(`/$${item.customer_id}`);

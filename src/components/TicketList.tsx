@@ -14,14 +14,15 @@ interface TicketListItemProps {
   ticket: TinyTicket;
   goTo: (to: string) => void;
 }
-function TicketListItem({
-  ticket,
-  goTo,
-}: TicketListItemProps): React.ReactElement {
+const TicketListItem = React.forwardRef<HTMLButtonElement, TicketListItemProps>((
+  { ticket, goTo },
+  ref
+) => {
   const targetUrl = `${window.location.origin}/&${ticket.ticket_number}`;
   return (
     <div data-row>
       <NavigationButton
+        ref={ref}
         onClick={() => goTo(`/&${ticket.ticket_number}`)}
         targetUrl={targetUrl}
         className="md-row-box w-full text-left transition-all duration-150 group"
@@ -75,7 +76,9 @@ function TicketListItem({
       </NavigationButton>
     </div>
   );
-}
+});
+
+TicketListItem.displayName = "TicketListItem";
 
 export interface TicketListViewProps {
   goTo: (to: string) => void;
@@ -101,7 +104,9 @@ export function TicketListView({
 
   const [items, setItems] = useState<TinyTicket[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const ticketRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Save state changes to localStorage
   useEffect(() => {
@@ -176,6 +181,11 @@ export function TicketListView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDevice, selectedStatus]);
 
+  // Reset selected index when items change
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [items]);
+
   const ticketListKeybinds = useMemo<KeyBind[]>(() => [
     {
       key: "H",
@@ -185,6 +195,16 @@ export function TicketListView({
     {
       key: "S",
       description: "Search",
+      category: "Navigation",
+    },
+    {
+      key: "J",
+      description: "Next ticket",
+      category: "Navigation",
+    },
+    {
+      key: "K",
+      description: "Previous ticket",
       category: "Navigation",
     },
   ], []);
@@ -198,7 +218,33 @@ export function TicketListView({
       const searchEvent = new CustomEvent("openSearch");
       window.dispatchEvent(searchEvent);
     },
-  }), [goTo]);
+    j: () => {
+      if (items.length === 0) return;
+      setSelectedIndex((prev) => {
+        const newIndex = prev === -1 ? 0 : Math.min(prev + 1, items.length - 1);
+        setTimeout(() => {
+          ticketRefs.current[newIndex]?.focus();
+        }, 0);
+        return newIndex;
+      });
+    },
+    k: () => {
+      if (items.length === 0) return;
+      setSelectedIndex((prev) => {
+        const newIndex = prev === -1 ? 0 : Math.max(prev - 1, 0);
+        setTimeout(() => {
+          ticketRefs.current[newIndex]?.focus();
+        }, 0);
+        return newIndex;
+      });
+    },
+    enter: () => {
+      if (items.length > 0 && selectedIndex >= 0) {
+        const ticket = items[selectedIndex];
+        goTo(`/&${ticket.ticket_number}`);
+      }
+    },
+  }), [goTo, items, selectedIndex]);
 
   useHotkeys(hotkeyMap, showSearch);
 
@@ -223,6 +269,7 @@ export function TicketListView({
                       ? "md-btn-surface px-2 !border-gray-400"
                       : "md-btn-surface px-2"
                     } flex-auto inline-flex items-center justify-center gap-1 py-1.5 text-[13px] font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all hover:brightness-95`}
+                  tabIndex={-1}
                   layout
                 >
                   <span>{device}</span>
@@ -255,6 +302,7 @@ export function TicketListView({
                             ? "md-btn-surface px-2 !border-gray-400"
                             : "md-btn-surface px-2"
                           } flex-auto inline-flex items-center justify-center gap-1 py-1.5 text-[13px] font-medium rounded-lg touch-manipulation whitespace-nowrap transition-all hover:brightness-95`}
+                        tabIndex={-1}
                         layout
                       >
                         <span>{status}</span>
@@ -280,8 +328,15 @@ export function TicketListView({
         </div>
         <div ref={listRef}>
           {/* No client-side filtering - backend handles it all */}
-          {(items || []).map((ticket) => (
-            <TicketListItem key={ticket.ticket_number} ticket={ticket} goTo={goTo} />
+          {(items || []).map((ticket, index) => (
+            <TicketListItem
+              key={ticket.ticket_number}
+              ref={(el) => {
+                ticketRefs.current[index] = el;
+              }}
+              ticket={ticket}
+              goTo={goTo}
+            />
           ))}
         </div>
         {loading && (

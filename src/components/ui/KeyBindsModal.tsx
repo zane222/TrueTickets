@@ -26,7 +26,7 @@ export function KeyBindsModal({ keybinds }: KeyBindsModalProps) {
     };
 
     const handleKeyPress = (event: KeyboardEvent) => {
-      if ((event.key === 'k' || event.key === 'K') && !isInputFocused()) {
+      if ((event.key === 'b' || event.key === 'B') && !isInputFocused()) {
         event.preventDefault();
         setIsOpen(!isOpen);
       }
@@ -36,8 +36,17 @@ export function KeyBindsModal({ keybinds }: KeyBindsModalProps) {
       }
     };
 
+    // Listen for custom event to open from button click
+    const handleOpenKeybinds = () => {
+      setIsOpen(true);
+    };
+
     window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
+    window.addEventListener('openKeybinds', handleOpenKeybinds);
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+      window.removeEventListener('openKeybinds', handleOpenKeybinds);
+    };
   }, [isOpen]);
 
   // Group keybinds by category and sort

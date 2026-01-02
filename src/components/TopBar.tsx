@@ -1,4 +1,4 @@
-import { Search, Settings } from "lucide-react";
+import { Search, Settings, Keyboard } from "lucide-react";
 import NavigationButton from "./ui/NavigationButton";
 import { useStoreConfig } from "../context/StoreConfigContext";
 
@@ -6,6 +6,7 @@ import { useStoreConfig } from "../context/StoreConfigContext";
 interface TopBarProps {
   onHome: () => void;
   onSearchClick: () => void;
+  onKeyBinds: () => void;
   onSettings: () => void;
   onLogout: () => void;
 }
@@ -13,6 +14,7 @@ interface TopBarProps {
 export function TopBar({
   onHome,
   onSearchClick,
+  onKeyBinds,
   onSettings,
 }: TopBarProps) {
   const { config } = useStoreConfig();
@@ -43,6 +45,16 @@ export function TopBar({
             tabIndex={-1}
           >
             <Search className="w-6 h-6" />
+          </NavigationButton>
+
+          <NavigationButton
+            onClick={onKeyBinds}
+            targetUrl={`${window.location.origin}/`}
+            title="Keyboard Shortcuts"
+            className="hidden sm:inline-flex md-btn-surface elev-1 items-center justify-center w-12 h-12 rounded-full touch-manipulation"
+            tabIndex={-1}
+          >
+            <Keyboard className="w-6 h-6" />
           </NavigationButton>
 
           <NavigationButton

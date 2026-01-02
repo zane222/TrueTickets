@@ -6,6 +6,7 @@ import apiClient from "./api/apiClient";
 import awsconfig from "./aws-exports.ts";
 import { signOut } from "aws-amplify/auth";
 import { useRoute } from "./hooks/useRoute";
+import { useHotkeys } from "./hooks/useHotkeys";
 import { KeyBindsModal } from "./components/ui/KeyBindsModal";
 
 import { KeyBindsProvider } from "./components/KeyBindsProvider";
@@ -207,6 +208,19 @@ function App() {
   // Get keybinds from context
   const { keybinds } = useKeyBindsContext();
 
+  // Global hotkeys - 's' for search
+  const globalHotkeyMap = useMemo(() => ({
+    s: () => {
+      if (!showSearch) {
+        // Small delay to prevent 's' from being typed in the search box
+        setTimeout(() => setShowSearch(true), 0);
+      }
+    },
+  }), [showSearch]);
+
+  // Enable global hotkeys when search is not open
+  useHotkeys(globalHotkeyMap, showSearch);
+
   const handleLogout = async () => {
     try {
       await signOut();
@@ -221,6 +235,10 @@ function App() {
       <TopBar
         onHome={() => navigate("/")}
         onSearchClick={() => setShowSearch(true)}
+        onKeyBinds={() => {
+          const event = new CustomEvent("openKeybinds");
+          window.dispatchEvent(event);
+        }}
         onSettings={() => navigate("/settings")}
         onLogout={handleLogout}
       />

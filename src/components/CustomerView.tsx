@@ -32,6 +32,8 @@ function CustomerView({
   const [loading, setLoading] = useState<boolean>(true);
   const [tickets, setTickets] = useState<TicketWithoutCustomer[]>([]);
   const [tLoading, setTLoading] = useState<boolean>(false);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const ticketRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
 
   // Change detection
   /*
@@ -69,6 +71,16 @@ function CustomerView({
       description: "New ticket",
       category: "Navigation",
     },
+    {
+      key: "J",
+      description: "Next ticket",
+      category: "Navigation",
+    },
+    {
+      key: "K",
+      description: "Previous ticket",
+      category: "Navigation",
+    },
   ], []);
 
   useRegisterKeybinds(showSearch ? EMPTY_ARRAY : customerViewKeybinds);
@@ -88,7 +100,33 @@ function CustomerView({
       const encodedName = encodeURIComponent(customerName);
       goTo(`/$${id}?newticket&customerName=${encodedName}`);
     },
-  }), [id, goTo, customer?.full_name]);
+    j: () => {
+      if (tickets.length === 0) return;
+      setSelectedIndex((prev) => {
+        const newIndex = prev === -1 ? 0 : Math.min(prev + 1, tickets.length - 1);
+        setTimeout(() => {
+          ticketRefs.current[newIndex]?.focus();
+        }, 0);
+        return newIndex;
+      });
+    },
+    k: () => {
+      if (tickets.length === 0) return;
+      setSelectedIndex((prev) => {
+        const newIndex = prev === -1 ? 0 : Math.max(prev - 1, 0);
+        setTimeout(() => {
+          ticketRefs.current[newIndex]?.focus();
+        }, 0);
+        return newIndex;
+      });
+    },
+    enter: () => {
+      if (tickets.length > 0 && selectedIndex >= 0) {
+        const ticket = tickets[selectedIndex];
+        goTo(`/&${ticket.ticket_number}`);
+      }
+    },
+  }), [id, goTo, customer?.full_name, tickets, selectedIndex]);
 
   useHotkeys(hotkeyMap, showSearch);
 
@@ -213,6 +251,11 @@ function CustomerView({
     };
   }, [loadAllTickets]);
 
+  // Reset selected index when tickets change
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [tickets]);
+
   if (loading)
     return (
       <LoadingSpinnerWithText
@@ -287,11 +330,10 @@ function CustomerView({
           {/* Tickets List */}
           <div className="md-card">
             <div className="px-4 sm:px-6 py-4 font-semibold">Tickets</div>
-            <div className="hidden sm:grid grid-cols-12 text-sm tracking-wider px-5 py-3 text-on-surface">
+            <div className="hidden sm:grid grid-cols-16 text-sm tracking-wider px-4 py-3 text-on-surface">
               <div className="col-span-2 font-semibold">Number</div>
-              <div className="col-span-4 font-semibold">Subject</div>
-              <div className="col-span-2 font-semibold">Status</div>
-              <div className="col-span-2 font-semibold">Device</div>
+              <div className="col-span-9 font-semibold">Subject</div>
+              <div className="col-span-3 font-semibold">Status</div>
               <div className="col-span-2 font-semibold">Created</div>
             </div>
             <div
@@ -301,22 +343,22 @@ function CustomerView({
               {(tickets || []).map((ticket, index) => (
                 <NavigationButton
                   key={`${ticket.ticket_number}-${index}`}
+                  ref={(el) => {
+                    ticketRefs.current[index] = el;
+                  }}
                   onClick={() => goTo(`/&${ticket.ticket_number}`)}
                   targetUrl={`${window.location.origin}/&${ticket.ticket_number}`}
                   className="md-row-box w-full text-left transition-all duration-150 group"
                   tabIndex={0}
                 >
                   {/* Desktop grid layout */}
-                  <div className="hidden sm:grid grid-cols-12 px-4 py-3">
+                  <div className="hidden sm:grid grid-cols-16 px-4 py-3">
                     <div className="col-span-2 truncate">
                       #{ticket.ticket_number}
                     </div>
-                    <div className="col-span-4 truncate">{ticket.subject}</div>
-                    <div className="col-span-2 truncate">
+                    <div className="col-span-9 truncate">{ticket.subject}</div>
+                    <div className="col-span-3 truncate">
                       {ticket.status}
-                    </div>
-                    <div className="col-span-2 truncate">
-                      {ticket.device}
                     </div>
                     <div className="col-span-2 truncate">
                       {fmtDate(ticket.created_at)}

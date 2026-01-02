@@ -38,21 +38,22 @@ function useMiddleClick(
  * @param targetUrl - URL to open when middle-clicked
  * @param props - Additional button props
  */
-function NavigationButton({
+const NavigationButton = React.forwardRef<HTMLButtonElement, {
+  onClick: () => void;
+  children: React.ReactNode;
+  className?: string;
+  targetUrl: string;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>>(({
   onClick,
   children,
   className,
   targetUrl,
   ...props
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  className?: string;
-  targetUrl: string;
-} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+}, ref) => {
   const middleClickProps = useMiddleClick(onClick, targetUrl);
   return (
     <button
+      ref={ref}
       onClick={onClick}
       {...middleClickProps}
       className={className}
@@ -61,6 +62,8 @@ function NavigationButton({
       {children}
     </button>
   );
-}
+});
+
+NavigationButton.displayName = "NavigationButton";
 
 export default NavigationButton;
