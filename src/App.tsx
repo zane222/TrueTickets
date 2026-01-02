@@ -8,7 +8,6 @@ import { signOut } from "aws-amplify/auth";
 import { useRoute } from "./hooks/useRoute";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { KeyBindsModal } from "./components/ui/KeyBindsModal";
-
 import { KeyBindsProvider } from "./components/KeyBindsProvider";
 import { TopBar } from "./components/TopBar";
 import { useKeyBindsContext } from "./hooks/useKeyBindsContext";
@@ -27,8 +26,9 @@ import type { ApiContextValue } from "./types/components";
  *
  * ARCHITECTURE:
  * - AWS Cognito User Pool for authentication with group-based permissions
- * - AWS Lambda function as API Gateway backend with dual functionality:
- *   • RepairShopr API proxy (via /api/* endpoints)
+ * - AWS Lambda function as backend (Rust) backed by DynamoDB:
+ *   • Ticket & Customer management
+ *   • Financials & Payroll tracking
  *   • User management system (invite, list, edit, remove users)
  * - React frontend with Material Design components and dark theme
  * - Hashless, URL-driven routing
@@ -36,45 +36,44 @@ import type { ApiContextValue } from "./types/components";
  * - Modular component architecture with separated concerns
  *
  * COMPONENT STRUCTURE:
- * - App.jsx: Main routing and layout logic
- * - SearchModal.jsx: Search functionality
- * - TicketEditor.jsx: Ticket creation and editing
- * - TicketView.jsx: Ticket display and comments
- * - CustomerView.jsx: Customer details and ticket history
- * - NewCustomer.jsx: Customer creation and editing
- * - NavigationButton.jsx: Reusable navigation with middle-click support
- * - apiClient.js: Centralized API client with authentication
+ * - App.tsx: Main routing and layout logic
+ * - SearchModal.tsx: Global search functionality
+ * - TicketEditor.tsx: Ticket creation and editing
+ * - TicketView.tsx: Ticket display, comments, and printing
+ * - CustomerView.tsx: Customer details and ticket history
+ * - SettingsPage.tsx: Application settings, financials, and user management
+ * - apiClient.ts: Centralized API client with authentication
  *
  * FEATURES:
  * - Ticket management (list, view, create, edit, status updates)
  * - Customer management (view, create, edit, phone number handling)
+ * - Financial tracking (Revenue, Payroll, Purchases)
+ * - Employee Hours & Shift management
  * - User management system with role-based access:
- *   • ApplicationAdmin & Owner: Full user management (view, edit, remove)
- *   • Manager: Can invite users as employees only
- *   • Employee: Standard access, no user management
+ *   • ApplicationAdmin & Owner: Full access including user management & financials
+ *   • Manager: Can invite users, limited financial view
+ *   • Employee: Standard access (tickets/customers)
  * - PDF ticket generation
- * - Search and filtering capabilities
- * - Keyboard shortcuts and hotkeys
+ * - Global search (Tickets & Customers)
+ * - Keyboard shortcuts (vim-style navigation)
  * - Responsive design with Tailwind CSS
  *
  * SECURITY:
  * - JWT token authentication via AWS Cognito
  * - Group-based permission checking (server-side validation)
- * - Secure API key storage in Lambda environment variables
  * - CORS protection and proper error handling
  *
- * API ENDPOINTS:
- * - /api/* → RepairShopr API proxy (authenticated)
- * - /invite-user → User invitation (Manager+)
- * - /users → List all users (Admin/Owner only)
- * - /update-user-group → Update user groups or delete users (Admin/Owner only)
+ * API ENDPOINTS (High-level):
+ * - /tickets/* → Ticket CRUD operations
+ * - /customers/* → Customer CRUD operations
+ * - /users, /invite-user → User management
+ * - /financials/* → Revenue & Payroll data
+ * - /config → Store configuration
  */
 
 /*************************
  * Custom hooks and utilities
  *************************/
-
-// Ticket list item component that can use hooks
 
 // Configure Amplify
 try {

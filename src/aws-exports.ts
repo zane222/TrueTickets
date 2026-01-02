@@ -1,5 +1,5 @@
 // AWS Amplify Configuration
-// Uses environment variables for security
+// Uses environment variables
 
 const awsconfig = {
     Auth: {
@@ -19,9 +19,6 @@ const awsconfig = {
             }
         }
     },
-
-    // API configuration removed - using custom LambdaClient instead
-    // This prevents unnecessary Cognito calls from Amplify's built-in API client
 };
 
 export default awsconfig;

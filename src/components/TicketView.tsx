@@ -58,7 +58,6 @@ function TicketView({
   const parentContainerRef = useRef<HTMLDivElement | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null); // Track which status is being updated
-  /* const [savingLineItems, setSavingLineItems] = useState(false); */
   const [saveStatus, setSaveStatus] = useState<'saved' | 'still typing' | 'saving' | '' | 'error'>('');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -78,16 +77,6 @@ function TicketView({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef<HTMLDivElement>(null);
 
-  // Change detection
-  /*
-  const {
-    hasChanged,
-    isPolling: _isPolling,
-    startPolling,
-    stopPolling,
-    resetPolling: _resetPolling,
-  } = useChangeDetection(`/tickets/last_updated?number=${id}`);
-  */
   const hasChanged = false;
   const stopPolling = useCallback(() => { }, []);
   const startPolling = useCallback((_initialData: unknown) => { }, []);
@@ -948,7 +937,7 @@ function TicketView({
                                     onClick={async () => {
                                       if (confirm("Refund payment and unresolve ticket due to issue?")) {
                                         await addSystemComment("[Payment Refunded]");
-                                        console.log("Payment Refunded at:", new Date().toLocaleString());
+
                                         updateTicketStatus("In Progress");
                                       }
                                     }}
@@ -972,7 +961,7 @@ function TicketView({
                                       const receipt = `[Payment Taken]\n${lines}\nTotal: $${total.toFixed(2)}`;
 
                                       await addSystemComment(receipt);
-                                      console.log("Payment Taken at:", new Date().toLocaleString());
+
                                       updateTicketStatus("Resolved");
                                     }}
                                     className="w-full md-btn-primary py-2 text-sm font-semibold shadow-md hover:shadow-lg transition-all"

@@ -9,7 +9,6 @@ import NavigationButton from "./ui/NavigationButton";
 import type { TinyTicket, ApiContextValue } from "../types";
 import type { KeyBind } from "./ui/KeyBindsModal";
 
-// Ticket list item component that can use hooks
 interface TicketListItemProps {
   ticket: TinyTicket;
   goTo: (to: string) => void;
@@ -348,7 +347,7 @@ export function TicketListView({
       </div>
 
       <div className="flex justify-between items-center mt-6">
-        {/* Load more button removed as /recent_tickets_list returns all relevant tickets */}
+        {/* May want to add load more button here when there's paging on the backend */}
       </div>
     </div>
   );

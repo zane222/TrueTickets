@@ -49,12 +49,7 @@ export function TicketCard({
       // Check if text exceeds 3 lines and reduce font size if needed
       while (NumberOfLines(subjectElement) > 3) {
         const updatedFontSize = parseFloat(subjectElement.style.fontSize) - 0.1;
-        console.log(
-          "Lines: ",
-          NumberOfLines(subjectElement),
-          "UpdatedFontSize: ",
-          updatedFontSize,
-        );
+
         subjectElement.style.fontSize = updatedFontSize + "pt";
 
         // Prevent infinite loop by setting a minimum font size

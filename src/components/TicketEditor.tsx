@@ -43,11 +43,6 @@ function TicketEditor({
 
   const subjectInputRef = useRef<HTMLInputElement>(null);
 
-  /*
-  const { hasChanged, startPolling, stopPolling } = useChangeDetection(
-    `/tickets/last_updated?number=${ticketId}`,
-  );
-  */
   const hasChanged = false;
   const startPolling = useCallback((_initialData: unknown) => { }, []);
   const stopPolling = useCallback(() => { }, []);
@@ -162,14 +157,6 @@ function TicketEditor({
   async function save() {
     setSaving(true);
     try {
-      /*
-      const model = {
-        device: (deviceIdx !== null && DEVICES[deviceIdx]) || "Other",
-        itemsLeft,
-        estimatedTime: timeEstimate,
-      };
-      */
-
       const finalSubject = appendEstimatedTime(subject, timeEstimate);
 
       if (ticketId) {
@@ -178,7 +165,7 @@ function TicketEditor({
           password: password || null,
           items_left: itemsLeft.length > 0 ? itemsLeft : null,
           line_items: null,
-          status: null, // Editor doesn't handle status change currently
+          status: null, // Editor doesn't handle status change
           device: deviceIdx !== null ? DEVICES[deviceIdx] : null,
         };
         const res = await api.put<{ ticket_number: number }>(`/tickets?number=${ticketId}`, updateData);
@@ -322,8 +309,6 @@ function TicketEditor({
             </div>
           </div>
         </div>
-
-        {/* Line Items Section - REMOVED */}
       </div>
     </div>
   );

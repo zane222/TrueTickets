@@ -142,10 +142,6 @@ fn get_device_type_from_subject(subject_text: &str) -> String {
     let subject_lower = subject_text.to_lowercase();
     let words: Vec<&str> = subject_lower.split_whitespace().collect();
 
-    // Hashmap of keywords to device types
-    // Using a simple match or if/else chain might be cleaner given we reconstruct the map every time otherwise
-    // But for direct port of user logic:
-
     for word in words {
         match word {
             // Phone keywords

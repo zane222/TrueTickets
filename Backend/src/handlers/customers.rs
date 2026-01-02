@@ -177,8 +177,6 @@ pub async fn handle_create_customer(
 
     txn_items.push(TransactWriteItem::builder().put(put_customer).build());
 
-    // CustomerNames table write removed - using GSI now
-
     for phone in &phone_numbers {
         let phone_put = Put::builder()
             .table_name("CustomerPhoneIndex")
@@ -260,9 +258,7 @@ pub async fn handle_update_customer(
         }
     }
 
-    // 2. Update CustomerNames (Removed - using GSI)
-
-    // 3. Update Customers (email, phones, last_updated)
+    // 2. Update Customers (email, phones, last_updated)
     // We ALWAYS update Customers for last_updated
     let mut update_parts = vec![
         "last_updated = :lu".to_string(),

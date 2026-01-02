@@ -52,8 +52,6 @@ function SearchModal({
   const [searchType, setSearchType] = useState<"tickets" | "customers">("tickets");
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
-  // Removed latestTicketNumber and its fetching logic as backend now handles suffix search.
-
   const pendingSubmit = useRef<boolean>(false);
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);

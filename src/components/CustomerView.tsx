@@ -35,16 +35,6 @@ function CustomerView({
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const ticketRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
 
-  // Change detection
-  /*
-  const {
-    hasChanged,
-    isPolling: _isPolling,
-    startPolling,
-    stopPolling,
-    resetPolling: _resetPolling,
-  } = useChangeDetection(`/customers/last_updated?customer_id=${id}`);
-  */
   const hasChanged = false;
   const stopPolling = useCallback(() => { }, []);
   const startPolling = useCallback((_initialData: unknown) => { }, []);

@@ -658,13 +658,6 @@ async fn get_customers_to_merge_into_tickets(
     let batch_output = crate::db_utils::execute_batch_get_with_retries(client, request_items).await?;
 
     let customer_items = batch_output.get("Customers").cloned().unwrap_or_else(Vec::new);
-
-    // We can use a simpler struct or just serde_json::Value or just get the name manually
-    // But reusing Customer struct is okay if we accept optional fields are missing.
-    // However, Customer struct expects phone_numbers, created_at etc.
-    // So we should just parse into a temporary struct or map.
-    // Or, we create TinyCustomer.
-    // Let's just use Value for flexibility to extract just full_name.
     
     let mut customer_names = HashMap::new();
     for item in customer_items {
