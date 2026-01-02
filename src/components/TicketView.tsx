@@ -935,13 +935,10 @@ function TicketView({
                                 {isLocked ? (
                                   <button
                                     onClick={async () => {
-                                      if (confirm("Refund payment and unresolve ticket due to issue?")) {
-                                        await addSystemComment("[Payment Refunded]");
-
-                                        updateTicketStatus("In Progress");
-                                      }
+                                      await addSystemComment("[Payment Refunded]");
+                                      updateTicketStatus("In Progress");
                                     }}
-                                    className="w-full md-btn-surface border-error/50 text-error hover:bg-error/10 py-2 text-sm font-semibold transition-all"
+                                    className="w-full md-btn-surface !text-red-500 py-2 text-sm font-semibold transition-all"
                                   >
                                     Refund
                                   </button>
@@ -1290,22 +1287,35 @@ const CommentsBox = React.memo(({
           })
           .slice()
           .reverse()
-          .map((comment, index) => (
-            <div key={index} className="md-row-box p-3 relative">
-              {/* Top bar details: tech + time */}
-              <div className="absolute inset-x-3 top-2 flex items-center justify-between text-md text-outline">
-                <div className="flex items-center gap-3">
-                  {comment.tech_name ? <span>{comment.tech_name}</span> : null}
-                  <span>{fmtDateAndTime(comment.created_at || "")}</span>
+          .map((comment, index) => {
+            const body = (comment.comment_body ?? "").trim();
+            const isPaymentTaken = body.startsWith("[Payment Taken]");
+            const isPaymentRefunded = body.startsWith("[Payment Refunded]");
+
+            let className = "md-row-box p-3 relative transition-colors";
+            if (isPaymentTaken) {
+              className += " !bg-emerald-500/11";
+            } else if (isPaymentRefunded) {
+              className += " !bg-red-500/11";
+            }
+
+            return (
+              <div key={index} className={className}>
+                {/* Top bar details: tech + time */}
+                <div className="absolute inset-x-3 top-2 flex items-center justify-between text-md text-outline">
+                  <div className="flex items-center gap-3">
+                    {comment.tech_name ? <span>{comment.tech_name}</span> : null}
+                    <span>{fmtDateAndTime(comment.created_at || "")}</span>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="whitespace-pre-wrap leading-relaxed pt-5 text-base">
+                  {formatCommentWithLinks(comment.comment_body || "")}
                 </div>
               </div>
-
-              {/* Body */}
-              <div className="whitespace-pre-wrap leading-relaxed pt-5 text-base">
-                {formatCommentWithLinks(comment.comment_body || "")}
-              </div>
-            </div>
-          ))}
+            );
+          })}
       </div>
     </div>
   );
