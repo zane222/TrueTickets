@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { User, Printer, Edit, Loader2, Plus, X } from "lucide-react";
+import { User, Printer, Edit, Loader2, Plus, X, Camera, Image as ImageIcon } from "lucide-react";
 import html2pdf from "html2pdf.js";
 
 import {
@@ -404,6 +404,31 @@ function TicketView({
     window.addEventListener("refreshTicket", handleRefresh);
     return () => window.removeEventListener("refreshTicket", handleRefresh);
   }, []);
+
+  // Handle hash changes for attachment viewing
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      const match = hash.match(/#view-attachment-(\d+)/);
+      if (match && match[1]) {
+        const index = parseInt(match[1], 10);
+        const attachments = ticket?.attachments || [];
+        if (attachments[index]) {
+          const url = attachments[index];
+          const fileName = url.split('/').pop() || "Attachment";
+          setFullScreenAttachment({ url, fileName });
+        }
+      } else {
+        setFullScreenAttachment(null);
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    // Call once on mount/update in case we landed on the hash
+    handleHashChange();
+
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [ticket?.attachments]);
 
   const generatePDF = useCallback(async () => {
     if (!ticketCardRef.current) return;
@@ -980,15 +1005,40 @@ function TicketView({
             >
               <div className="flex justify-between items-center">
                 <p className="text-md font-semibold">Attachments</p>
-                <button
-                  onClick={handleAddAttachment}
-                  disabled={uploading}
-                  className="p-1 hover:bg-on-surface/10 rounded-md transition-colors disabled:opacity-50"
-                  title="Add attachment"
-                  tabIndex={-1}
-                >
-                  {uploading ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
-                </button>
+                <div className="flex items-center gap-2">
+                  {/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? (
+                    <>
+                      <button
+                        onClick={() => cameraInputRef.current?.click()}
+                        disabled={uploading}
+                        className="p-1 hover:bg-on-surface/10 rounded-md transition-colors disabled:opacity-50 text-primary"
+                        title="Take Photo"
+                        tabIndex={-1}
+                      >
+                        <Camera size={24} />
+                      </button>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        className="p-1 hover:bg-on-surface/10 rounded-md transition-colors disabled:opacity-50 text-secondary"
+                        title="Gallery"
+                        tabIndex={-1}
+                      >
+                        <ImageIcon size={24} />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleAddAttachment}
+                      disabled={uploading}
+                      className="p-1 hover:bg-on-surface/10 rounded-md transition-colors disabled:opacity-50"
+                      title="Add attachment"
+                      tabIndex={-1}
+                    >
+                      {uploading ? <Loader2 size={20} className="animate-spin" /> : <Plus size={20} />}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Attachments grid */}
@@ -1001,12 +1051,9 @@ function TicketView({
                     <div
                       key={index}
                       className="border border-outline rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow max-h-45"
-                      onClick={() =>
-                        setFullScreenAttachment({
-                          url: url,
-                          fileName: fileName,
-                        })
-                      }
+                      onClick={() => {
+                        window.location.hash = `#view-attachment-${index}`;
+                      }}
                     >
                       {url && (
                         <img
@@ -1073,7 +1120,7 @@ function TicketView({
         <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
           <div className="relative w-full h-full flex items-center justify-center">
             <button
-              onClick={() => setFullScreenAttachment(null)}
+              onClick={() => window.history.back()}
               className="absolute top-4 right-4 p-2 rounded-full transition-colors z-10"
               style={{ backgroundColor: "var(--color-bg-elevated-hover)" }}
               title="Close"

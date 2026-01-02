@@ -40,7 +40,12 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
         if (hash === "invite" && canInvite) return "invite";
         if (hash === "manage" && canManage) return "manage";
 
-        // Default to none (shows sidebar on mobile, placeholder on desktop)
+        // Default to "config" on desktop (md breakpoint is 768px)
+        if (window.innerWidth >= 768 && canAccessConfig) {
+            return "config";
+        }
+
+        // Default to none (shows sidebar on mobile)
         return "none";
     });
 

@@ -169,7 +169,6 @@ pub struct UpdateStoreConfigRequest {
 pub struct PurchaseItem {
     pub name: String,
     pub amount: f64,
-    pub category: String, // e.g., "Parts", "Office Supplies", "Rent", "Payroll" (though payroll is calculated separately usually)
     pub timestamp: i64,
 }
 

@@ -70,6 +70,14 @@ export default function InviteUserTab() {
             <h3 className="text-2xl font-bold text-on-surface mb-6">Invite User</h3>
 
             <div className="md-card p-6 grid gap-6">
+                <div className="bg-[#172554] p-4 rounded-lg text-sm text-white">
+                    <p className="font-bold mb-1">How new users sign in:</p>
+                    <p>
+                        After adding a user, they must go to the login page and click Forgot Password.
+                        Once they enter the confirmation code they get from their email and set a new password, they will be able to sign in.
+                    </p>
+                </div>
+
                 <form onSubmit={handleSubmit} className="grid gap-6">
                     <div className="grid gap-2">
                         <label
@@ -83,7 +91,12 @@ export default function InviteUserTab() {
                             type="text"
                             required
                             value={firstName}
-                            onChange={(e) => setFirstName(e.target.value)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                if (/^[a-zA-Z0-9 ]*$/.test(val)) {
+                                    setFirstName(val);
+                                }
+                            }}
                             className="md-input w-full max-w-md"
                             placeholder="Enter first name"
                         />

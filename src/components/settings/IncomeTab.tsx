@@ -1,19 +1,15 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, X, ChevronDown } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAlertMethods } from "../ui/AlertSystem";
 
 
-import type { Ticket } from "../../types/api";
-
-interface RevenueItem {
-    ticket: Ticket;
-    amount: number;
-}
+import type { TicketWithoutCustomer } from "../../types/api";
 
 interface PayrollItem {
     name: string;
-    amount: number;
+    wage: number;
+    hours: number;
 }
 
 interface PurchaseItem {
@@ -22,7 +18,7 @@ interface PurchaseItem {
 }
 
 interface FinancialData {
-    all_revenue: RevenueItem[];
+    tickets: TicketWithoutCustomer[];
     employees_payroll: PayrollItem[];
     purchases: PurchaseItem[];
 }
@@ -43,6 +39,7 @@ export default function IncomeTab() {
 
     const [data, setData] = useState<FinancialData | null>(null);
     const [localPurchases, setLocalPurchases] = useState<PurchaseItem[]>([]);
+    const [activeTab, setActiveTab] = useState<'revenue' | 'payroll' | 'purchases'>('revenue');
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -50,11 +47,22 @@ export default function IncomeTab() {
             // endpoint expects 1-based month (1-12)
             const year = viewMonth.getFullYear();
             const month = viewMonth.getMonth() + 1;
-            const response = await api.get<FinancialData>(
-                `/get_revenue_payroll_and_purchases?year=${year}&month=${month}`
-            );
-            setData(response);
-            setLocalPurchases(response.purchases || []);
+
+            const [payrollPurchases, tickets] = await Promise.all([
+                api.get<{ employees_payroll: PayrollItem[], purchases: PurchaseItem[] }>(
+                    `/payroll_and_purchases?year=${year}&month=${month}`
+                ),
+                api.get<TicketWithoutCustomer[]>(
+                    `/all_tickets_for_this_month_with_payments?year=${year}&month=${month}`
+                )
+            ]);
+
+            setData({
+                employees_payroll: payrollPurchases.employees_payroll,
+                purchases: payrollPurchases.purchases,
+                tickets: tickets
+            });
+            setLocalPurchases(payrollPurchases.purchases || []);
         } catch (err: unknown) {
             console.error(err);
             showError("Fetch Failed", "Could not load financial data.");
@@ -70,8 +78,12 @@ export default function IncomeTab() {
     const stats = useMemo(() => {
         if (!data) return { revenue: 0, payroll: 0, purchases: 0, net: 0 };
 
-        const revenue = data.all_revenue.reduce((acc, item) => acc + item.amount, 0);
-        const payroll = data.employees_payroll.reduce((acc, item) => acc + item.amount, 0);
+        const revenue = data.tickets.reduce((acc, ticket) => {
+            const ticketTotal = ticket.line_items?.reduce((sum, item) => sum + item.price, 0) || 0;
+            return acc + ticketTotal;
+        }, 0);
+
+        const payroll = data.employees_payroll.reduce((acc, item) => acc + ((item.wage || 0) * (item.hours || 0)), 0);
         // Use localPurchases for calculation to reflect edits immediately in summary
         const purchases = localPurchases.reduce((acc, item) => acc + (item.amount || 0), 0);
         const net = revenue - payroll - purchases;
@@ -166,24 +178,48 @@ export default function IncomeTab() {
                 </div>
             ) : (
                 <>
-                    {/* Summary Cards */}
+                    {/* Summary Cards (Tabs) */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="md-card p-5 space-y-2 border-l-4 border-primary">
+                        <button
+                            onClick={() => setActiveTab('revenue')}
+                            className={`md-card relative p-5 space-y-2 border-l-4 text-left transition-all ${activeTab === 'revenue' ? 'border-primary bg-primary/10' : 'border-primary hover:bg-surface-variant/10'}`}
+                        >
                             <p className="text-xs font-bold text-outline uppercase tracking-wider">Revenue</p>
                             <p className="text-2xl font-bold text-on-surface">${stats.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                        </div>
+                            {activeTab === 'revenue' && (
+                                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-outline drop-shadow-sm">
+                                    <ChevronDown size={32} strokeWidth={3} />
+                                </div>
+                            )}
+                        </button>
 
-                        <div className="md-card p-5 space-y-2 border-l-4 border-error">
+                        <button
+                            onClick={() => setActiveTab('payroll')}
+                            className={`md-card relative p-5 space-y-2 border-l-4 text-left transition-all ${activeTab === 'payroll' ? 'border-error bg-error/10' : 'border-error hover:bg-surface-variant/10'}`}
+                        >
                             <p className="text-xs font-bold text-outline uppercase tracking-wider">Payroll</p>
                             <p className="text-2xl font-bold text-on-surface">${stats.payroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                        </div>
+                            {activeTab === 'payroll' && (
+                                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-outline drop-shadow-sm">
+                                    <ChevronDown size={32} strokeWidth={3} />
+                                </div>
+                            )}
+                        </button>
 
-                        <div className="md-card p-5 space-y-2 border-l-4 border-secondary">
+                        <button
+                            onClick={() => setActiveTab('purchases')}
+                            className={`md-card relative p-5 space-y-2 border-l-4 text-left transition-all ${activeTab === 'purchases' ? 'border-secondary bg-secondary/10' : 'border-secondary hover:bg-surface-variant/10'}`}
+                        >
                             <p className="text-xs font-bold text-outline uppercase tracking-wider">Purchases</p>
                             <p className="text-2xl font-bold text-on-surface">${stats.purchases.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                        </div>
+                            {activeTab === 'purchases' && (
+                                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-outline drop-shadow-sm">
+                                    <ChevronDown size={32} strokeWidth={3} />
+                                </div>
+                            )}
+                        </button>
 
-                        <div className="md-card p-5 space-y-2 border-l-4 border-green-500">
+                        <div className="p-5 space-y-2">
                             <p className="text-xs font-bold text-outline uppercase tracking-wider">Net Profit</p>
                             <p className={`text-2xl font-bold ${stats.net >= 0 ? 'text-green-500' : 'text-error'}`}>
                                 ${stats.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -191,92 +227,169 @@ export default function IncomeTab() {
                         </div>
                     </div>
 
-                    {/* Expenses List */}
-                    <div className="md-card p-6 space-y-6">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <label className="text-xl font-bold text-on-surface">This month's purchases</label>
-                                {/* Status Indicator */}
-                                <div className="text-sm font-medium text-on-surface-variant flex items-center gap-2">
-                                    {saveStatus === 'still typing' && <span className="text-outline">Still Typing...</span>}
-                                    {saveStatus === 'saving' && (
-                                        <span className="flex items-center gap-1 text-outline">
-                                            <Loader2 size={14} className="animate-spin" />
-                                            Saving...
-                                        </span>
-                                    )}
-                                    {saveStatus === 'saved' && <span className="text-green-500">Saved</span>}
-                                    {saveStatus === 'error' && <span className="text-error">Error Saving</span>}
-                                </div>
+                    {/* Main Content Area */}
+                    <div className="md-card p-6 min-h-[400px]">
+                        {activeTab === 'revenue' && (
+                            <div className="space-y-4">
+                                <h4 className="text-xl font-bold text-on-surface">Revenue Breakdown</h4>
+                                {data?.tickets.length === 0 ? (
+                                    <p className="text-outline italic">No revenue from tickets this month.</p>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-b border-outline/20">
+                                                    <th className="py-2 text-sm font-semibold text-outline">Ticket Details</th>
+                                                    <th className="py-2 text-sm font-semibold text-outline text-right">Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {data?.tickets.map(ticket => {
+                                                    const total = ticket.line_items?.reduce((sum, item) => sum + item.price, 0) || 0;
+                                                    return (
+                                                        <tr key={ticket.ticket_number} className="border-b border-outline/10 last:border-0 hover:bg-surface-variant/5">
+                                                            <td className="py-3 pr-4">
+                                                                <div className="font-medium text-on-surface">Ticket #{ticket.ticket_number}</div>
+                                                                <div className="text-sm text-outline">{ticket.subject}</div>
+                                                                <div className="text-xs text-outline">{new Date(ticket.created_at * 1000).toLocaleDateString()}</div>
+                                                            </td>
+                                                            <td className="py-3 text-right font-medium text-on-surface">
+                                                                ${total.toFixed(2)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const newItems = [...localPurchases, { name: "", amount: 0 }];
-                                    setLocalPurchases(newItems);
-                                }}
-                                className="md-btn-surface elev-1 text-sm py-1.5 px-3 w-fit"
-                            >
-                                + Add Purchase
-                            </button>
-                        </div>
+                        )}
 
-                        <div className="space-y-3">
-                            {localPurchases.map((item, index) => (
-                                <div key={index} className="flex gap-3 items-center">
-                                    <input
-                                        type="text"
-                                        placeholder="Purchase Name"
-                                        value={item.name}
-                                        onChange={(e) => {
-                                            const next = [...localPurchases];
-                                            next[index] = { ...next[index], name: e.target.value };
-                                            setLocalPurchases(next);
-                                            setSaveStatus('still typing');
-                                        }}
-                                        onBlur={() => triggerAutoSave(localPurchases)}
-                                        className="md-input flex-grow"
-                                    />
-                                    <div className="relative w-32">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-outline">$</span>
-                                        <input
-                                            type="number"
-                                            placeholder="0.00"
-                                            value={item.amount || ""}
-                                            onChange={(e) => {
-                                                const next = [...localPurchases];
-                                                next[index] = { ...next[index], amount: parseFloat(e.target.value) || 0 };
-                                                setLocalPurchases(next);
-                                                setSaveStatus('still typing');
-                                            }}
-                                            onBlur={() => triggerAutoSave(localPurchases)}
-                                            className="md-input w-full pl-6 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        />
+                        {activeTab === 'payroll' && (
+                            <div className="space-y-4">
+                                <h4 className="text-xl font-bold text-on-surface">Payroll Breakdown</h4>
+                                {data?.employees_payroll.length === 0 ? (
+                                    <p className="text-outline italic">No payroll data for this month.</p>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left">
+                                            <thead>
+                                                <tr className="border-b border-outline/20">
+                                                    <th className="py-2 text-sm font-semibold text-outline">Employee</th>
+                                                    <th className="py-2 text-sm font-semibold text-outline text-right">Wage</th>
+                                                    <th className="py-2 text-sm font-semibold text-outline text-right">Hours</th>
+                                                    <th className="py-2 text-sm font-semibold text-outline text-right">Total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {data?.employees_payroll.map((item, idx) => {
+                                                    // Client-side calculation
+                                                    const amount = (item.wage || 0) * (item.hours || 0);
+                                                    return (
+                                                        <tr key={idx} className="border-b border-outline/10 last:border-0 hover:bg-surface-variant/5">
+                                                            <td className="py-3 pr-4 font-medium text-on-surface">{item.name}</td>
+                                                            <td className="py-3 text-right text-on-surface">${item.wage?.toFixed(2) ?? '0.00'}/hr</td>
+                                                            <td className="py-3 text-right text-on-surface">{item.hours?.toFixed(2) ?? '0.00'} hrs</td>
+                                                            <td className="py-3 text-right font-medium text-on-surface">${amount.toFixed(2)}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'purchases' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <h4 className="text-xl font-bold text-on-surface">This month's purchases</h4>
+                                        {/* Status Indicator */}
+                                        <div className="text-sm font-medium text-on-surface-variant flex items-center gap-2">
+                                            {saveStatus === 'still typing' && <span className="text-outline">Still Typing...</span>}
+                                            {saveStatus === 'saving' && (
+                                                <span className="flex items-center gap-1 text-outline">
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                    Saving...
+                                                </span>
+                                            )}
+                                            {saveStatus === 'saved' && <span className="text-green-500">Saved</span>}
+                                            {saveStatus === 'error' && <span className="text-error">Error Saving</span>}
+                                        </div>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            const itemToDelete = localPurchases[index];
-                                            const newItems = localPurchases.filter((_, i) => i !== index);
+                                            const newItems = [...localPurchases, { name: "", amount: 0 }];
                                             setLocalPurchases(newItems);
-                                            const isEmpty = !itemToDelete.name && !itemToDelete.amount;
-                                            if (!isEmpty) {
-                                                triggerAutoSave(newItems);
-                                            }
                                         }}
-                                        className="p-2 text-outline hover:text-error transition-colors"
+                                        className="md-btn-surface elev-1 text-sm py-1.5 px-3 w-fit"
                                     >
-                                        <X className="w-5 h-5" />
+                                        + Add Purchase
                                     </button>
                                 </div>
-                            ))}
 
-                            {localPurchases.length === 0 && (
-                                <div className="text-center py-6 text-outline text-sm italic">
-                                    No purchases recorded for this month.
+                                <div className="space-y-3">
+                                    {localPurchases.map((item, index) => (
+                                        <div key={index} className="flex gap-3 items-center">
+                                            <input
+                                                type="text"
+                                                placeholder="Purchase Name"
+                                                value={item.name}
+                                                onChange={(e) => {
+                                                    const next = [...localPurchases];
+                                                    next[index] = { ...next[index], name: e.target.value };
+                                                    setLocalPurchases(next);
+                                                    setSaveStatus('still typing');
+                                                }}
+                                                onBlur={() => triggerAutoSave(localPurchases)}
+                                                className="md-input flex-grow"
+                                            />
+                                            <div className="relative w-32">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-outline">$</span>
+                                                <input
+                                                    type="number"
+                                                    placeholder="0.00"
+                                                    value={item.amount || ""}
+                                                    onChange={(e) => {
+                                                        const next = [...localPurchases];
+                                                        next[index] = { ...next[index], amount: parseFloat(e.target.value) || 0 };
+                                                        setLocalPurchases(next);
+                                                        setSaveStatus('still typing');
+                                                    }}
+                                                    onBlur={() => triggerAutoSave(localPurchases)}
+                                                    className="md-input w-full pl-6 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const itemToDelete = localPurchases[index];
+                                                    const newItems = localPurchases.filter((_, i) => i !== index);
+                                                    setLocalPurchases(newItems);
+                                                    const isEmpty = !itemToDelete.name && !itemToDelete.amount;
+                                                    if (!isEmpty) {
+                                                        triggerAutoSave(newItems);
+                                                    }
+                                                }}
+                                                className="p-2 text-outline hover:text-error transition-colors"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    ))}
+
+                                    {localPurchases.length === 0 && (
+                                        <div className="text-center py-6 text-outline text-sm italic">
+                                            No purchases recorded for this month.
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </div>
                 </>
             )}

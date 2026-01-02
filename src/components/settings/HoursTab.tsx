@@ -549,7 +549,7 @@ export default function HoursTab() {
                                     Total: <span className="text-primary font-bold ml-1">{currentData.total.toFixed(2)} hrs</span>
                                 </span>
                                 <span className="text-sm font-medium text-outline bg-surface-variant/20 px-3 py-1 rounded-full">
-                                    Est. Payroll: <span className="text-green-500 font-bold ml-1">${(currentData.total * (employeeWages[currentEmpName] || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    Payroll: <span className="text-green-500 font-bold ml-1">${(currentData.total * (employeeWages[currentEmpName] || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </span>
                             </div>
                         </div>

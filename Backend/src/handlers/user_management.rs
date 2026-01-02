@@ -194,10 +194,8 @@ pub async fn handle_list_users(
 
         // Update users list with wages
         for user in &mut users_list {
-            if let Some(name) = &user.given_name {
-                if let Some(w) = wage_map.get(name) {
-                    user.wage = *w;
-                }
+            if let Some(name) = &user.given_name && let Some(w) = wage_map.get(name) {
+                user.wage = *w;
             }
         }
     }

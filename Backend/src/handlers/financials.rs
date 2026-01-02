@@ -7,94 +7,14 @@ use lambda_http::{Body, Response};
 use crate::http::error_response;
 use crate::models::{MonthPurchases, PurchaseItem, TimeEntry, TicketWithoutCustomer};
 
-// Helper: Calculate revenue from tickets
-// We scan tickets for the month (created_at or last_updated? "Revenue" usually means when money is received).
-// For simplicity, we'll sum up "price" from line items of Resolved tickets in that month.
-// Or if the user wants "this month's revenue", maybe by completion date.
-// For now, let's just Scan tickets with status="Resolved" and calculate total.
-// To filter by month, we'd ideally have a GSI on date.
-// Given the low volume (placeholder was 20 items), a Scan with filter is fine.
-async fn calculate_revenue(
-    year: i32,
-    month: u32,
-    client: &Client,
-) -> Result<f64, String> {
-    // Start/End timestamps for the month
-    // Note: chrono dependency is available in project
-    use chrono::{TimeZone, Utc};
-    
-    let start_of_month = Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0).unwrap();
-    let next_month = if month == 12 { 1 } else { month + 1 };
-    let next_year = if month == 12 { year + 1 } else { year };
-    let start_of_next_month = Utc.with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0).unwrap();
-    
-    let start_ts = start_of_month.timestamp();
-    let end_ts = start_of_next_month.timestamp();
-
-    // Query/Scan tickets.
-    // Since we don't have a DATE index that is global, we might rely on the fact that ticket numbers are roughly chronological,
-    // or just Scan.
-    // Let's Scan Tickets where status = 'Resolved' and last_updated between start_ts and end_ts.
-    // (Assuming revenue is recognized when ticket is resolved/picked up).
-    
-    let mut revenue: f64 = 0.0;
-    let mut last_evaluated_key = None;
-
-    loop {
-        let mut scan_builder = client.scan()
-            .table_name("Tickets")
-            .filter_expression("#st = :resolved AND last_updated BETWEEN :start AND :end")
-            .expression_attribute_names("#st", "status") // status is reserved
-            .expression_attribute_values(":resolved", AttributeValue::S("Resolved".to_string()))
-            .expression_attribute_values(":start", AttributeValue::N(start_ts.to_string()))
-            .expression_attribute_values(":end", AttributeValue::N(end_ts.to_string()));
-
-        if let Some(key) = last_evaluated_key {
-            scan_builder = scan_builder.set_exclusive_start_key(Some(key));
-        }
-
-        let output = scan_builder.send().await.map_err(|e| format!("{:?}", e))?;
-
-        if let Some(items) = output.items {
-            for item in items {
-                // Parse ticket to get line items
-                let ticket: Result<TicketWithoutCustomer, _> = serde_dynamo::from_item(item.clone());
-                 if let Ok(t) = ticket {
-                     // Check line_items
-                     if let Some(lis) = t.line_items {
-                         for li in lis {
-                             revenue += li.price;
-                         }
-                     }
-                 }
-            }
-        }
-
-        last_evaluated_key = output.last_evaluated_key;
-        if last_evaluated_key.is_none() {
-            break;
-        }
-    }
-    
-    Ok(revenue)
-}
-
-pub async fn get_revenue_payroll_and_purchases(
+pub async fn get_payroll_and_purchases(
     year: i32,
     month: u32,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
     let month_year_pk = format!("{:04}-{:02}", year, month);
 
-    // 1. Get Revenue
-    let revenue_val = calculate_revenue(year, month, client).await.unwrap_or(0.0);
-    // Create a dummy single entry for revenue to match frontend expectation (list of objects)
-    let revenue_list = json!([{
-        "ticket": { "subject": "Monthly Service Revenue", "ticket_number": 0 }, // Placeholder structure
-        "amount": revenue_val
-    }]);
-
-    // 2. Get Purchases
+    // 1. Get Purchases
     // Fetch from Purchases table, PK = YYYY-MM
     let purchases_output = client.get_item()
         .table_name("Purchases")
@@ -111,12 +31,12 @@ pub async fn get_revenue_payroll_and_purchases(
         Vec::new()
     };
 
-    // 3. Get Payroll / Clock Logs
+    // 2. Get Payroll / Clock Logs
     // Query TimeEntries with PK = YYYY-MM
     let time_output = client.query()
         .table_name("TimeEntries")
         .key_condition_expression("month_year = :pk")
-        .expression_attribute_values(":pk", AttributeValue::S(month_year_pk.clone()))
+        .expression_attribute_values(":pk", AttributeValue::S(month_year_pk))
         .send()
         .await
         .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch time entries: {:?}", e), None))?;
@@ -125,15 +45,11 @@ pub async fn get_revenue_payroll_and_purchases(
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize time entries: {:?}", e), None))?;
 
     // Group by user and calculate hours
-    // This is a naive calculation: sum(out_time) - sum(in_time).
-    // Assumes paired in/out. If missing out, ignore last in? Or just simple diff.
-    // Better: Sort by user, then time. Iterate.
-    
     use std::collections::HashMap;
     let mut user_hours: HashMap<String, f64> = HashMap::new();
     
     // Sort entries by timestamp
-    let mut sorted_entries = entries.clone(); // Clone for payroll calculation
+    let mut sorted_entries = entries.clone(); 
     sorted_entries.sort_by_key(|e| e.timestamp);
     
     // Group by user
@@ -169,16 +85,109 @@ pub async fn get_revenue_payroll_and_purchases(
         let wage = wage_map.get(&name).copied().unwrap_or(0.0);
         json!({
             "name": name,
-            "amount": (hours * wage * 100.0).round() / 100.0, // Cost
+            "wage": wage,
             "hours": (hours * 100.0).round() / 100.0
         })
     }).collect();
 
     Ok(json!({
-        "all_revenue": revenue_list,
         "employees_payroll": payroll_list,
         "purchases": purchases_list
     }))
+}
+
+pub async fn get_all_tickets_for_month_with_payments(
+    year: i32,
+    month: u32,
+    client: &Client,
+) -> Result<Value, Response<Body>> {
+    use chrono::{TimeZone, Utc};
+    use std::collections::HashMap;
+    use aws_sdk_dynamodb::types::{KeysAndAttributes, AttributeValue};
+    
+    let start_of_month = Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0).unwrap();
+    let next_month = if month == 12 { 1 } else { month + 1 };
+    let next_year = if month == 12 { year + 1 } else { year };
+    let start_of_next_month = Utc.with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0).unwrap();
+    
+    let start_ts = start_of_month.timestamp();
+    let end_ts = start_of_next_month.timestamp();
+
+    // Step 1: Query GSI to get ticket numbers
+    let mut ticket_numbers: Vec<i64> = Vec::new();
+    let mut last_evaluated_key = None;
+
+    loop {
+         let mut query_builder = client.query()
+            .table_name("Tickets")
+            .index_name("TicketNumberIndex")
+            .key_condition_expression("gsi_pk = :all")
+            .filter_expression("#st = :resolved AND created_at BETWEEN :start AND :end")
+            .expression_attribute_names("#st", "status")
+            .expression_attribute_values(":all", AttributeValue::S("ALL".to_string()))
+            .expression_attribute_values(":resolved", AttributeValue::S("Resolved".to_string()))
+            .expression_attribute_values(":start", AttributeValue::N(start_ts.to_string()))
+            .expression_attribute_values(":end", AttributeValue::N(end_ts.to_string()));
+
+        if let Some(key) = last_evaluated_key {
+            query_builder = query_builder.set_exclusive_start_key(Some(key));
+        }
+
+        let output = query_builder.send().await
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch ticket numbers: {:?}", e), None))?;
+
+        if let Some(items) = output.items {
+            for item in items {
+                if let Some(val) = item.get("ticket_number").and_then(|v| v.as_n().ok()) && let Ok(num) = val.parse::<i64>() {
+                    ticket_numbers.push(num);
+                }
+            }
+        }
+
+        last_evaluated_key = output.last_evaluated_key;
+        if last_evaluated_key.is_none() {
+            break;
+        }
+    }
+
+    // Step 2: Batch Get Item to get full details (TicketNumberIndex doesn't project line_items)
+    let mut full_tickets = Vec::new();
+    
+    // DynamoDB BatchGetItem limit is 100
+    for chunk in ticket_numbers.chunks(100) {
+        let mut keys = vec![];
+        for &num in chunk {
+            let mut key_map = HashMap::new();
+            key_map.insert("ticket_number".to_string(), AttributeValue::N(num.to_string()));
+            keys.push(key_map);
+        }
+
+        let keys_and_attrs = KeysAndAttributes::builder().set_keys(Some(keys)).build();
+        
+        if let Ok(ka) = keys_and_attrs {
+            let mut request_items = HashMap::new();
+            request_items.insert("Tickets".to_string(), ka);
+            
+            let batch_output = client.batch_get_item()
+                .set_request_items(Some(request_items))
+                .send()
+                .await
+                .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get tickets: {:?}", e), None))?;
+
+            if let Some(responses) = batch_output.responses && let Some(items) = responses.get("Tickets") {
+                let page_tickets: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(items.clone())
+                .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {:?}", e), None))?;
+                
+                for t in page_tickets {
+                    if let Some(items) = &t.line_items && !items.is_empty() {
+                        full_tickets.push(t);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(json!(full_tickets))
 }
 
 pub async fn update_purchases(

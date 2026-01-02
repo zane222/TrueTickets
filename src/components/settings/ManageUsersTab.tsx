@@ -14,11 +14,12 @@ import {
 import type { AmplifyAuthUser } from "../../types";
 import type { CognitoUser, PostUpdateUserGroup } from "../../types/api";
 
-type UserWithGroups = CognitoUser;
+interface UserWithGroups extends CognitoUser {
+    wage: number;
+}
 
 interface SelectedUser extends UserWithGroups {
     groups: string[];
-    wage?: number;
 }
 
 export default function ManageUsersTab() {
@@ -191,14 +192,10 @@ export default function ManageUsersTab() {
                                         <button
                                             onClick={() => {
                                                 setSelectedUser(user as SelectedUser);
-                                                setWageInput(((user as any).wage || 0).toString());
+                                                setWageInput((user.wage || 0).toString());
                                                 setShowUserEdit(true);
                                             }}
-                                            disabled={currentUser?.username === user.username}
-                                            className={`md-btn-surface text-sm px-4 py-1.5 shadow-sm transition-all ${currentUser?.username === user.username
-                                                ? "opacity-50 cursor-not-allowed"
-                                                : ""
-                                                }`}
+                                            className="md-btn-surface text-sm px-4 py-1.5 shadow-sm transition-all"
                                         >
                                             Edit
                                         </button>
@@ -222,11 +219,10 @@ export default function ManageUsersTab() {
                                         <button
                                             onClick={() => {
                                                 setSelectedUser(user as SelectedUser);
-                                                setWageInput(((user as any).wage || 0).toString());
+                                                setWageInput((user.wage || 0).toString());
                                                 setShowUserEdit(true);
                                             }}
-                                            disabled={currentUser?.username === user.username}
-                                            className={`md-btn-primary text-sm px-4 py-1.5 w-full ${currentUser?.username === user.username ? "opacity-50" : ""}`}
+                                            className="md-btn-primary text-sm px-4 py-1.5 w-full"
                                         >
                                             Edit
                                         </button>
@@ -274,7 +270,7 @@ export default function ManageUsersTab() {
                                                 Role / Permission Group
                                             </label>
                                             <select
-                                                className="md-input w-full"
+                                                className={`md-input w-full ${currentUser?.username === selectedUser.username ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                 value={selectedUser.groups?.[0] || USER_GROUP_IDS.EMPLOYEE}
                                                 onChange={(e) => {
                                                     setSelectedUser({
@@ -282,6 +278,7 @@ export default function ManageUsersTab() {
                                                         groups: [e.target.value],
                                                     });
                                                 }}
+                                                disabled={currentUser?.username === selectedUser.username}
                                             >
                                                 <option value={USER_GROUP_IDS.EMPLOYEE}>
                                                     {getGroupDisplayName(USER_GROUP_IDS.EMPLOYEE)}
@@ -322,7 +319,7 @@ export default function ManageUsersTab() {
                             </div>
 
                             <div className="flex items-center justify-between pt-4 mt-2">
-                                {selectedUser.groups[0] !== "delete" ? (
+                                {currentUser?.username !== selectedUser.username && selectedUser.groups[0] !== "delete" ? (
                                     <button
                                         onClick={() => setSelectedUser({ ...selectedUser, groups: ["delete"] })}
                                         className="bg-[var(--md-sys-color-error)] text-[var(--md-sys-color-on-error)] px-4 py-2 rounded-full text-sm font-medium hover:brightness-110 transition-all shadow-sm"
