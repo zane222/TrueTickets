@@ -30,18 +30,14 @@ async fn get_customers_from_ids(customer_ids: Vec<String>, client: &Client) -> R
         .build()
         .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {:?}", e), None))?;
 
-    let batch_output = client.batch_get_item()
-        .request_items("Customers", ka_customers)
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customer details: {:?}", e), None))?;
 
-    if let Some(unprocessed) = &batch_output.unprocessed_keys && !unprocessed.is_empty() {
-        return Err(error_response(530, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
-    }
 
-    let responses = batch_output.responses.unwrap_or_else(HashMap::new);
-    let customers = responses.get("Customers").cloned().unwrap_or_else(Vec::new);
+    let mut request_items = HashMap::new();
+    request_items.insert("Customers".to_string(), ka_customers);
+
+    let batch_output = crate::db_utils::execute_batch_get_with_retries(client, request_items).await?;
+
+    let customers = batch_output.get("Customers").cloned().unwrap_or_else(Vec::new);
     let json_items: Vec<Customer> = serde_dynamo::from_items(customers)
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer details: {:?}", e), None))?;
     Ok(json!(json_items))

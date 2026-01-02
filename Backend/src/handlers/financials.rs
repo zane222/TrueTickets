@@ -168,13 +168,9 @@ pub async fn get_all_tickets_for_month_with_payments(
             let mut request_items = HashMap::new();
             request_items.insert("Tickets".to_string(), ka);
             
-            let batch_output = client.batch_get_item()
-                .set_request_items(Some(request_items))
-                .send()
-                .await
-                .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get tickets: {:?}", e), None))?;
+            let responses = crate::db_utils::execute_batch_get_with_retries(client, request_items).await?;
 
-            if let Some(responses) = batch_output.responses && let Some(items) = responses.get("Tickets") {
+            if let Some(items) = responses.get("Tickets") {
                 let page_tickets: Vec<TicketWithoutCustomer> = serde_dynamo::from_items(items.clone())
                 .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {:?}", e), None))?;
                 
@@ -197,12 +193,7 @@ pub async fn update_purchases(
     client: &Client,
 ) -> Result<Value, Response<Body>> {
     let month_year_pk = format!("{:04}-{:02}", year, month);
-
-    // Body is expected to be { "items": [...] } or just the array directly? 
-    // The previous code returned "success", so we assume frontend sends the updated list or a wrapped object.
-    // Let's assume body IS the list of items or contains "purchases".
-    // Financials code usually sends `purchases` as an array.
-    
+   
     let items_array = if let Some(arr) = body.get("purchases").and_then(|v| v.as_array()) {
         arr
     } else if let Some(arr) = body.as_array() {
@@ -240,8 +231,6 @@ pub async fn handle_get_clock_logs(
     month: u32,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
-
-
     // Similar to payroll calculation but returns raw logs formatted for calendar
     let month_year_pk = format!("{:04}-{:02}", year, month);
     
@@ -373,7 +362,7 @@ pub async fn handle_clock_in(
             "clocked_in": new_status,
             "timestamp": timestamp
         })),
-         Err(e) => {
+        Err(e) => {
             if let Some(service_err) = e.as_service_error() && service_err.is_transaction_canceled_exception() {
                 return Err(error_response(409, "Conflict", "State changed during processing. Please try again.", None));
             }

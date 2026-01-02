@@ -187,18 +187,14 @@ pub async fn handle_search_tickets_by_subject(
         .build()
         .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {:?}", e), None))?;
 
-    let output = client.batch_get_item()
-        .request_items("Tickets", ka)
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {:?}", e), None))?;
 
-    if let Some(unprocessed) = output.unprocessed_keys && !unprocessed.is_empty() {
-        return Err(error_response(503, "Partial Batch Success", "Some ticket details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the search")));
-    }
 
-    let responses = output.responses.unwrap_or_else(HashMap::new);
-    let ticket_items = responses.get("Tickets").cloned().unwrap_or_else(Vec::new);
+    let mut request_items = HashMap::new();
+    request_items.insert("Tickets".to_string(), ka);
+
+    let output = crate::db_utils::execute_batch_get_with_retries(client, request_items).await?;
+
+    let ticket_items = output.get("Tickets").cloned().unwrap_or_else(Vec::new);
     let mut tickets_nocust: Vec<TinyTicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {:?}", e), None))?;
 
@@ -605,18 +601,14 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
         .build()
         .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for tickets: {:?}", e), None))?;
 
-    let output = client.batch_get_item()
-        .request_items("Tickets", ka)
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get ticket details: {:?}", e), None))?;
 
-    if let Some(unprocessed) = &output.unprocessed_keys && !unprocessed.is_empty() {
-        return Err(error_response(503, "Partial Batch Success", "Some ticket details could not be retrieved due to DynamoDB throughput limits. Please retry.", Some("Retry the request")));
-    }
 
-    let responses = output.responses.unwrap_or_else(HashMap::new);
-    let ticket_items = responses.get("Tickets").cloned().unwrap_or_else(Vec::new);
+    let mut request_items = HashMap::new();
+    request_items.insert("Tickets".to_string(), ka);
+
+    let output = crate::db_utils::execute_batch_get_with_retries(client, request_items).await?;
+
+    let ticket_items = output.get("Tickets").cloned().unwrap_or_else(Vec::new);
     let mut tickets_nocust: Vec<TinyTicketWithoutCustomer> = serde_dynamo::from_items(ticket_items)
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {:?}", e), None))?;
 
@@ -658,18 +650,14 @@ async fn get_customers_to_merge_into_tickets(
         .build()
         .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {:?}", e), None))?;
 
-    let batch_output = client.batch_get_item()
-        .request_items("Customers", ka)
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get customers: {:?}", e), None))?;
 
-    if let Some(unprocessed) = batch_output.unprocessed_keys && !unprocessed.is_empty() {
-        return Err(error_response(503, "Partial Batch Success", "Some customer details could not be retrieved due to DynamoDB throughput limits. Merge failed.", Some("Check throughput and retry")));
-    }
 
-    let responses = batch_output.responses.unwrap_or_else(HashMap::new);
-    let customer_items = responses.get("Customers").cloned().unwrap_or_else(Vec::new);
+    let mut request_items = HashMap::new();
+    request_items.insert("Customers".to_string(), ka);
+
+    let batch_output = crate::db_utils::execute_batch_get_with_retries(client, request_items).await?;
+
+    let customer_items = batch_output.get("Customers").cloned().unwrap_or_else(Vec::new);
 
     // We can use a simpler struct or just serde_json::Value or just get the name manually
     // But reusing Customer struct is okay if we accept optional fields are missing.

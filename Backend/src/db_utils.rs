@@ -80,13 +80,9 @@ pub async fn get_wages_for_users(user_names: Vec<String>, client: &DynamoDbClien
              let mut map = HashMap::new();
              map.insert("Config".to_string(), ka);
              
-             let batch_result = client.batch_get_item()
-                .set_request_items(Some(map))
-                .send()
-                .await;
+             let batch_result = execute_batch_get_with_retries(client, map).await;
 
-            if let Ok(output) = batch_result 
-                && let Some(responses) = output.responses 
+            if let Ok(responses) = batch_result 
                 && let Some(items) = responses.get("Config") {
                 for item in items {
                     let pk = item.get("pk").and_then(|av| av.as_s().ok()).unwrap_or(&String::new()).to_string();
@@ -103,4 +99,52 @@ pub async fn get_wages_for_users(user_names: Vec<String>, client: &DynamoDbClien
     }
 
     wage_map
+}
+
+use lambda_http::{Body, Response};
+use crate::http::error_response;
+
+pub async fn execute_batch_get_with_retries(
+    client: &DynamoDbClient,
+    request_items: HashMap<String, aws_sdk_dynamodb::types::KeysAndAttributes>,
+) -> Result<HashMap<String, Vec<HashMap<String, AttributeValue>>>, Response<Body>> {
+    let mut accumulated_responses: HashMap<String, Vec<HashMap<String, AttributeValue>>> = HashMap::new();
+    let mut current_request_items = request_items;
+    let mut attempts = 0;
+    const MAX_RETRIES: u32 = 5;
+
+    loop {
+        attempts += 1;
+        let output = client.batch_get_item()
+            .set_request_items(Some(current_request_items.clone()))
+            .send()
+            .await
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to batch get items: {:?}", e), None))?;
+
+        // Merge successful responses
+        if let Some(responses) = output.responses {
+            for (table_name, items) in responses {
+                let entry = accumulated_responses.entry(table_name).or_default();
+                entry.extend(items);
+            }
+        }
+
+        // Check for unprocessed keys
+        // Check for unprocessed keys
+        let unprocessed = output.unprocessed_keys.unwrap_or_default();
+        if unprocessed.is_empty() {
+            break;
+        }
+
+        if attempts >= MAX_RETRIES {
+            return Err(error_response(503, "Service Unavailable", "Exceeded max retries for batch operation. DynamoDB might be throttled.", Some("Please try again later.")));
+        }
+        
+        // Wait with strict exponential backoff
+        tokio::time::sleep(std::time::Duration::from_millis(100 * (2_u64.pow(attempts)))).await;
+        
+        current_request_items = unprocessed;
+    }
+
+    Ok(accumulated_responses)
 }
