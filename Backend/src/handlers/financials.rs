@@ -7,7 +7,7 @@ use lambda_http::{Body, Response};
 use crate::http::error_response;
 use crate::models::{MonthPurchases, PurchaseItem, TimeEntry, TicketWithoutCustomer};
 
-pub async fn get_payroll_and_purchases(
+pub async fn get_purchases(
     year: i32,
     month: u32,
     client: &Client,
@@ -31,67 +31,7 @@ pub async fn get_payroll_and_purchases(
         Vec::new()
     };
 
-    // 2. Get Payroll / Clock Logs
-    // Query TimeEntries with PK = YYYY-MM
-    let time_output = client.query()
-        .table_name("TimeEntries")
-        .key_condition_expression("month_year = :pk")
-        .expression_attribute_values(":pk", AttributeValue::S(month_year_pk))
-        .send()
-        .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch time entries: {:?}", e), None))?;
-
-    let entries: Vec<TimeEntry> = serde_dynamo::from_items(time_output.items.unwrap_or_default())
-        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize time entries: {:?}", e), None))?;
-
-    // Group by user and calculate hours
-    use std::collections::HashMap;
-    let mut user_hours: HashMap<String, f64> = HashMap::new();
-    
-    // Sort entries by timestamp
-    let mut sorted_entries = entries.clone(); 
-    sorted_entries.sort_by_key(|e| e.timestamp);
-    
-    // Group by user
-    let mut user_logs: HashMap<String, Vec<TimeEntry>> = HashMap::new();
-    for e in sorted_entries {
-        user_logs.entry(e.user_name.clone()).or_default().push(e);
-    }
-    
-    for (user, logs) in user_logs {
-        let mut total_seconds: i64 = 0;
-        let mut last_in: Option<i64> = None;
-        
-        for log in logs {
-            if !log.is_clock_out {
-                last_in = Some(log.timestamp);
-            } else if let Some(in_ts) = last_in {
-                total_seconds += log.timestamp - in_ts;
-                last_in = None;
-            }
-        }
-        
-        // Convert to hours
-        let hours = total_seconds as f64 / 3600.0;
-        user_hours.insert(user, hours);
-    }
-
-    // Convert to response format
-    // Fetch wages for all users found in entries
-    let user_names: Vec<String> = user_hours.keys().cloned().collect();
-    let wage_map = crate::db_utils::get_wages_for_users(user_names, client).await;
-
-    let payroll_list: Vec<Value> = user_hours.into_iter().map(|(name, hours)| {
-        let wage = wage_map.get(&name).copied().unwrap_or(0.0);
-        json!({
-            "name": name,
-            "wage": wage,
-            "hours": (hours * 100.0).round() / 100.0
-        })
-    }).collect();
-
     Ok(json!({
-        "employees_payroll": payroll_list,
         "purchases": purchases_list
     }))
 }
@@ -246,7 +186,11 @@ pub async fn handle_get_clock_logs(
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize time entries: {:?}", e), None))?;
 
     // Collect unique usernames
-    let user_name_list: Vec<String> = entries.iter().map(|e| e.user_name.clone()).collect();
+    let user_name_list: Vec<String> = entries.iter()
+        .map(|e| e.user_name.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
     let wage_map = crate::db_utils::get_wages_for_users(user_name_list.clone(), client).await;
 
     // Transform to frontend format: { user: "Name", out: bool, timestamp: 123 }

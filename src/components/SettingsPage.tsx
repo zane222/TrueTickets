@@ -270,7 +270,7 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
                 <div className="max-w-4xl mx-auto h-full">
                     {activeTab === "config" && canAccessConfig && <ConfigTab />}
                     {activeTab === "hours" && canViewHours && <HoursTab />}
-                    {activeTab === "income" && canViewIncome && <IncomeTab />}
+                    {activeTab === "income" && canViewIncome && <IncomeTab goTo={goTo} />}
                     {activeTab === "invite" && canInvite && <InviteUserTab />}
                     {activeTab === "manage" && canManage && <ManageUsersTab />}
                     {activeTab === "none" && (

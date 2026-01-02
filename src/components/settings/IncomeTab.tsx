@@ -4,7 +4,26 @@ import { useApi } from "../../hooks/useApi";
 import { useAlertMethods } from "../ui/AlertSystem";
 
 
-import type { TicketWithoutCustomer } from "../../types/api";
+import NavigationButton from "../ui/NavigationButton";
+
+import type { TicketWithoutCustomer, ClockLog } from "../../types/api";
+
+const parseTimeStr = (t: string) => {
+    const match = t.match(/(\d+):(\d+)\s*(am|pm)/i);
+    if (!match) return 0;
+    let [_, h, m, period] = match;
+    let hours = parseInt(h);
+    const minutes = parseInt(m);
+    if (period.toLowerCase() === 'pm' && hours !== 12) hours += 12;
+    if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
+    return hours + minutes / 60;
+};
+
+const calculateShiftTotal = (segments: { start: string, end: string }[]) => {
+    return segments.reduce((acc, seg) => {
+        return acc + (parseTimeStr(seg.end) - parseTimeStr(seg.start));
+    }, 0);
+};
 
 interface PayrollItem {
     name: string;
@@ -23,7 +42,11 @@ interface FinancialData {
     purchases: PurchaseItem[];
 }
 
-export default function IncomeTab() {
+interface IncomeTabProps {
+    goTo: (path: string) => void;
+}
+
+export default function IncomeTab({ goTo }: IncomeTabProps) {
     const api = useApi();
     const { error: showError } = useAlertMethods();
     const [viewMonth, setViewMonth] = useState(() => {
@@ -48,21 +71,72 @@ export default function IncomeTab() {
             const year = viewMonth.getFullYear();
             const month = viewMonth.getMonth() + 1;
 
-            const [payrollPurchases, tickets] = await Promise.all([
-                api.get<{ employees_payroll: PayrollItem[], purchases: PurchaseItem[] }>(
-                    `/payroll_and_purchases?year=${year}&month=${month}`
+            const [purchasesData, tickets, clockData] = await Promise.all([
+                api.get<{ purchases: PurchaseItem[] }>(
+                    `/purchases?year=${year}&month=${month}`
                 ),
                 api.get<TicketWithoutCustomer[]>(
                     `/all_tickets_for_this_month_with_payments?year=${year}&month=${month}`
+                ),
+                api.get<{ clock_logs: ClockLog[], wages: { name: string, wage: number }[] }>(
+                    `/clock_logs?year=${year}&month=${month}`
                 )
             ]);
 
+            // Calculate payroll client-side to include virtual clock-outs
+            const logs = clockData.clock_logs || [];
+            const wagesData = clockData.wages || [];
+
+            // Create a wage map for quick lookup
+            const wageMap: Record<string, number> = {};
+            wagesData.forEach(w => {
+                wageMap[w.name] = w.wage;
+            });
+
+            const logsByUser: Record<string, ClockLog[]> = {};
+            logs.forEach(log => {
+                if (!logsByUser[log.user]) logsByUser[log.user] = [];
+                logsByUser[log.user].push(log);
+            });
+
+            // Calculate payroll for each user who has logs
+            const calculatedPayroll: PayrollItem[] = Object.keys(logsByUser).map(userName => {
+                const userLogs = logsByUser[userName].sort((a, b) => a.timestamp - b.timestamp);
+                let totalHours = 0;
+                let currentStart: number | null = null;
+
+                userLogs.forEach(log => {
+                    if (!log.out) {
+                        if (currentStart === null) currentStart = log.timestamp;
+                    } else if (currentStart !== null) {
+                        const startDate = new Date(currentStart * 1000);
+                        const endDate = new Date(log.timestamp * 1000);
+                        const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+                        totalHours += calculateShiftTotal([{ start: fmt(startDate), end: fmt(endDate) }]);
+                        currentStart = null;
+                    }
+                });
+
+                if (currentStart !== null) {
+                    const startDate = new Date(currentStart * 1000);
+                    const endDate = new Date();
+                    const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+                    totalHours += calculateShiftTotal([{ start: fmt(startDate), end: fmt(endDate) }]);
+                }
+
+                return {
+                    name: userName,
+                    wage: wageMap[userName] || 0,
+                    hours: Number(totalHours.toFixed(2))
+                };
+            }).filter(p => p.hours > 0);
+
             setData({
-                employees_payroll: payrollPurchases.employees_payroll,
-                purchases: payrollPurchases.purchases,
+                employees_payroll: calculatedPayroll,
+                purchases: purchasesData.purchases,
                 tickets: tickets
             });
-            setLocalPurchases(payrollPurchases.purchases || []);
+            setLocalPurchases(purchasesData.purchases || []);
         } catch (err: unknown) {
             console.error(err);
             showError("Fetch Failed", "Could not load financial data.");
@@ -111,7 +185,7 @@ export default function IncomeTab() {
             const year = viewMonth.getFullYear();
             const month = viewMonth.getMonth() + 1;
 
-            await api.put(`/financials/purchases?year=${year}&month=${month}`, {
+            await api.put(`/purchases?year=${year}&month=${month}`, {
                 purchases: items
             });
 
@@ -228,46 +302,84 @@ export default function IncomeTab() {
                     </div>
 
                     {/* Main Content Area */}
-                    <div className="md-card p-6 min-h-[400px]">
+                    <div className="lg:col-span-3 min-h-[400px]">
                         {activeTab === 'revenue' && (
                             <div className="space-y-4">
-                                <h4 className="text-xl font-bold text-on-surface">Revenue Breakdown</h4>
-                                {data?.tickets.length === 0 ? (
-                                    <p className="text-outline italic">No revenue from tickets this month.</p>
-                                ) : (
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left">
-                                            <thead>
-                                                <tr className="border-b border-outline/20">
-                                                    <th className="py-2 text-sm font-semibold text-outline">Ticket Details</th>
-                                                    <th className="py-2 text-sm font-semibold text-outline text-right">Amount</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
+                                <div className="flex items-center justify-between px-1">
+                                    <h4 className="text-sm font-semibold text-outline uppercase tracking-wider">Revenue Breakdown</h4>
+                                    <span className="text-sm font-medium text-outline">{data?.tickets.length} tickets</span>
+                                </div>
+
+                                <div className="md-card overflow-hidden min-h-[400px]">
+                                    {data?.tickets.length === 0 ? (
+                                        <div className="p-12 text-center">
+                                            <p className="text-outline italic">No revenue from tickets this month.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col">
+                                            {/* Desktop Header */}
+                                            <div className="hidden sm:grid grid-cols-12 text-sm tracking-wider px-5 py-3 text-on-surface">
+                                                <div className="col-span-1 font-semibold">Number</div>
+                                                <div className="col-span-5 font-semibold">Subject</div>
+                                                <div className="col-span-2 font-semibold">Date</div>
+                                                <div className="col-span-2 font-semibold">Customer</div>
+                                                <div className="col-span-2 font-semibold text-right">Amount</div>
+                                            </div>
+
+                                            {/* Tickets Grid */}
+                                            <div className="flex flex-col">
                                                 {data?.tickets.map(ticket => {
                                                     const total = ticket.line_items?.reduce((sum, item) => sum + item.price, 0) || 0;
+                                                    const dateStr = new Date(ticket.created_at * 1000).toLocaleDateString(undefined, {
+                                                        month: 'short',
+                                                        day: 'numeric'
+                                                    });
+                                                    const targetUrl = `${window.location.origin}/&${ticket.ticket_number}`;
+
                                                     return (
-                                                        <tr key={ticket.ticket_number} className="border-b border-outline/10 last:border-0 hover:bg-surface-variant/5">
-                                                            <td className="py-3 pr-4">
-                                                                <div className="font-medium text-on-surface">Ticket #{ticket.ticket_number}</div>
-                                                                <div className="text-sm text-outline">{ticket.subject}</div>
-                                                                <div className="text-xs text-outline">{new Date(ticket.created_at * 1000).toLocaleDateString()}</div>
-                                                            </td>
-                                                            <td className="py-3 text-right font-medium text-on-surface">
-                                                                ${total.toFixed(2)}
-                                                            </td>
-                                                        </tr>
+                                                        <div key={ticket.ticket_number} data-row>
+                                                            <NavigationButton
+                                                                onClick={() => goTo(`/&${ticket.ticket_number}`)}
+                                                                targetUrl={targetUrl}
+                                                                className="md-row-box w-full text-left transition-all duration-150 group"
+                                                            >
+                                                                {/* Desktop Layout */}
+                                                                <div className="hidden sm:grid grid-cols-12 px-4 py-3 items-center">
+                                                                    <div className="col-span-1 truncate">#{ticket.ticket_number}</div>
+                                                                    <div className="col-span-5 truncate">{ticket.subject}</div>
+                                                                    <div className="col-span-2 truncate">{dateStr}</div>
+                                                                    <div className="col-span-2 truncate">Customer</div>
+                                                                    <div className="col-span-2 text-right font-bold text-on-surface">
+                                                                        ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Mobile Layout */}
+                                                                <div className="sm:hidden px-4 py-3 space-y-2">
+                                                                    <div className="flex justify-between items-start">
+                                                                        <div className="text-md font-medium truncate flex-1 min-w-0">#{ticket.ticket_number}</div>
+                                                                        <div className="text-md truncate ml-2 text-outline">{dateStr}</div>
+                                                                    </div>
+                                                                    <div className="text-md truncate text-on-surface">{ticket.subject}</div>
+                                                                    <div className="flex justify-end pt-1">
+                                                                        <div className="font-bold text-on-surface">
+                                                                            ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </NavigationButton>
+                                                        </div>
                                                     );
                                                 })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
 
                         {activeTab === 'payroll' && (
-                            <div className="space-y-4">
+                            <div className="md-card p-6 min-h-[400px] space-y-4">
                                 <h4 className="text-xl font-bold text-on-surface">Payroll Breakdown</h4>
                                 {data?.employees_payroll.length === 0 ? (
                                     <p className="text-outline italic">No payroll data for this month.</p>
@@ -303,7 +415,7 @@ export default function IncomeTab() {
                         )}
 
                         {activeTab === 'purchases' && (
-                            <div className="space-y-6">
+                            <div className="md-card p-6 min-h-[400px] space-y-6">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-4">
                                         <h4 className="text-xl font-bold text-on-surface">This month's purchases</h4>

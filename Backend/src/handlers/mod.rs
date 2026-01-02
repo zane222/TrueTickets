@@ -24,6 +24,6 @@ pub use migration::handle_migrate_tickets;
 pub use store_config::{handle_get_store_config, handle_update_store_config};
 pub mod financials;
 pub use financials::{
-    get_payroll_and_purchases, get_all_tickets_for_month_with_payments, update_purchases, handle_get_clock_logs,
+    get_purchases, get_all_tickets_for_month_with_payments, update_purchases, handle_get_clock_logs,
     handle_clock_in, handle_am_i_clocked_in, handle_update_user_wage
 };

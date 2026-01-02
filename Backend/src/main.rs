@@ -170,7 +170,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/payroll_and_purchases", "GET") => {
+        ("/purchases", "GET") => {
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !is_admin_or_owner(&user_groups) {
@@ -187,7 +187,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 None => return error_response(400, "Invalid Parameter", "Missing or invalid 'month' parameter", None),
             };
 
-            match handlers::get_payroll_and_purchases(year, month, &dynamodb_client).await {
+            match handlers::get_purchases(year, month, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -214,7 +214,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/financials/purchases", "PUT") => {
+        ("/purchases", "PUT") => {
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !is_admin_or_owner(&user_groups) {
