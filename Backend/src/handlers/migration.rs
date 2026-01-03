@@ -31,6 +31,7 @@ struct LargeTicket {
     status: String,
     created_at: String,
     customer_id: i64,
+    #[allow(dead_code)] // updated_at is not read
     updated_at: String,
     properties: TicketProperties,
     ticket_type_id: Option<i64>,
@@ -223,6 +224,199 @@ async fn download_and_upload_attachment(
     Ok(format!("https://{}.s3.amazonaws.com/{}", bucket_name, s3_key))
 }
 
+async fn migrate_single_ticket(
+    current_ticket_number: i64,
+    api_key: String,
+    db_client: DynamoDbClient,
+    s3_client: S3Client,
+    http_client: reqwest::Client,
+) -> Result<(), Response<Body>> {
+    // Step 1: Resolve ticket number to internal ID
+    let search_url = format!("https://Cacell.repairshopr.com/api/v1/tickets?number={}", current_ticket_number);
+
+    let search_resp = http_client
+        .get(&search_url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+        )
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .send()
+        .await
+        .map_err(|e| error_response(500, "Search API Failed", &format!("Failed to search ticket number {:?}: {:?}", current_ticket_number, e), None))?;
+
+    if !search_resp.status().is_success() {
+         return Err(error_response(500, "Search API Error", &format!("Search API returned status {:?} for ticket number {:?}", search_resp.status(), current_ticket_number), None));
+    }
+
+    let search_data: TicketSearchResponse = search_resp.json()
+        .await
+        .map_err(|e| error_response(500, "Search JSON Error", &format!("Failed to parse search JSON for ticket {:?}: {:?}", current_ticket_number, e), None))?;
+
+    let ticket_id = search_data.tickets.first()
+        .ok_or_else(|| error_response(404, "Not Found", &format!("Ticket number {:?} not found via search", current_ticket_number), None))?.id;
+
+    // Step 2: Fetch full ticket details using the internal ID
+    let details_url = format!("https://Cacell.repairshopr.com/api/v1/tickets/{}", ticket_id);
+
+    let details_resp = http_client
+        .get(&details_url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+        )
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .send()
+        .await
+        .map_err(|e| error_response(500, "Details API Failed", &format!("Failed to fetch full details for ticket ID {:?}: {:?}", ticket_id, e), None))?;
+
+    if !details_resp.status().is_success() {
+         return Err(error_response(500, "Details API Error", &format!("Details API returned status {:?} for ticket ID {:?}", details_resp.status(), ticket_id), None));
+    }
+
+    let root: serde_json::Value = details_resp.json()
+        .await
+        .map_err(|e| error_response(500, "Details JSON Error", &format!("Failed to parse full details JSON for ticket ID {:?}: {:?}", ticket_id, e), None))?;
+
+    let ticket_value = root.get("ticket")
+        .ok_or_else(|| error_response(500, "Missing Field", &format!("Response for ticket ID {:?} is missing 'ticket' field", ticket_id), None))?;
+
+    let ticket: LargeTicket = serde_json::from_value(ticket_value.clone())
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize full ticket details for ID {:?}: {:?}", ticket_id, e), None))?;
+
+    if ticket.number != current_ticket_number {
+        return Err(error_response(500, "API Mismatch", &format!("API returned a ticket number different from what was requested (ID {:?}), requested '{:?}', got '{:?}'", ticket_id, current_ticket_number, ticket.number), None));
+    }
+    let password = extract_password(&ticket);
+    let items_left = check_ac_charger(&ticket);
+
+    let created_at = parse_timestamp(&ticket.created_at).map_err(|e| *e)?;
+
+    // 1. Migrate Customer
+    let api_cust = &ticket.customer;
+    let cust_id = ticket.customer_id.to_string();
+    let cust_created_at = parse_timestamp(&api_cust.created_at).map_err(|e| *e)?;
+    let cust_last_updated = if let Some(ref cu) = api_cust.updated_at {
+         parse_timestamp(cu).map_err(|e| *e)?
+    } else {
+         cust_created_at
+    };
+
+    let mut cust_txn_items = Vec::new();
+
+    let mut phone_numbers = Vec::new();
+    if let Some(ref p) = api_cust.phone {
+        phone_numbers.push(PhoneNumber {
+            number: p.clone(),
+            prefers_texting: None,
+            no_english: None,
+        });
+    }
+
+    let put_customer = Put::builder()
+        .table_name("Customers")
+        .item("customer_id", AttributeValue::S(cust_id.clone()))
+        .item("gsi_pk", AttributeValue::S("ALL".to_string()))
+        .item("full_name", AttributeValue::S(api_cust.business_and_full_name.clone()))
+        .item("full_name_lower", AttributeValue::S(api_cust.business_and_full_name.to_lowercase()))
+        .item_if_not_empty("email", AttributeValue::S(api_cust.email.clone().unwrap_or_default()))
+        .item("phone_numbers", AttributeValue::L(
+            phone_numbers.iter().map(|p| {
+                let mut map = std::collections::HashMap::new();
+                map.insert("number".to_string(), AttributeValue::S(p.number.clone()));
+                if p.prefers_texting.unwrap_or(false) {
+                    map.insert("prefers_texting".to_string(), AttributeValue::Bool(true));
+                }
+                if p.no_english.unwrap_or(false) {
+                    map.insert("no_english".to_string(), AttributeValue::Bool(true));
+                }
+                AttributeValue::M(map)
+            }).collect()
+        ))
+        .item("created_at", AttributeValue::N(cust_created_at.to_string()))
+        .item("last_updated", AttributeValue::N(cust_last_updated.to_string()))
+        .build()
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer Put item: {:?}", e), None))?;
+
+    cust_txn_items.push(TransactWriteItem::builder().put(put_customer).build());
+
+    // CustomerPhoneIndex table
+    if let Some(ref p) = api_cust.phone {
+        let put_phone = Put::builder()
+            .table_name("CustomerPhoneIndex")
+            .item("phone_number", AttributeValue::S(p.clone()))
+            .item("customer_id", AttributeValue::S(cust_id.clone()))
+            .build()
+            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer phone Put item: {:?}", e), None))?;
+        cust_txn_items.push(TransactWriteItem::builder().put(put_phone).build());
+    }
+
+    // 2. Download and upload attachments
+    let mut attachment_urls = Vec::new();
+    for attachment in &ticket.attachments {
+        let s3_url = download_and_upload_attachment(&attachment.file.url, ticket.number, &s3_client).await.map_err(|e| *e)?;
+        attachment_urls.push(s3_url);
+    }
+
+    // 3. Convert comments
+    let comments: Vec<Comment> = ticket.comments.iter().map(|c| {
+        Comment {
+            comment_body: c.body.clone(),
+            tech_name: c.tech.clone(),
+            created_at: parse_timestamp(&c.created_at).unwrap_or(created_at),
+        }
+    }).collect();
+
+    // 4. Migrate Ticket
+    let device = get_device_type_from_subject(&ticket.subject);
+    let status = convert_status(&ticket.status);
+    let status_device = format!("{}#{}", status, device);
+
+    let mut ticket_txn_items = Vec::new();
+    ticket_txn_items.extend(cust_txn_items);
+
+    let put_ticket = Put::builder()
+        .table_name("Tickets")
+        .item("ticket_number", AttributeValue::N(ticket.number.to_string()))
+        .item("gsi_pk", AttributeValue::S("ALL".to_string()))
+        .item("subject", AttributeValue::S(ticket.subject.clone()))
+        .item("subject_lower", AttributeValue::S(ticket.subject.to_lowercase()))
+        .item("customer_id", AttributeValue::S(ticket.customer_id.to_string()))
+        .item("status", AttributeValue::S(status.to_string()))
+        .item("device", AttributeValue::S(device.to_string()))
+        .item("status_device", AttributeValue::S(status_device))
+        .item_if_not_empty("password", AttributeValue::S(password.clone()))
+        .item_if_not_empty("items_left", AttributeValue::L(items_left.into_iter().map(AttributeValue::S).collect()))
+        .item_if_not_empty("attachments", AttributeValue::L(attachment_urls.into_iter().map(AttributeValue::S).collect()))
+        .item_if_not_empty("comments", AttributeValue::L(comments.iter().map(|c| {
+            let mut map = std::collections::HashMap::new();
+            map.insert("comment_body".to_string(), AttributeValue::S(c.comment_body.clone()));
+            map.insert("tech_name".to_string(), AttributeValue::S(c.tech_name.clone()));
+            map.insert("created_at".to_string(), AttributeValue::N(c.created_at.to_string()));
+            AttributeValue::M(map)
+        }).collect()))
+        .item("created_at", AttributeValue::N(created_at.to_string()))
+        .item("last_updated", AttributeValue::N(Utc::now().timestamp().to_string()))
+        .build()
+        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {:?}", e), None))?;
+
+    ticket_txn_items.push(TransactWriteItem::builder().put(put_ticket).build());
+
+    db_client.transact_write_items()
+        .set_transact_items(Some(ticket_txn_items))
+        .send()
+        .await
+        .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to migrate ticket {:?}: {:?}", ticket.number, e), None))?;
+
+    Ok(())
+}
+
 /// Main migration handler
 pub async fn handle_migrate_tickets(
     latest_ticket_number: i64,
@@ -231,200 +425,38 @@ pub async fn handle_migrate_tickets(
     db_client: &DynamoDbClient,
     s3_client: &S3Client,
 ) -> Result<Value, Response<Body>> {
-    let mut migrated_count = 0;
+    if count > 50 {
+        return Err(error_response(500, "Count too large", "Count must be less than or equal to 50", None));
+    }
 
     let http_client = reqwest::Client::new();
+    let mut tasks = Vec::new();
 
-    if count > 5 {
-        return Err(error_response(500, "Count too large", "Count must be less than or equal to 5", None));
-    }
     for i in 0..count {
         let current_ticket_number = latest_ticket_number - i;
-        // Step 1: Resolve ticket number to internal ID
-        let search_url = format!("https://Cacell.repairshopr.com/api/v1/tickets?number={}", current_ticket_number);
+        let api_key = api_key.clone();
+        let db_client = db_client.clone();
+        let s3_client = s3_client.clone();
+        let http_client = http_client.clone();
 
-        let search_resp = http_client
-            .get(&search_url)
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-            )
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .send()
-            .await
-            .map_err(|e| error_response(500, "Search API Failed", &format!("Failed to search ticket number {:?}: {:?}", current_ticket_number, e), None))?;
+        tasks.push(tokio::spawn(async move {
+            migrate_single_ticket(
+                current_ticket_number,
+                api_key,
+                db_client,
+                s3_client,
+                http_client,
+            ).await
+        }));
+    }
 
-        if !search_resp.status().is_success() {
-             return Err(error_response(500, "Search API Error", &format!("Search API returned status {:?} for ticket number {:?}", search_resp.status(), current_ticket_number), None));
+    let mut migrated_count = 0;
+    for task in tasks {
+        match task.await {
+            Ok(Ok(())) => migrated_count += 1,
+            Ok(Err(e)) => return Err(e),
+            Err(e) => return Err(error_response(500, "Task Join Error", &format!("Migration task failed: {:?}", e), None)),
         }
-
-        let search_data: TicketSearchResponse = search_resp.json()
-            .await
-            .map_err(|e| error_response(500, "Search JSON Error", &format!("Failed to parse search JSON for ticket {:?}: {:?}", current_ticket_number, e), None))?;
-
-        let ticket_id = search_data.tickets.first()
-            .ok_or_else(|| error_response(404, "Not Found", &format!("Ticket number {:?} not found via search", current_ticket_number), None))?.id;
-
-        // Step 2: Fetch full ticket details using the internal ID
-        let details_url = format!("https://Cacell.repairshopr.com/api/v1/tickets/{}", ticket_id);
-
-        let details_resp = http_client
-            .get(&details_url)
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-            )
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .send()
-            .await
-            .map_err(|e| error_response(500, "Details API Failed", &format!("Failed to fetch full details for ticket ID {:?}: {:?}", ticket_id, e), None))?;
-
-        if !details_resp.status().is_success() {
-             return Err(error_response(500, "Details API Error", &format!("Details API returned status {:?} for ticket ID {:?}", details_resp.status(), ticket_id), None));
-        }
-
-        let root: serde_json::Value = details_resp.json()
-            .await
-            .map_err(|e| error_response(500, "Details JSON Error", &format!("Failed to parse full details JSON for ticket ID {:?}: {:?}", ticket_id, e), None))?;
-
-        let ticket_value = root.get("ticket")
-            .ok_or_else(|| error_response(500, "Missing Field", &format!("Response for ticket ID {:?} is missing 'ticket' field", ticket_id), None))?;
-
-        let ticket: LargeTicket = serde_json::from_value(ticket_value.clone())
-            .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize full ticket details for ID {:?}: {:?}", ticket_id, e), None))?;
-
-        if ticket.number != current_ticket_number {
-            return Err(error_response(500, "API Mismatch", &format!("API returned a ticket number different from what was requested (ID {:?}), requested '{:?}', got '{:?}'", ticket_id, current_ticket_number, ticket.number), None));
-        }
-        let password = extract_password(&ticket);
-        let items_left = check_ac_charger(&ticket);
-
-        let created_at = parse_timestamp(&ticket.created_at).map_err(|e| *e)?;
-        let _last_updated = parse_timestamp(&ticket.updated_at).map_err(|e| *e)?;
-
-        // 1. Migrate Customer
-        let api_cust = &ticket.customer;
-        let cust_id = ticket.customer_id.to_string();
-        let cust_created_at = parse_timestamp(&api_cust.created_at).map_err(|e| *e)?;
-        let cust_last_updated = if let Some(ref cu) = api_cust.updated_at {
-             parse_timestamp(cu).map_err(|e| *e)?
-        } else {
-             cust_created_at
-        };
-
-        let mut cust_txn_items = Vec::new();
-
-        let mut phone_numbers = Vec::new();
-        if let Some(ref p) = api_cust.phone {
-            phone_numbers.push(PhoneNumber {
-                number: p.clone(),
-                prefers_texting: None,
-                no_english: None,
-            });
-        }
-
-        let put_customer = Put::builder()
-            .table_name("Customers")
-            .item("customer_id", AttributeValue::S(cust_id.clone()))
-            .item("gsi_pk", AttributeValue::S("ALL".to_string()))
-            .item("full_name", AttributeValue::S(api_cust.business_and_full_name.clone()))
-            .item("full_name_lower", AttributeValue::S(api_cust.business_and_full_name.to_lowercase()))
-            .item_if_not_empty("email", AttributeValue::S(api_cust.email.clone().unwrap_or_default()))
-            .item("phone_numbers", AttributeValue::L(
-                phone_numbers.iter().map(|p| {
-                    let mut map = std::collections::HashMap::new();
-                    map.insert("number".to_string(), AttributeValue::S(p.number.clone()));
-                    if p.prefers_texting.unwrap_or(false) {
-                        map.insert("prefers_texting".to_string(), AttributeValue::Bool(true));
-                    }
-                    if p.no_english.unwrap_or(false) {
-                        map.insert("no_english".to_string(), AttributeValue::Bool(true));
-                    }
-                    AttributeValue::M(map)
-                }).collect()
-            ))
-            .item("created_at", AttributeValue::N(cust_created_at.to_string()))
-            .item("last_updated", AttributeValue::N(cust_last_updated.to_string()))
-            .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer Put item: {:?}", e), None))?;
-
-        cust_txn_items.push(TransactWriteItem::builder().put(put_customer).build());
-
-        // CustomerPhoneIndex table
-        if let Some(ref p) = api_cust.phone {
-            let put_phone = Put::builder()
-                .table_name("CustomerPhoneIndex")
-                .item("phone_number", AttributeValue::S(p.clone()))
-                .item("customer_id", AttributeValue::S(cust_id.clone()))
-                .build()
-                .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build customer phone Put item: {:?}", e), None))?;
-            cust_txn_items.push(TransactWriteItem::builder().put(put_phone).build());
-        }
-
-        // 2. Download and upload attachments
-        let mut attachment_urls = Vec::new();
-        for attachment in &ticket.attachments {
-            let s3_url = download_and_upload_attachment(&attachment.file.url, ticket.number, s3_client).await.map_err(|e| *e)?;
-            attachment_urls.push(s3_url);
-        }
-
-        // 3. Convert comments
-        let comments: Vec<Comment> = ticket.comments.iter().map(|c| {
-            Comment {
-                comment_body: c.body.clone(),
-                tech_name: c.tech.clone(),
-                created_at: parse_timestamp(&c.created_at).unwrap_or(created_at),
-            }
-        }).collect();
-
-        // 4. Migrate Ticket
-        let device = get_device_type_from_subject(&ticket.subject);
-        let status = convert_status(&ticket.status);
-        let status_device = format!("{}#{}", status, device);
-
-        let mut ticket_txn_items = Vec::new();
-        ticket_txn_items.extend(cust_txn_items);
-
-        let put_ticket = Put::builder()
-            .table_name("Tickets")
-            .item("ticket_number", AttributeValue::N(ticket.number.to_string()))
-            .item("gsi_pk", AttributeValue::S("ALL".to_string()))
-            .item("subject", AttributeValue::S(ticket.subject.clone()))
-            .item("subject_lower", AttributeValue::S(ticket.subject.to_lowercase()))
-            .item("customer_id", AttributeValue::S(ticket.customer_id.to_string()))
-            .item("status", AttributeValue::S(status.to_string()))
-            .item("device", AttributeValue::S(device.to_string()))
-            .item("status_device", AttributeValue::S(status_device))
-            .item_if_not_empty("password", AttributeValue::S(password.clone()))
-            .item_if_not_empty("items_left", AttributeValue::L(items_left.into_iter().map(AttributeValue::S).collect()))
-            .item_if_not_empty("attachments", AttributeValue::L(attachment_urls.into_iter().map(AttributeValue::S).collect()))
-            .item_if_not_empty("comments", AttributeValue::L(comments.iter().map(|c| {
-                let mut map = std::collections::HashMap::new();
-                map.insert("comment_body".to_string(), AttributeValue::S(c.comment_body.clone()));
-                map.insert("tech_name".to_string(), AttributeValue::S(c.tech_name.clone()));
-                map.insert("created_at".to_string(), AttributeValue::N(c.created_at.to_string()));
-                AttributeValue::M(map)
-            }).collect()))
-            .item("created_at", AttributeValue::N(created_at.to_string()))
-            .item("last_updated", AttributeValue::N(Utc::now().timestamp().to_string()))
-            .build()
-            .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build ticket Put item: {:?}", e), None))?;
-
-        ticket_txn_items.push(TransactWriteItem::builder().put(put_ticket).build());
-
-        db_client.transact_write_items()
-            .set_transact_items(Some(ticket_txn_items))
-            .send()
-            .await
-            .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to migrate ticket {:?}: {:?}", ticket.number, e), None))?;
-
-        migrated_count += 1;
     }
 
     // Update counter using the input parameter directly

@@ -15,6 +15,7 @@
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.896.0",
     "aws-amplify": "^6.15.6",
+    "date-fns": "^4.1.0",
     "framer-motion": "^12.23.22",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.12.0",

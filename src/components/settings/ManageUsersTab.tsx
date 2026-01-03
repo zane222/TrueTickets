@@ -15,7 +15,7 @@ import type { AmplifyAuthUser } from "../../types";
 import type { CognitoUser, PostUpdateUserGroup } from "../../types/api";
 
 interface UserWithGroups extends CognitoUser {
-    wage: number;
+    wage_cents: number;
 }
 
 interface SelectedUser extends UserWithGroups {
@@ -119,7 +119,7 @@ export default function ManageUsersTab() {
                 const wagePayload = {
                     username: username, // For reference if needed
                     given_name: user?.given_name || displayName, // Use given_name as primary key
-                    wage: newWage
+                    wage_cents: Math.round(newWage * 100)
                 };
                 await apiClient.post("/update-user-wage", wagePayload);
             }
@@ -192,7 +192,7 @@ export default function ManageUsersTab() {
                                         <button
                                             onClick={() => {
                                                 setSelectedUser(user as SelectedUser);
-                                                setWageInput((user.wage || 0).toString());
+                                                setWageInput((user.wage_cents ? user.wage_cents / 100 : 0).toString());
                                                 setShowUserEdit(true);
                                             }}
                                             className="md-btn-surface text-sm px-4 py-1.5 shadow-sm transition-all"
@@ -219,7 +219,7 @@ export default function ManageUsersTab() {
                                         <button
                                             onClick={() => {
                                                 setSelectedUser(user as SelectedUser);
-                                                setWageInput((user.wage || 0).toString());
+                                                setWageInput((user.wage_cents ? user.wage_cents / 100 : 0).toString());
                                                 setShowUserEdit(true);
                                             }}
                                             className="md-btn-primary text-sm px-4 py-1.5 w-full"

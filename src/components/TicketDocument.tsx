@@ -15,7 +15,7 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
 
         // Calculate totals
         const subtotal = (ticket.line_items || []).reduce(
-            (acc: number, item: LineItem) => acc + (Number(item.price) || 0),
+            (acc: number, item: LineItem) => acc + ((item.price_cents || 0) / 100),
             0
         );
         const tax = subtotal * taxRate;
@@ -62,7 +62,7 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                             {(ticket.line_items || []).map((item: LineItem, index: number) => (
                                 <div key={index} className="flex justify-between py-1">
                                     <span className="truncate pr-2">{item.subject}</span>
-                                    <span>${(Number(item.price) || 0).toFixed(2)}</span>
+                                    <span>${((item.price_cents || 0) / 100).toFixed(2)}</span>
                                 </div>
                             ))}
                             {(ticket.line_items || []).length === 0 && (
@@ -157,7 +157,7 @@ export const TicketDocument = React.forwardRef<HTMLDivElement, TicketDocumentPro
                                     {(ticket.line_items || []).map((item: LineItem, index: number) => (
                                         <tr key={index} className="border-b border-[#e5e7eb]">
                                             <td className="py-4 font-medium">{item.subject}</td>
-                                            <td className="py-4 text-right">${(Number(item.price) || 0).toFixed(2)}</td>
+                                            <td className="py-4 text-right">${((item.price_cents || 0) / 100).toFixed(2)}</td>
                                         </tr>
                                     ))}
                                     {(ticket.line_items || []).length === 0 && (

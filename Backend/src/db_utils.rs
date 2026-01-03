@@ -47,7 +47,7 @@ impl DynamoDbBuilderExt for PutItemInputBuilder {
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use std::collections::HashMap;
 
-pub async fn get_wages_for_users(user_names: Vec<String>, client: &DynamoDbClient) -> HashMap<String, f64> {
+pub async fn get_wages_for_users(user_names: Vec<String>, client: &DynamoDbClient) -> HashMap<String, i64> {
     if user_names.is_empty() {
         return HashMap::new();
     }
@@ -87,11 +87,11 @@ pub async fn get_wages_for_users(user_names: Vec<String>, client: &DynamoDbClien
                 for item in items {
                     let pk = item.get("pk").and_then(|av| av.as_s().ok()).unwrap_or(&String::new()).to_string();
                     if let Some(name) = pk.strip_suffix("#wage") {
-                        let wage = item.get("wage")
+                        let cents = item.get("wage_cents")
                             .and_then(|av| av.as_n().ok())
-                            .and_then(|n| n.parse::<f64>().ok())
-                            .unwrap_or(0.0);
-                        wage_map.insert(name.to_string(), wage);
+                            .and_then(|n| n.parse::<i64>().ok())
+                            .unwrap_or(0);
+                        wage_map.insert(name.to_string(), cents);
                     }
                 }
             }

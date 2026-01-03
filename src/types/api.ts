@@ -6,7 +6,7 @@ export interface PhoneNumber {
 
 export interface LineItem {
   subject: string;
-  price: number;
+  price_cents: number;
 }
 
 export interface ClockLog {
@@ -14,7 +14,6 @@ export interface ClockLog {
   out: boolean;
   timestamp: number;
 }
-
 
 // TinyTicket interfaces for lists
 export interface TinyTicket {
@@ -39,6 +38,9 @@ export interface TicketWithoutCustomer {
   attachments?: string[];
   items_left?: string[];
   line_items?: LineItem[];
+  paid_at?: number;
+  total_paid_cents?: number;
+  customer_name?: string;
 }
 
 export interface Ticket extends TicketWithoutCustomer {
@@ -81,11 +83,14 @@ export interface PostTicket {
 
 export interface UpdateTicket {
   subject: string | null;
-  status: string | null;
   password: string | null;
   items_left: string[] | null;
   line_items: LineItem[] | null;
   device: string | null;
+}
+
+export interface UpdateTicketStatus {
+  status: string;
 }
 
 export interface PostCustomer {
@@ -102,7 +107,6 @@ export interface UpdateCustomer {
 
 export interface PostComment {
   comment_body: string;
-  tech_name: string;
 }
 
 export interface PostInviteUser {
@@ -116,7 +120,6 @@ export interface PostUpdateUserGroup {
 }
 
 export interface PostAttachment {
-  ticket_id: string;
   image_data: string;
 }
 

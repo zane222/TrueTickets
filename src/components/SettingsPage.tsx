@@ -85,7 +85,7 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
     useEffect(() => {
         const fetchClockStatus = async () => {
             try {
-                const res = await apiClient.get<{ clocked_in: boolean }>('/am_i_clocked_in');
+                const res = await apiClient.get<{ clocked_in: boolean }>('/clock-status');
                 setIsClockedIn(res.clocked_in);
                 setClockError(false);
             } catch (err) {
@@ -102,7 +102,9 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
         setLoadingClock(true);
         setClockError(false);
         try {
-            const res = await apiClient.post<{ clocked_in: boolean }>('/clock_in', {});
+            const res = await apiClient.post<{ clocked_in: boolean }>('/clock-in', {
+                clocking_in: !isClockedIn
+            });
             setIsClockedIn(res.clocked_in);
         } catch (err) {
             console.error("Failed to toggle clock", err);

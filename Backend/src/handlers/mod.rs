@@ -13,8 +13,8 @@ pub use attachments::handle_upload_attachment;
 pub use tickets::{
     handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
-    handle_get_tickets_by_customer_id, handle_get_tickets_by_suffix,
-    handle_get_recent_tickets_filtered
+    handle_get_recent_tickets_filtered, handle_get_tickets_by_suffix,
+    handle_get_tickets_by_customer_id, handle_update_status
 };
 pub use customers::{
     handle_get_customers_by_phone, handle_create_customer, handle_update_customer,
@@ -25,5 +25,6 @@ pub use store_config::{handle_get_store_config, handle_update_store_config};
 pub mod financials;
 pub use financials::{
     get_purchases, get_all_tickets_for_month_with_payments, update_purchases, handle_get_clock_logs,
-    handle_clock_in, handle_am_i_clocked_in, handle_update_user_wage
+    handle_clock_in, handle_am_i_clocked_in, handle_update_user_wage, handle_update_clock_logs,
+    handle_take_payment, handle_refund_payment
 };

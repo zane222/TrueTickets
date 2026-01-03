@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, Loader2, X, ChevronDown } from "lucide-react";
+import { getUnixTime, startOfMonth, endOfMonth } from 'date-fns';
 import { useApi } from "../../hooks/useApi";
 import { useAlertMethods } from "../ui/AlertSystem";
 
 
 import NavigationButton from "../ui/NavigationButton";
 
-import type { TicketWithoutCustomer, ClockLog } from "../../types/api";
+import type { Ticket, ClockLog } from "../../types/api";
 
 const parseTimeStr = (t: string) => {
     const match = t.match(/(\d+):(\d+)\s*(am|pm)/i);
@@ -27,17 +28,17 @@ const calculateShiftTotal = (segments: { start: string, end: string }[]) => {
 
 interface PayrollItem {
     name: string;
-    wage: number;
+    wage_cents: number;
     hours: number;
 }
 
 interface PurchaseItem {
     name: string;
-    amount: number;
+    amount_cents: number;
 }
 
 interface FinancialData {
-    tickets: TicketWithoutCustomer[];
+    tickets: Ticket[];
     employees_payroll: PayrollItem[];
     purchases: PurchaseItem[];
 }
@@ -67,19 +68,23 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            // endpoint expects 1-based month (1-12)
+            // endpoint expects 1-based month (1-12) for purchases/payroll
             const year = viewMonth.getFullYear();
             const month = viewMonth.getMonth() + 1;
+
+            // Calculate exact local month boundaries for improved revenue accuracy
+            const startTimestamp = getUnixTime(startOfMonth(viewMonth));
+            const endTimestamp = getUnixTime(endOfMonth(viewMonth));
 
             const [purchasesData, tickets, clockData] = await Promise.all([
                 api.get<{ purchases: PurchaseItem[] }>(
                     `/purchases?year=${year}&month=${month}`
                 ),
-                api.get<TicketWithoutCustomer[]>(
-                    `/all_tickets_for_this_month_with_payments?year=${year}&month=${month}`
+                api.get<Ticket[]>(
+                    `/all_tickets_for_this_month_with_payments?start=${startTimestamp}&end=${endTimestamp}`
                 ),
-                api.get<{ clock_logs: ClockLog[], wages: { name: string, wage: number }[] }>(
-                    `/clock_logs?year=${year}&month=${month}`
+                api.get<{ clock_logs: ClockLog[], wages: { name: string, wage_cents: number }[] }>(
+                    `/clock-logs?start=${startTimestamp}&end=${endTimestamp}`
                 )
             ]);
 
@@ -90,7 +95,7 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
             // Create a wage map for quick lookup
             const wageMap: Record<string, number> = {};
             wagesData.forEach(w => {
-                wageMap[w.name] = w.wage;
+                wageMap[w.name] = w.wage_cents;
             });
 
             const logsByUser: Record<string, ClockLog[]> = {};
@@ -104,6 +109,11 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                 const userLogs = logsByUser[userName].sort((a, b) => a.timestamp - b.timestamp);
                 let totalHours = 0;
                 let currentStart: number | null = null;
+
+                // Virtual clock-in if the first log of the period is a clock-out
+                if (userLogs.length > 0 && userLogs[0].out) {
+                    currentStart = startTimestamp;
+                }
 
                 userLogs.forEach(log => {
                     if (!log.out) {
@@ -126,17 +136,17 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
 
                 return {
                     name: userName,
-                    wage: wageMap[userName] || 0,
+                    wage_cents: wageMap[userName] || 0,
                     hours: Number(totalHours.toFixed(2))
                 };
             }).filter(p => p.hours > 0);
 
             setData({
                 employees_payroll: calculatedPayroll,
-                purchases: purchasesData.purchases,
+                purchases: (purchasesData.purchases || []),
                 tickets: tickets
             });
-            setLocalPurchases(purchasesData.purchases || []);
+            setLocalPurchases((purchasesData.purchases || []));
         } catch (err: unknown) {
             console.error(err);
             showError("Fetch Failed", "Could not load financial data.");
@@ -152,14 +162,18 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
     const stats = useMemo(() => {
         if (!data) return { revenue: 0, payroll: 0, purchases: 0, net: 0 };
 
-        const revenue = data.tickets.reduce((acc, ticket) => {
-            const ticketTotal = ticket.line_items?.reduce((sum, item) => sum + item.price, 0) || 0;
-            return acc + ticketTotal;
+        const revenueCents = data.tickets.reduce((acc, ticket) => {
+            const ticketTotalCents = ticket.total_paid_cents ?? (ticket.line_items?.reduce((sum, item) => sum + item.price_cents, 0) || 0);
+            return acc + ticketTotalCents;
         }, 0);
 
-        const payroll = data.employees_payroll.reduce((acc, item) => acc + ((item.wage || 0) * (item.hours || 0)), 0);
+        const payrollCents = data.employees_payroll.reduce((acc, item) => acc + ((item.wage_cents || 0) * (item.hours || 0)), 0);
         // Use localPurchases for calculation to reflect edits immediately in summary
-        const purchases = localPurchases.reduce((acc, item) => acc + (item.amount || 0), 0);
+        const purchasesCents = localPurchases.reduce((acc, item) => acc + (item.amount_cents || 0), 0);
+
+        const revenue = revenueCents / 100;
+        const payroll = payrollCents / 100;
+        const purchases = purchasesCents / 100;
         const net = revenue - payroll - purchases;
 
         return { revenue, payroll, purchases, net };
@@ -320,17 +334,19 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                                             {/* Desktop Header */}
                                             <div className="hidden sm:grid grid-cols-12 text-sm tracking-wider px-5 py-3 text-on-surface">
                                                 <div className="col-span-1 font-semibold">Number</div>
-                                                <div className="col-span-5 font-semibold">Subject</div>
+                                                <div className="col-span-4 font-semibold">Subject</div>
                                                 <div className="col-span-2 font-semibold">Date</div>
-                                                <div className="col-span-2 font-semibold">Customer</div>
+                                                <div className="col-span-3 font-semibold">Customer</div>
                                                 <div className="col-span-2 font-semibold text-right">Amount</div>
                                             </div>
 
                                             {/* Tickets Grid */}
                                             <div className="flex flex-col">
                                                 {data?.tickets.map(ticket => {
-                                                    const total = ticket.line_items?.reduce((sum, item) => sum + item.price, 0) || 0;
-                                                    const dateStr = new Date(ticket.created_at * 1000).toLocaleDateString(undefined, {
+                                                    const totalCents = ticket.total_paid_cents ?? (ticket.line_items?.reduce((sum, item) => sum + item.price_cents, 0) || 0);
+                                                    const total = totalCents / 100;
+                                                    const displayDate = ticket.paid_at ?? ticket.created_at;
+                                                    const dateStr = new Date(displayDate * 1000).toLocaleDateString(undefined, {
                                                         month: 'short',
                                                         day: 'numeric'
                                                     });
@@ -346,9 +362,9 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                                                                 {/* Desktop Layout */}
                                                                 <div className="hidden sm:grid grid-cols-12 px-4 py-3 items-center">
                                                                     <div className="col-span-1 truncate">#{ticket.ticket_number}</div>
-                                                                    <div className="col-span-5 truncate">{ticket.subject}</div>
+                                                                    <div className="col-span-4 truncate">{ticket.subject}</div>
                                                                     <div className="col-span-2 truncate">{dateStr}</div>
-                                                                    <div className="col-span-2 truncate">Customer</div>
+                                                                    <div className="col-span-3 truncate text-outline">{ticket.customer?.full_name || "Customer"}</div>
                                                                     <div className="col-span-2 text-right font-bold text-on-surface">
                                                                         ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                     </div>
@@ -396,14 +412,12 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                                             </thead>
                                             <tbody>
                                                 {data?.employees_payroll.map((item, idx) => {
-                                                    // Client-side calculation
-                                                    const amount = (item.wage || 0) * (item.hours || 0);
                                                     return (
                                                         <tr key={idx} className="border-b border-outline/10 last:border-0 hover:bg-surface-variant/5">
                                                             <td className="py-3 pr-4 font-medium text-on-surface">{item.name}</td>
-                                                            <td className="py-3 text-right text-on-surface">${item.wage?.toFixed(2) ?? '0.00'}/hr</td>
+                                                            <td className="py-3 text-right text-on-surface">${(item.wage_cents / 100).toFixed(2)}/hr</td>
                                                             <td className="py-3 text-right text-on-surface">{item.hours?.toFixed(2) ?? '0.00'} hrs</td>
-                                                            <td className="py-3 text-right font-medium text-on-surface">${amount.toFixed(2)}</td>
+                                                            <td className="py-3 text-right font-medium text-on-surface">${((item.wage_cents * item.hours) / 100).toFixed(2)}</td>
                                                         </tr>
                                                     );
                                                 })}
@@ -435,7 +449,7 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            const newItems = [...localPurchases, { name: "", amount: 0 }];
+                                            const newItems: PurchaseItem[] = [...localPurchases, { name: "", amount_cents: 0 }];
                                             setLocalPurchases(newItems);
                                         }}
                                         className="md-btn-surface elev-1 text-sm py-1.5 px-3 w-fit"
@@ -465,10 +479,11 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                                                 <input
                                                     type="number"
                                                     placeholder="0.00"
-                                                    value={item.amount || ""}
+                                                    value={item.amount_cents ? (item.amount_cents / 100).toString() : ""}
                                                     onChange={(e) => {
+                                                        const val = parseFloat(e.target.value) || 0;
                                                         const next = [...localPurchases];
-                                                        next[index] = { ...next[index], amount: parseFloat(e.target.value) || 0 };
+                                                        next[index] = { ...next[index], amount_cents: Math.round(val * 100) };
                                                         setLocalPurchases(next);
                                                         setSaveStatus('still typing');
                                                     }}
@@ -482,7 +497,7 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                                                     const itemToDelete = localPurchases[index];
                                                     const newItems = localPurchases.filter((_, i) => i !== index);
                                                     setLocalPurchases(newItems);
-                                                    const isEmpty = !itemToDelete.name && !itemToDelete.amount;
+                                                    const isEmpty = !itemToDelete.name && !itemToDelete.amount_cents;
                                                     if (!isEmpty) {
                                                         triggerAutoSave(newItems);
                                                     }

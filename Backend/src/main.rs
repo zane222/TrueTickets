@@ -18,7 +18,8 @@ use handlers::{
     handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_tickets_by_customer_id,
     handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix,
-    handle_migrate_tickets, handle_get_store_config, handle_update_store_config
+    handle_migrate_tickets, handle_get_store_config, handle_update_store_config, handle_update_status,
+    handle_take_payment, handle_refund_payment
 };
 use models::{
     CreateTicketRequest, UpdateTicketRequest,
@@ -114,16 +115,17 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             }
         }
         ("/tickets/attachment", "POST") => {
+            let ticket_number: String = match event.query_string_parameters().first("ticket_number") {
+                Some(n) => n.to_string(),
+                None => return error_response(400, "Missing ticket number", "Query parameter 'ticket_number' is required", None),
+            };
+
             // Extract and validate attachment data from request
             let body = match parse_json_body(event.body()) {
                 Ok(body) => body,
                 Err(response) => return *response,
             };
 
-            let ticket_id: String = match get_value_in_json(&body, "ticket_id") {
-                Ok(val) => val,
-                Err(response) => return *response,
-            };
             let image_data: String = match get_value_in_json(&body, "image_data") {
                 Ok(val) => val,
                 Err(response) => return *response,
@@ -140,7 +142,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 &image_data
             };
 
-            match handle_upload_attachment(ticket_id, base64_data, s3_client, &dynamodb_client).await {
+            match handle_upload_attachment(ticket_number, base64_data, s3_client, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -148,7 +150,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         // -------------------------
         // FINANCIALS
         // -------------------------
-        ("/clock_logs", "GET") => {
+        ("/clock-logs", "GET") => {
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !is_admin_or_owner(&user_groups) {
@@ -156,16 +158,16 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             }
 
             let params = event.query_string_parameters();
-            let year = match params.first("year").and_then(|y| y.parse::<i32>().ok()) {
+            let start = match params.first("start").and_then(|y| y.parse::<i64>().ok()) {
                 Some(val) => val,
-                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'year' parameter", None),
+                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'start' parameter", None),
             };
-            let month = match params.first("month").and_then(|m| m.parse::<u32>().ok()) {
+            let end = match params.first("end").and_then(|m| m.parse::<i64>().ok()) {
                 Some(val) => val,
-                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'month' parameter", None),
+                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'end' parameter", None),
             };
 
-            match handlers::handle_get_clock_logs(year, month, &dynamodb_client).await{
+            match handlers::handle_get_clock_logs(start, end, &dynamodb_client).await{
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -200,16 +202,16 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             }
 
             let params = event.query_string_parameters();
-            let year = match params.first("year").and_then(|y| y.parse::<i32>().ok()) {
+            let start = match params.first("start").and_then(|y| y.parse::<i64>().ok()) {
                 Some(val) => val,
-                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'year' parameter", None),
+                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'start' parameter", None),
             };
-            let month = match params.first("month").and_then(|m| m.parse::<u32>().ok()) {
+            let end = match params.first("end").and_then(|m| m.parse::<i64>().ok()) {
                 Some(val) => val,
-                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'month' parameter", None),
+                None => return error_response(400, "Invalid Parameter", "Missing or invalid 'end' parameter", None),
             };
 
-            match handlers::get_all_tickets_for_month_with_payments(year, month, &dynamodb_client).await {
+            match handlers::get_all_tickets_for_month_with_payments(start, end, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -241,19 +243,51 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
-        ("/clock_in", "POST") => {
+        ("/clock-in", "POST") => {
             // Extract given_name from token
             let given_name = match auth::get_given_name_from_event(&event) {
                 Some(name) => name,
                 None => return error_response(401, "Unauthorized", "Could not determine user name from token", None),
             };
 
-            match handlers::handle_clock_in(given_name, &dynamodb_client).await {
+            let body = match parse_json_body(event.body()) {
+                Ok(b) => b,
+                Err(resp) => return *resp,
+            };
+
+            let clocking_in = match body.get("clocking_in").and_then(|v| v.as_bool()) {
+                Some(b) => b,
+                None => return error_response(400, "Invalid Request", "Missing or invalid 'clocking_in' parameter", None),
+            };
+
+            match handlers::handle_clock_in(given_name, clocking_in, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
         }
-        ("/am_i_clocked_in", "GET") => {
+        ("/clock-logs/update", "POST") => {
+            // Check permissions (Manager or above)
+            let user_groups = get_user_groups_from_event(&event);
+            if !can_invite_users(&user_groups) { // Reusing manager permission check
+                 return error_response(403, "Insufficient permissions", "You do not have permission to update logs", None);
+            }
+
+            let body = match parse_json_body(event.body()) {
+                 Ok(b) => b,
+                 Err(resp) => return *resp,
+            };
+
+            let req: models::UpdateClockLogsRequest = match serde_json::from_value(body) {
+                Ok(r) => r,
+                Err(e) => return error_response(400, "Invalid Request", &format!("Failed to parse request: {}", e), None),
+            };
+
+            match handlers::handle_update_clock_logs(req, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/clock-status", "GET") => {
             // Extract given_name from token
             let given_name = match auth::get_given_name_from_event(&event) {
                 Some(name) => name,
@@ -282,13 +316,12 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => return *resp,
             };
 
-            // Wages can be integer or float, get as f64
-            let wage = match body.get("wage").and_then(|v| v.as_f64()) {
+            let wage_cents = match body.get("wage_cents").and_then(|v| v.as_i64()) {
                 Some(w) => w,
-                None => return error_response(400, "Invalid Parameter", "wage must be a number", None),
+                None => return error_response(400, "Invalid Parameter", "wage_cents must be an integer", None),
             };
 
-            match handlers::handle_update_user_wage(given_name, wage, &dynamodb_client).await {
+            match handlers::handle_update_user_wage(given_name, wage_cents, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -399,11 +432,59 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             };
 
             // Validation: Ensure at least one field is not None
-            if req.subject.is_none() && req.status.is_none() && req.password.is_none() && req.items_left.is_none() && req.line_items.is_none() && req.device.is_none() {
+            if req.subject.is_none() && req.password.is_none() && req.items_left.is_none() && req.line_items.is_none() && req.device.is_none() {
                 return error_response(400, "Empty Update", "At least one field must be provided for update", None);
             }
 
             match handle_update_ticket(ticket_number, req, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/tickets/status", "PUT") => {
+            let ticket_number: String = match event.query_string_parameters().first("number") {
+                Some(n) => n.to_string(),
+                None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
+            };
+
+            let status: String = match event.query_string_parameters().first("status") {
+                Some(s) => s.to_string(),
+                None => return error_response(400, "Missing status", "Query parameter 'status' is required", None),
+            };
+
+            match handle_update_status(ticket_number, status, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/tickets/payment", "POST") => {
+            let ticket_number: String = match event.query_string_parameters().first("ticket_number") {
+                Some(n) => n.to_string(),
+                None => return error_response(400, "Missing ticket_number", "Query parameter 'ticket_number' is required", None),
+            };
+
+            let tech_name = match auth::get_given_name_from_event(&event) {
+                Some(n) => n,
+                None => return error_response(401, "Unauthorized", "Could not determine user name from token", None),
+            };
+
+            match handle_take_payment(ticket_number, tech_name, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
+        ("/tickets/refund", "POST") => {
+            let ticket_number: String = match event.query_string_parameters().first("ticket_number") {
+                Some(n) => n.to_string(),
+                None => return error_response(400, "Missing ticket_number", "Query parameter 'ticket_number' is required", None),
+            };
+
+            let tech_name = match auth::get_given_name_from_event(&event) {
+                Some(n) => n,
+                None => return error_response(401, "Unauthorized", "Could not determine user name from token", None),
+            };
+
+            match handle_refund_payment(ticket_number, tech_name, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }
@@ -423,9 +504,11 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => val,
                 Err(resp) => return *resp,
             };
-            let tech_name: String = match get_value_in_json(&body, "tech_name") {
-                Ok(val) => val,
-                Err(resp) => return *resp,
+            
+            // Extract from token
+            let tech_name = match auth::get_given_name_from_event(&event) {
+                Some(name) => name,
+                None => return error_response(401, "Unauthorized", "Could not determine user name from token", None),
             };
 
             match handle_add_ticket_comment(ticket_number, comment_body, tech_name, &dynamodb_client).await {

@@ -19,7 +19,7 @@ pub struct PhoneNumber {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LineItem {
     pub subject: String,
-    pub price: f64,
+    pub price_cents: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -45,6 +45,10 @@ pub struct TicketWithoutCustomer {
     pub items_left: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line_items: Option<Vec<LineItem>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paid_at: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_paid_cents: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -115,10 +119,11 @@ pub struct CreateTicketRequest {
     pub device: String,
 }
 
+
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UpdateTicketRequest {
     pub subject: Option<String>,
-    pub status: Option<String>,
     pub password: Option<String>,
     pub items_left: Option<Vec<String>>,
     pub line_items: Option<Vec<LineItem>>,
@@ -168,7 +173,7 @@ pub struct UpdateStoreConfigRequest {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PurchaseItem {
     pub name: String,
-    pub amount: f64,
+    pub amount_cents: i64,
     pub timestamp: i64,
 }
 
@@ -180,11 +185,24 @@ pub struct MonthPurchases {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TimeEntry {
-    pub month_year: String, // PK: YYYY-MM
-    pub entry_id: String,   // SK: name_timestamp
+    pub pk: String,         // PK: "ALL"
     pub user_name: String,
     pub timestamp: i64,
     pub is_clock_out: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateClockLogsRequest {
+    pub user_name: String,
+    pub start_of_day: i64,
+    pub end_of_day: i64,
+    pub segments: Vec<TimeSegment>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TimeSegment {
+    pub start: i64,
+    pub end: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -196,5 +214,5 @@ pub struct UserResponse {
     pub groups: Vec<String>,
     pub created: Option<String>,
     pub user_status: String,
-    pub wage: f64,
+    pub wage_cents: i64,
 }

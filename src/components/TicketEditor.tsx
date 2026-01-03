@@ -62,6 +62,7 @@ function TicketEditor({
           `/tickets?number=${ticketId}`,
         );
         if (!isMounted) return;
+
         setPreviousTicket(ticket);
         startPolling(ticket);
 
@@ -165,7 +166,6 @@ function TicketEditor({
           password: password || null,
           items_left: itemsLeft.length > 0 ? itemsLeft : null,
           line_items: null,
-          status: null, // Editor doesn't handle status change
           device: deviceIdx !== null ? DEVICES[deviceIdx] : null,
         };
         const res = await api.put<{ ticket_number: number }>(`/tickets?number=${ticketId}`, updateData);

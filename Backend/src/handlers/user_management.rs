@@ -177,7 +177,7 @@ pub async fn handle_list_users(
             groups: user_groups,
             created: user.user_create_date().map(|d| d.to_string()),
             user_status: format!("{:?}", user.user_status()),
-            wage: 0.0, // Placeholder
+            wage_cents: 0, // Placeholder
         });
     }
 
@@ -195,7 +195,7 @@ pub async fn handle_list_users(
         // Update users list with wages
         for user in &mut users_list {
             if let Some(name) = &user.given_name && let Some(w) = wage_map.get(name) {
-                user.wage = *w;
+                user.wage_cents = *w;
             }
         }
     }

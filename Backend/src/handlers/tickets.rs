@@ -201,7 +201,7 @@ pub async fn handle_search_tickets_by_subject(
     // BatchGetItem doesn't guarantee order results in the same order as the requests so sorting is needed
     tickets_nocust.sort_by_key(|ticket| ticket.ticket_number);
 
-    let tickets = get_customers_to_merge_into_tickets(tickets_nocust, client).await?;
+    let tickets = merge_customers_into_tiny_tickets(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {:?}", e), None))
@@ -222,7 +222,7 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Result<Value, Respons
     let tickets_nocust: Vec<TinyTicketWithoutCustomer> = serde_dynamo::from_items(output.items.unwrap_or_else(Vec::new))
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets: {:?}", e), None))?;
 
-    let tickets = get_customers_to_merge_into_tickets(tickets_nocust, client).await?;
+    let tickets = merge_customers_into_tiny_tickets(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize recent tickets: {:?}", e), None))
@@ -275,7 +275,7 @@ pub async fn handle_get_recent_tickets_filtered(
     all_tickets_nocust.sort_by(|a, b| b.ticket_number.cmp(&a.ticket_number));
     all_tickets_nocust.truncate(20);
 
-    let tickets = get_customers_to_merge_into_tickets(all_tickets_nocust, client).await?;
+    let tickets = merge_customers_into_tiny_tickets(all_tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize filtered recent tickets: {:?}", e), None))
@@ -373,49 +373,38 @@ pub async fn handle_update_ticket(
     req: UpdateTicketRequest,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
-    let (subject, status, password, items_left, line_items, device) = (
+    let (subject, password, items_left, line_items, device) = (
         req.subject,
-        req.status,
         req.password,
         req.items_left,
         req.line_items,
         req.device,
     );
 
-    let mut txn_items = Vec::new();
+    // If device is updated, we need to update the composite key status_device
+    // We need current status for that.
+    
+    let mut current_status = None;
 
-    // If status or device is updated, we need to update the composite key status_device
-    // We need to know both values to construct it. If one is missing from the update, we must fetch the current value.
-    let mut new_status = status.clone();
-    let mut new_device = device.clone();
-
-    if status.is_some() || device.is_some() {
-        // We need to fetch current values if we don't have both
-        if status.is_none() || device.is_none() {
-            let output = client.get_item()
-                .table_name("Tickets")
-                .key("ticket_number", AttributeValue::N(ticket_number.clone()))
-                .projection_expression("#st, device")
-                .expression_attribute_names("#st", "status")
-                .send()
-                .await
-                .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch ticket for update: {:?}", e), None))?;
-
-            if let Some(item) = output.item {
-                if status.is_none() {
-                    new_status = item.get("status").and_then(|av| av.as_s().ok()).cloned();
-                }
-                if device.is_none() {
-                    new_device = item.get("device").and_then(|av| av.as_s().ok()).cloned();
-                }
-            }
+    if device.is_some() {
+        let output = client.get_item()
+            .table_name("Tickets")
+            .key("ticket_number", AttributeValue::N(ticket_number.clone()))
+            .projection_expression("#st")
+            .expression_attribute_names("#st", "status")
+            .send()
+            .await
+            .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch ticket status for device update: {:?}", e), None))?;
+        
+        if let Some(item) = output.item.as_ref().and_then(|item| item.get("status")).and_then(|av| av.as_s().ok()) {
+            current_status = Some(item.clone());
         }
     }
 
     let mut update_parts = Vec::new();
     let mut remove_parts = Vec::new();
     let mut expr_vals = HashMap::new();
-    let mut expr_names = HashMap::new();
+    let expr_names: HashMap<String, String> = HashMap::new();
 
     if let Some(s) = subject {
         update_parts.push("subject = :s".to_string());
@@ -423,11 +412,11 @@ pub async fn handle_update_ticket(
         update_parts.push("subject_lower = :sl".to_string());
         expr_vals.insert(":sl".to_string(), AttributeValue::S(s.to_lowercase()));
     }
-    if let Some(st) = status {
-        update_parts.push("#st = :st".to_string());
-        expr_vals.insert(":st".to_string(), AttributeValue::S(st));
-        expr_names.insert("#st".to_string(), "status".to_string());
-    }
+    // if let Some(st) = status {
+    //     update_parts.push("#st = :st".to_string());
+    //     expr_vals.insert(":st".to_string(), AttributeValue::S(st));
+    //     expr_names.insert("#st".to_string(), "status".to_string());
+    // }
     
     // Handle password: None = no change, Some("") = remove, Some(value) = update
     if let Some(pw) = password {
@@ -458,19 +447,21 @@ pub async fn handle_update_ticket(
             expr_vals.insert(":lis".to_string(), AttributeValue::L(items.into_iter().map(|li| {
                 AttributeValue::M(vec![
                     ("subject".to_string(), AttributeValue::S(li.subject)),
-                    ("price".to_string(), AttributeValue::N(li.price.to_string())),
+                    ("price_cents".to_string(), AttributeValue::N(li.price_cents.to_string())),
                 ].into_iter().collect())
             }).collect()));
         }
     }
     
-    if let Some(d) = device {
+    if let Some(d) = &device {
         update_parts.push("device = :d".to_string());
-        expr_vals.insert(":d".to_string(), AttributeValue::S(d));
+        expr_vals.insert(":d".to_string(), AttributeValue::S(d.clone()));
     }
 
+    // Status update logic moved to handle_update_status
+
     // Update status_device composite key if we have both parts
-    if let (Some(s), Some(d)) = (new_status, new_device) {
+    if let (Some(s), Some(d)) = (current_status, device) {
         let status_device = format!("{}#{}", s, d);
         update_parts.push("status_device = :sd".to_string());
         expr_vals.insert(":sd".to_string(), AttributeValue::S(status_device));
@@ -489,34 +480,107 @@ pub async fn handle_update_ticket(
     }
     let update_expr = update_expr_parts.join(" ");
 
-    let mut update_builder = aws_sdk_dynamodb::types::Update::builder()
+    let mut request = client.update_item()
         .table_name("Tickets")
         .key("ticket_number", AttributeValue::N(ticket_number.clone()))
         .update_expression(update_expr);
 
     for (k, v) in expr_vals {
-        update_builder = update_builder.expression_attribute_values(k, v);
+        request = request.expression_attribute_values(k, v);
     }
 
     // Add names if needed (for status which is reserved word)
     if !expr_names.is_empty() {
         for (k, v) in expr_names {
-            update_builder = update_builder.expression_attribute_names(k, v);
+            request = request.expression_attribute_names(k, v);
         }
     }
 
-    let update = update_builder.build()
-        .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build update for ticket: {:?}", e), None))?;
-
-    txn_items.push(TransactWriteItem::builder().update(update).build());
-
-    client.transact_write_items()
-        .set_transact_items(Some(txn_items))
-        .send()
+    request.send()
         .await
-        .map_err(|e| error_response(500, "Transaction Error", &format!("Failed to execute update ticket transaction: {:?}", e), None))?;
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to update ticket: {:?}", e), None))?;
 
     Ok(json!({"ticket_number": ticket_number}))
+}
+
+pub async fn handle_update_status(
+    ticket_number: String,
+    status: String,
+    client: &Client,
+) -> Result<Value, Response<Body>> {
+    // 1. Fetch current ticket to get device and line_items (for validation)
+    let projection = "device, #st, line_items".to_string();
+
+    let output = client.get_item()
+        .table_name("Tickets")
+        .key("ticket_number", AttributeValue::N(ticket_number.clone()))
+        .projection_expression(projection)
+        .expression_attribute_names("#st", "status")
+        .send()
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch ticket for status update: {:?}", e), None))?;
+
+    let item = output.item.ok_or_else(|| error_response(404, "Not Found", "Ticket not found", None))?;
+    
+    let device = item.get("device").and_then(|av| av.as_s().ok()).cloned().unwrap_or_else(|| "Other".to_string());
+    let current_status = item.get("status").and_then(|av| av.as_s().ok()).cloned().unwrap_or_default();
+
+    // 2. Validation: Prevent manual Resolve/Un-resolve if line items exist
+    let line_items_av = item.get("line_items");
+    let has_line_items = if let Some(AttributeValue::L(list)) = line_items_av {
+        !list.is_empty()
+    } else {
+        false
+    };
+
+    if has_line_items {
+        if status == "Resolved" && current_status != "Resolved" {
+             return Err(error_response(400, "Bad Request", "Cannot resolve ticket with line items directly. Use 'Take Payment'.", None));
+        }
+        if current_status == "Resolved" && status != "Resolved" {
+             return Err(error_response(400, "Bad Request", "Cannot un-resolve ticket with line items directly. Use 'Refund'.", None));
+        }
+    }
+
+    // 3. Update
+    let mut update_parts = Vec::new();
+    let mut expr_vals = HashMap::new();
+    let mut expr_names = HashMap::new();
+
+    update_parts.push("#st = :st".to_string());
+    expr_vals.insert(":st".to_string(), AttributeValue::S(status.clone()));
+    expr_names.insert("#st".to_string(), "status".to_string());
+
+    let status_device = format!("{}#{}", status.clone(), device);
+    update_parts.push("status_device = :sd".to_string());
+    expr_vals.insert(":sd".to_string(), AttributeValue::S(status_device));
+
+
+
+    update_parts.push("last_updated = :lu".to_string());
+    expr_vals.insert(":lu".to_string(), AttributeValue::N(Utc::now().timestamp().to_string()));
+
+    let mut update_expr_parts = Vec::new();
+    if !update_parts.is_empty() {
+        update_expr_parts.push(format!("SET {}", update_parts.join(", ")));
+    }
+
+    let mut request = client.update_item()
+        .table_name("Tickets")
+        .key("ticket_number", AttributeValue::N(ticket_number.clone()))
+        .update_expression(update_expr_parts.join(" "));
+
+    for (k, v) in expr_vals {
+        request = request.expression_attribute_values(k, v);
+    }
+    for (k, v) in expr_names {
+        request = request.expression_attribute_names(k, v);
+    }
+
+    request.send().await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to update status: {:?}", e), None))?;
+
+    Ok(json!({"ticket_number": ticket_number.clone(), "status": status.clone()}))
 }
 
 pub async fn handle_add_ticket_comment(
@@ -616,13 +680,13 @@ pub async fn handle_get_tickets_by_suffix(suffix: &str, client: &Client) -> Resu
     tickets_nocust.sort_by(|a, b| b.ticket_number.cmp(&a.ticket_number));
 
     // 4. Merge customers
-    let tickets = get_customers_to_merge_into_tickets(tickets_nocust, client).await?;
+    let tickets = merge_customers_into_tiny_tickets(tickets_nocust, client).await?;
 
     serde_json::to_value(&tickets)
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {:?}", e), None))
 }
 
-async fn get_customers_to_merge_into_tickets(
+pub async fn merge_customers_into_tiny_tickets(
     tickets_nocust: Vec<TinyTicketWithoutCustomer>,
     client: &Client,
 ) -> Result<Vec<TinyTicket>, Response<Body>> {
@@ -675,5 +739,60 @@ async fn get_customers_to_merge_into_tickets(
         });
     }
 
+    Ok(tickets)
+}
+
+pub async fn merge_full_customers_into_tickets(
+    tickets_nocust: Vec<TicketWithoutCustomer>,
+    client: &Client,
+) -> Result<Vec<Ticket>, Response<Body>> {
+    let customer_ids: Vec<String> = tickets_nocust.iter()
+        .map(|t| t.customer_id.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if customer_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let keys: Vec<HashMap<String, AttributeValue>> = customer_ids.iter()
+        .map(|id| {
+            let mut key = HashMap::new();
+            key.insert("customer_id".to_string(), AttributeValue::S(id.clone()));
+            key
+        })
+        .collect();
+
+    // We want the FULL customer object this time
+    let ka = KeysAndAttributes::builder()
+        .set_keys(Some(keys))
+        .build()
+        .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {:?}", e), None))?;
+
+    let mut request_items = HashMap::new();
+    request_items.insert("Customers".to_string(), ka);
+
+    let batch_output = crate::db_utils::execute_batch_get_with_retries(client, request_items).await?;
+
+    let customer_items = batch_output.get("Customers").cloned().unwrap_or_else(Vec::new);
+    let customers: Vec<Customer> = serde_dynamo::from_items(customer_items)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customers: {:?}", e), None))?;
+    
+    let mut customer_map = HashMap::new();
+    for c in customers {
+        customer_map.insert(c.customer_id.clone(), c);
+    }
+
+    let mut tickets = Vec::new();
+    for details in tickets_nocust {
+        if let Some(customer) = customer_map.get(&details.customer_id).cloned() {
+            tickets.push(Ticket {
+                details,
+                customer,
+            });
+        }
+    }
+    
     Ok(tickets)
 }

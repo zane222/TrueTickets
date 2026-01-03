@@ -4,11 +4,6 @@ import { User, Printer, Edit, Loader2, Plus, X, Camera, Image as ImageIcon } fro
 import html2pdf from "html2pdf.js";
 
 import {
-  getCurrentUser,
-  fetchAuthSession,
-  fetchUserAttributes,
-} from "aws-amplify/auth";
-import {
   STATUSES,
   EMPTY_ARRAY,
 } from "../constants/appConstants.js";
@@ -130,10 +125,9 @@ function TicketView({
 
         try {
           const payload: PostAttachment = {
-            ticket_id: id,
             image_data: fileContent,
           };
-          await api.post("/tickets/attachment", payload);
+          await api.post(`/tickets/attachment?ticket_number=${id}`, payload);
           console.log(`File uploaded: ${file.name}`);
           uploadedCount++;
         } catch (err) {
@@ -282,6 +276,8 @@ function TicketView({
         `/tickets?number=${id}`,
       );
       if (!fetchTicketRef.current.isMounted) return;
+
+
       setTicket(ticketData);
 
       // Start change detection polling via ref (stable)
@@ -330,18 +326,21 @@ function TicketView({
   const updateTicketStatus = useCallback(async (status: string): Promise<void> => {
     if (!ticket || updatingStatus || ticket.status === status)
       return; // Prevent multiple updates or updating to the same status
+
+    // Validation for Payment/Refund flows
+    const hasLineItems = (ticket.line_items || []).length > 0;
+    if (status === "Resolved" && hasLineItems) {
+      alert("Please use 'Take Payment' to resolve tickets with line items.");
+      return;
+    }
+    if (ticket.status === "Resolved" && hasLineItems && status !== "Resolved") {
+      alert("Please use 'Refund' to reopen this paid ticket.");
+      return;
+    }
+
     setUpdatingStatus(status);
     try {
-      const updateData: UpdateTicket = {
-        status: status,
-        subject: null,
-        password: null,
-        items_left: null,
-        line_items: null,
-        device: null,
-      };
-
-      await api.put(`/tickets?number=${ticket.ticket_number}`, updateData);
+      await api.put(`/tickets/status?number=${ticket.ticket_number}&status=${encodeURIComponent(status)}`, {});
 
       setTicket(prev => prev ? { ...prev, status: status } : null);
 
@@ -585,75 +584,16 @@ function TicketView({
       />
     );
 
+
   const phone = formatPhone(
     ticket.customer?.phone_numbers?.[0]?.number || ""
   );
-
-  const addSystemComment = async (text: string) => {
-    if (!ticket) return;
-    try {
-      let techName = "True Tickets";
-      try {
-        // Try to get user attributes directly
-        const userAttributes = await fetchUserAttributes();
-        // Also try ID token
-        const session = await fetchAuthSession();
-        const idTokenPayload = session.tokens?.idToken?.payload;
-
-        // Try multiple sources for the name (safely coerce to strings)
-        const tryString = (v: unknown): string | undefined =>
-          typeof v === "string" && v.trim() ? v : undefined;
-
-        // Normalize unknown shapes into plain objects we can index safely.
-        const uaUnknown = userAttributes as unknown;
-        const uaObj =
-          uaUnknown && typeof uaUnknown === "object"
-            ? (uaUnknown as Record<string, unknown>)
-            : {};
-        const idUnknown = idTokenPayload as unknown;
-        const idObj =
-          idUnknown && typeof idUnknown === "object"
-            ? (idUnknown as Record<string, unknown>)
-            : {};
-
-        const attrName =
-          tryString(uaObj["custom:given_name"]) ??
-          tryString(uaObj["given_name"]) ??
-          tryString(uaObj["name"]);
-
-        const idName =
-          tryString(idObj["custom:given_name"]) ??
-          tryString(idObj["given_name"]) ??
-          tryString(idObj["name"]);
-
-        const user = await getCurrentUser();
-        // Safely extract username from currentUser if it's an object with a string username
-        let currentUserName: string | undefined = user.username;
-
-        techName = attrName ?? idName ?? currentUserName ?? "True Tickets";
-      } catch (e) {
-        console.error("Error getting user for system comment:", e);
-      }
-
-      const payload: PostComment = {
-        comment_body: text,
-        tech_name: techName,
-      };
-      await api.post(`/tickets/comment?ticket_number=${ticket.ticket_number}`, payload);
-      setRefreshKey((prev) => prev + 1);
-    } catch (err) {
-      console.error("Error posting system comment:", err);
-    }
-  };
-
-
 
   const saveLineItems = async (items: LineItem[]) => {
     if (!ticket) return;
     setSaveStatus('saving');
     try {
       const updateData: UpdateTicket = {
-        status: null,
         subject: null,
         password: null,
         items_left: null,
@@ -867,10 +807,11 @@ function TicketView({
                             <input
                               type="number"
                               placeholder="0"
-                              value={item.price || ""}
+                              value={item.price_cents ? (item.price_cents / 100).toString() : ""}
                               onChange={(e) => {
                                 const newItems = [...(ticket.line_items || [])];
-                                newItems[index] = { ...newItems[index], price: parseFloat(e.target.value) };
+                                const val = parseFloat(e.target.value) || 0;
+                                newItems[index] = { ...newItems[index], price_cents: Math.round(val * 100) };
                                 setTicket({ ...ticket, line_items: newItems });
                                 setSaveStatus('still typing');
                               }}
@@ -886,7 +827,7 @@ function TicketView({
                                 const itemToDelete = (ticket.line_items || [])[index];
                                 const newItems = (ticket.line_items || []).filter((_: LineItem, i: number) => i !== index);
                                 setTicket({ ...ticket, line_items: newItems });
-                                const isEmpty = !itemToDelete.subject && !itemToDelete.price;
+                                const isEmpty = !itemToDelete.subject && !itemToDelete.price_cents;
                                 if (!isEmpty) {
                                   triggerAutoSave(newItems);
                                 }
@@ -908,7 +849,7 @@ function TicketView({
                               alert("Please change status from Resolved first.");
                               return;
                             }
-                            const newItems = [...(ticket.line_items || []), { subject: "", price: 0 }];
+                            const newItems = [...(ticket.line_items || []), { subject: "", price_cents: 0 }];
                             setTicket({ ...ticket, line_items: newItems });
                           }}
                           tabIndex={-1}
@@ -921,7 +862,8 @@ function TicketView({
                       {(ticket.line_items || []).length > 0 && (
                         <div className="flex flex-col items-end">
                           {(() => {
-                            const subtotal = (ticket.line_items || []).reduce((acc: number, item: LineItem) => acc + (parseFloat(item.price as unknown as string) || 0), 0);
+                            const subtotalCents = (ticket.line_items || []).reduce((acc: number, item: LineItem) => acc + (item.price_cents || 0), 0);
+                            const subtotal = subtotalCents / 100;
                             const tax = subtotal * 0.0825;
                             const total = subtotal + tax;
 
@@ -935,8 +877,13 @@ function TicketView({
                                 {isLocked ? (
                                   <button
                                     onClick={async () => {
-                                      await addSystemComment("[Payment Refunded]");
-                                      updateTicketStatus("In Progress");
+                                      try {
+                                        await api.post(`/tickets/refund?ticket_number=${ticket.ticket_number}`, {});
+                                        setRefreshKey((prev) => prev + 1);
+                                      } catch (err) {
+                                        console.error(err);
+                                        _error("Refund Failed", "Failed to process refund. Ensure ticket is resolved.");
+                                      }
                                     }}
                                     className="w-full md-btn-surface !text-red-500 py-2 text-sm font-semibold transition-all"
                                   >
@@ -953,13 +900,13 @@ function TicketView({
                                       // Ensure items are saved first
                                       await saveLineItems(ticket.line_items || []);
 
-                                      // Construct Receipt
-                                      const lines = (ticket.line_items || []).map((item: LineItem) => `- ${item.subject}: $${(parseFloat(item.price as unknown as string) || 0).toFixed(2)}`).join("\n");
-                                      const receipt = `[Payment Taken]\n${lines}\nTotal: $${total.toFixed(2)}`;
-
-                                      await addSystemComment(receipt);
-
-                                      updateTicketStatus("Resolved");
+                                      try {
+                                        await api.post(`/tickets/payment?ticket_number=${ticket.ticket_number}`, {});
+                                        setRefreshKey((prev) => prev + 1);
+                                      } catch (err) {
+                                        console.error(err);
+                                        _error("Payment Failed", "Failed to process payment.");
+                                      }
                                     }}
                                     className="w-full md-btn-primary py-2 text-sm font-semibold shadow-md hover:shadow-lg transition-all"
                                   >
@@ -1138,27 +1085,12 @@ const CommentsBox = React.memo(({
   const [text, setText] = useState<string>("");
   const [list, setList] = useState<Comment[]>(comments || []);
   const [createLoading, setCreateLoading] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<{ username?: string } | null>(
-    null,
-  );
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     setList(comments || []);
   }, [comments]);
 
-  // Get current user information
-  useEffect(() => {
-    const getCurrentUserInfo = async () => {
-      try {
-        const user = await getCurrentUser();
-        setCurrentUser(user);
-      } catch (error) {
-        console.error("Error getting current user:", error);
-      }
-    };
-    getCurrentUserInfo();
-  }, []);
 
   // Auto-resize textarea
   const autoResize = (): void => {
@@ -1183,73 +1115,12 @@ const CommentsBox = React.memo(({
   }, [text]);
 
   async function create(): Promise<void> {
-    if (createLoading) return; // Prevent multiple submissions
+    if (!text.trim() || createLoading) return; // Prevent empty or multiple submissions
     setCreateLoading(true);
     try {
       // Get the current user's name from Cognito attributes
-      let techName = "True Tickets";
-      try {
-        // Try to get user attributes directly
-        const userAttributes = await fetchUserAttributes();
-
-        // Also try ID token
-        const session = await fetchAuthSession();
-        const idTokenPayload = session.tokens?.idToken?.payload;
-
-        // Try multiple sources for the name (safely coerce to strings)
-        const tryString = (v: unknown): string | undefined =>
-          typeof v === "string" && v.trim() ? v : undefined;
-
-        // Normalize unknown shapes into plain objects we can index safely.
-        const uaUnknown = userAttributes as unknown;
-        const uaObj =
-          uaUnknown && typeof uaUnknown === "object"
-            ? (uaUnknown as Record<string, unknown>)
-            : {};
-        const idUnknown = idTokenPayload as unknown;
-        const idObj =
-          idUnknown && typeof idUnknown === "object"
-            ? (idUnknown as Record<string, unknown>)
-            : {};
-
-        const attrName =
-          tryString(uaObj["custom:given_name"]) ??
-          tryString(uaObj["given_name"]) ??
-          tryString(uaObj["name"]);
-
-        const idName =
-          tryString(idObj["custom:given_name"]) ??
-          tryString(idObj["given_name"]) ??
-          tryString(idObj["name"]);
-
-        // Safely extract username from currentUser if it's an object with a string username
-        let currentUserName: string | undefined;
-        if (currentUser && typeof currentUser === "object") {
-          const cu = currentUser as Record<string, unknown>;
-          if (typeof cu.username === "string" && cu.username.trim()) {
-            currentUserName = cu.username;
-          }
-        }
-
-        techName = attrName ?? idName ?? currentUserName ?? "True Tickets";
-      } catch (err: unknown) {
-        console.error("Error getting user attributes:", err);
-
-        // Fallback: try to read username from currentUser safely
-        let currentUserName: string | undefined;
-        if (currentUser && typeof currentUser === "object") {
-          const cu = currentUser as Record<string, unknown>;
-          if (typeof cu.username === "string" && cu.username.trim()) {
-            currentUserName = cu.username;
-          }
-        }
-
-        techName = currentUserName ?? "True Tickets";
-      }
-
       const payload: PostComment = {
         comment_body: text,
-        tech_name: techName,
       };
       await api.post(`/tickets/comment?ticket_number=${ticketNumber}`, payload);
       setText("");
