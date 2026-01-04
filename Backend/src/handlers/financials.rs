@@ -53,7 +53,8 @@ pub async fn get_all_tickets_for_month_with_payments(
             .key_condition_expression("gsi_pk = :all AND paid_at BETWEEN :start AND :end")
             .expression_attribute_values(":all", AttributeValue::S("ALL".to_string()))
             .expression_attribute_values(":start", AttributeValue::N(start_ts.to_string()))
-            .expression_attribute_values(":end", AttributeValue::N(end_ts.to_string()));
+            .expression_attribute_values(":end", AttributeValue::N(end_ts.to_string()))
+            .scan_index_forward(false); // Sort by paid_at descending (most recent first)
 
         if let Some(key) = last_evaluated_key {
             query_builder = query_builder.set_exclusive_start_key(Some(key));

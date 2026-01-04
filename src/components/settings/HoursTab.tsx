@@ -2,32 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getUnixTime, startOfDay, endOfDay, parse, startOfMonth, endOfMonth } from 'date-fns';
 import apiClient from '../../api/apiClient';
 import { ClockLog } from '../../types';
-
-interface Shift {
-    date: Date;
-    employee: string;
-    segments: { start: string, end: string, isVirtual?: boolean }[];
-    hours: number;
-}
-
-// Helper to parse "9:30 am" or "9:30am" to decimals
-const parseTimeStr = (t: string) => {
-    const match = t.match(/(\d+):(\d+)\s*(am|pm)/i);
-    if (!match) return 0;
-    let [_, h, m, period] = match;
-    let hours = parseInt(h);
-    const minutes = parseInt(m);
-    if (period.toLowerCase() === 'pm' && hours !== 12) hours += 12;
-    if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
-    return hours + minutes / 60;
-};
-
-// Helper to sum segments
-const calculateShiftTotal = (segments: { start: string, end: string }[]) => {
-    return segments.reduce((acc, seg) => {
-        return acc + (parseTimeStr(seg.end) - parseTimeStr(seg.start));
-    }, 0);
-};
+import { processClockLogsToShifts, calculateShiftTotal, parseTimeStr, type Shift } from '../../utils/clockUtils';
 
 export default function HoursTab() {
     // 1. Generate Periods on Mount
@@ -73,86 +48,10 @@ export default function HoursTab() {
                 });
 
                 Object.keys(logsByUser).forEach(user => {
-                    const userLogs = logsByUser[user].sort((a, b) => a.timestamp - b.timestamp);
-                    const shifts: Shift[] = [];
-
-                    let currentStart: number | null = null;
-
-                    userLogs.forEach(log => {
-                        if (!log.out) {
-                            // Clock In
-                            if (currentStart === null) {
-                                currentStart = log.timestamp;
-                            }
-                        } else {
-                            // Clock Out
-                            if (currentStart !== null) {
-                                // Create segment
-                                const startDate = new Date(currentStart * 1000);
-                                const endDate = new Date(log.timestamp * 1000);
-
-                                // Format time "9:30am"
-                                const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
-
-                                const segment = {
-                                    start: fmt(startDate),
-                                    end: fmt(endDate)
-                                };
-
-                                // Check if we already have a shift for this day
-                                const dateKey = startDate.toLocaleDateString();
-                                let shift = shifts.find(s => s.date.toLocaleDateString() === dateKey);
-
-                                if (!shift) {
-                                    shift = {
-                                        date: startDate,
-                                        employee: user,
-                                        segments: [],
-                                        hours: 0
-                                    };
-                                    shifts.push(shift);
-                                }
-
-                                shift.segments.push(segment);
-                                shift.hours = calculateShiftTotal(shift.segments);
-
-                                currentStart = null;
-                            }
-                        }
+                    const userLogs = logsByUser[user];
+                    const shifts = processClockLogsToShifts(userLogs, user, {
+                        includeVirtualClockOut: true
                     });
-
-                    // Handle currently clocked-in state (virtual clock out at current time)
-                    if (currentStart !== null) {
-                        const startDate = new Date(currentStart * 1000);
-                        const endDate = new Date(); // use current time
-
-                        // Format time "9:30am"
-                        const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
-
-                        const segment = {
-                            start: fmt(startDate),
-                            end: fmt(endDate),
-                            isVirtual: true
-                        };
-
-                        // Check if we already have a shift for this day
-                        const dateKey = startDate.toLocaleDateString();
-                        let shift = shifts.find(s => s.date.toLocaleDateString() === dateKey);
-
-                        if (!shift) {
-                            shift = {
-                                date: startDate,
-                                employee: user,
-                                segments: [],
-                                hours: 0
-                            };
-                            shifts.push(shift);
-                        }
-
-                        shift.segments.push(segment);
-                        shift.hours = calculateShiftTotal(shift.segments);
-                    }
-
                     shiftsByUser[user] = shifts;
                 });
 

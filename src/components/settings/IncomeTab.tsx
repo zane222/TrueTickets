@@ -3,28 +3,11 @@ import { ChevronLeft, ChevronRight, Loader2, X, ChevronDown } from "lucide-react
 import { getUnixTime, startOfMonth, endOfMonth } from 'date-fns';
 import { useApi } from "../../hooks/useApi";
 import { useAlertMethods } from "../ui/AlertSystem";
-
+import { calculateTotalHoursFromLogs } from "../../utils/clockUtils";
 
 import NavigationButton from "../ui/NavigationButton";
 
 import type { Ticket, ClockLog } from "../../types/api";
-
-const parseTimeStr = (t: string) => {
-    const match = t.match(/(\d+):(\d+)\s*(am|pm)/i);
-    if (!match) return 0;
-    let [_, h, m, period] = match;
-    let hours = parseInt(h);
-    const minutes = parseInt(m);
-    if (period.toLowerCase() === 'pm' && hours !== 12) hours += 12;
-    if (period.toLowerCase() === 'am' && hours === 12) hours = 0;
-    return hours + minutes / 60;
-};
-
-const calculateShiftTotal = (segments: { start: string, end: string }[]) => {
-    return segments.reduce((acc, seg) => {
-        return acc + (parseTimeStr(seg.end) - parseTimeStr(seg.start));
-    }, 0);
-};
 
 interface PayrollItem {
     name: string;
@@ -104,35 +87,10 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                 logsByUser[log.user].push(log);
             });
 
-            // Calculate payroll for each user who has logs
+            // Calculate payroll for each user who has logs using the shared utility
             const calculatedPayroll: PayrollItem[] = Object.keys(logsByUser).map(userName => {
-                const userLogs = logsByUser[userName].sort((a, b) => a.timestamp - b.timestamp);
-                let totalHours = 0;
-                let currentStart: number | null = null;
-
-                // Virtual clock-in if the first log of the period is a clock-out
-                if (userLogs.length > 0 && userLogs[0].out) {
-                    currentStart = startTimestamp;
-                }
-
-                userLogs.forEach(log => {
-                    if (!log.out) {
-                        if (currentStart === null) currentStart = log.timestamp;
-                    } else if (currentStart !== null) {
-                        const startDate = new Date(currentStart * 1000);
-                        const endDate = new Date(log.timestamp * 1000);
-                        const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
-                        totalHours += calculateShiftTotal([{ start: fmt(startDate), end: fmt(endDate) }]);
-                        currentStart = null;
-                    }
-                });
-
-                if (currentStart !== null) {
-                    const startDate = new Date(currentStart * 1000);
-                    const endDate = new Date();
-                    const fmt = (d: Date) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
-                    totalHours += calculateShiftTotal([{ start: fmt(startDate), end: fmt(endDate) }]);
-                }
+                const userLogs = logsByUser[userName];
+                const totalHours = calculateTotalHoursFromLogs(userLogs, startTimestamp, true);
 
                 return {
                     name: userName,
@@ -335,14 +293,14 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                                             <div className="hidden sm:grid grid-cols-12 text-sm tracking-wider px-5 py-3 text-on-surface">
                                                 <div className="col-span-1 font-semibold">Number</div>
                                                 <div className="col-span-4 font-semibold">Subject</div>
-                                                <div className="col-span-2 font-semibold">Date</div>
+                                                <div className="col-span-2 font-semibold">Payment date</div>
                                                 <div className="col-span-3 font-semibold">Customer</div>
                                                 <div className="col-span-2 font-semibold text-right">Amount</div>
                                             </div>
 
                                             {/* Tickets Grid */}
                                             <div className="flex flex-col">
-                                                {data?.tickets.map(ticket => {
+                                                {[...(data?.tickets || [])].sort((a, b) => (b.paid_at ?? 0) - (a.paid_at ?? 0)).map(ticket => {
                                                     const totalCents = ticket.total_paid_cents ?? (ticket.line_items?.reduce((sum, item) => sum + item.price_cents, 0) || 0);
                                                     const total = totalCents / 100;
                                                     const displayDate = ticket.paid_at ?? ticket.created_at;
@@ -364,7 +322,7 @@ export default function IncomeTab({ goTo }: IncomeTabProps) {
                                                                     <div className="col-span-1 truncate">#{ticket.ticket_number}</div>
                                                                     <div className="col-span-4 truncate">{ticket.subject}</div>
                                                                     <div className="col-span-2 truncate">{dateStr}</div>
-                                                                    <div className="col-span-3 truncate text-outline">{ticket.customer?.full_name || "Customer"}</div>
+                                                                    <div className="col-span-3 truncate text-on-surface">{ticket.customer?.full_name || "Customer"}</div>
                                                                     <div className="col-span-2 text-right font-bold text-on-surface">
                                                                         ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                     </div>
