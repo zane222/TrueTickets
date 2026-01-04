@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useStoreConfig } from "../../context/StoreConfigContext";
+import { formatPhoneLive } from "../../utils/formatUtils";
 import { useAlertMethods } from "../ui/AlertSystem";
 import { Loader2 } from "lucide-react";
 
@@ -127,9 +128,9 @@ export default function ConfigTab() {
                         <input
                             type="tel"
                             value={localConfig.phone}
-                            onChange={(e) => setLocalConfig({ ...localConfig, phone: e.target.value })}
+                            onChange={(e) => setLocalConfig({ ...localConfig, phone: formatPhoneLive(e.target.value) })}
                             className="md-input w-full"
-                            placeholder="(555) 000-0000"
+                            placeholder="555-000-0000"
                         />
                     </div>
 

@@ -10,6 +10,7 @@ import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Customer, PostCustomer, UpdateCustomer } from "../types/api";
 import type { KeyBind } from "./ui/KeyBindsModal";
+import { formatPhoneLive } from "../utils/formatUtils";
 
 interface NewCustomerProps {
   goTo: (to: string) => void;
@@ -94,12 +95,7 @@ export default function NewCustomer({
 
   useHotkeys(hotkeyMap, showSearch);
 
-  const formatPhoneLive = (value?: string | null): string => {
-    const digits = (value || "").replace(/\D/g, "");
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}`;
-    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
-  };
+
 
   const sanitizePhone = (value?: string | null): string => (value || "").replace(/\D/g, "");
 
