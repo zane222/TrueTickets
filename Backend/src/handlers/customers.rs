@@ -30,8 +30,6 @@ async fn get_customers_from_ids(customer_ids: Vec<String>, client: &Client) -> R
         .build()
         .map_err(|e| error_response(500, "Batch Key Builder Error", &format!("Failed to build batch get keys for customers: {:?}", e), None))?;
 
-
-
     let mut request_items = HashMap::new();
     request_items.insert("Customers".to_string(), ka_customers);
 

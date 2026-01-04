@@ -376,7 +376,6 @@ async fn migrate_single_ticket(
     // 4. Migrate Ticket
     let device = get_device_type_from_subject(&ticket.subject);
     let status = convert_status(&ticket.status);
-    let status_device = format!("{}#{}", status, device);
 
     let mut ticket_txn_items = Vec::new();
     ticket_txn_items.extend(cust_txn_items);
@@ -390,7 +389,6 @@ async fn migrate_single_ticket(
         .item("customer_id", AttributeValue::S(ticket.customer_id.to_string()))
         .item("status", AttributeValue::S(status.to_string()))
         .item("device", AttributeValue::S(device.to_string()))
-        .item("status_device", AttributeValue::S(status_device))
         .item_if_not_empty("password", AttributeValue::S(password.clone()))
         .item_if_not_empty("items_left", AttributeValue::L(items_left.into_iter().map(AttributeValue::S).collect()))
         .item_if_not_empty("attachments", AttributeValue::L(attachment_urls.into_iter().map(AttributeValue::S).collect()))

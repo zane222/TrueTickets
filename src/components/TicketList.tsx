@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import { STATUSES, DEVICES, EMPTY_ARRAY } from "../constants/appConstants.js";
+import { EMPTY_ARRAY } from "../constants/appConstants.js";
 import { fmtDate } from "../utils/appUtils.jsx";
 import { useHotkeys } from "../hooks/useHotkeys";
 import { useRegisterKeybinds } from "../hooks/useRegisterKeybinds";
@@ -90,16 +89,16 @@ export function TicketListView({
   api,
 }: TicketListViewProps): React.ReactElement {
   // Load filter states from localStorage with defaults
-  const [selectedStatus, setSelectedStatus] = useState<string>(() => {
-    const saved = localStorage.getItem("ticketSelectedStatus");
-    // Default: Diagnosing
-    return saved ? saved : "Diagnosing";
-  });
-  const [selectedDevice, setSelectedDevice] = useState<string>(() => {
-    const saved = localStorage.getItem("ticketSelectedDevice");
-    // Default: All
-    return saved ? saved : "All";
-  });
+  // const [selectedStatus, setSelectedStatus] = useState<string>(() => {
+  //   const saved = localStorage.getItem("ticketSelectedStatus");
+  //   // Default: Diagnosing
+  //   return saved ? saved : "Diagnosing";
+  // });
+  // const [selectedDevice, setSelectedDevice] = useState<string>(() => {
+  //   const saved = localStorage.getItem("ticketSelectedDevice");
+  //   // Default: All
+  //   return saved ? saved : "All";
+  // });
 
   const [items, setItems] = useState<TinyTicket[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -108,41 +107,41 @@ export function TicketListView({
   const ticketRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Save state changes to localStorage
-  useEffect(() => {
-    localStorage.setItem(
-      "ticketSelectedStatus",
-      selectedStatus,
-    );
-  }, [selectedStatus]);
+  // useEffect(() => {
+  //   localStorage.setItem(
+  //     "ticketSelectedStatus",
+  //     selectedStatus,
+  //   );
+  // }, [selectedStatus]);
 
-  useEffect(() => {
-    localStorage.setItem(
-      "ticketSelectedDevice",
-      selectedDevice,
-    );
-  }, [selectedDevice]);
+  // useEffect(() => {
+  //   localStorage.setItem(
+  //     "ticketSelectedDevice",
+  //     selectedDevice,
+  //   );
+  // }, [selectedDevice]);
 
-  const selectStatus = (status: string): void => {
-    setSelectedStatus(status);
-    localStorage.setItem(
-      "ticketSelectedStatus",
-      status,
-    );
-  };
+  // const selectStatus = (status: string): void => {
+  //   setSelectedStatus(status);
+  //   localStorage.setItem(
+  //     "ticketSelectedStatus",
+  //     status,
+  //   );
+  // };
 
-  const selectDevice = (device: string): void => {
-    setSelectedDevice(device);
-    localStorage.setItem(
-      "ticketSelectedDevice",
-      device,
-    );
-  };
+  // const selectDevice = (device: string): void => {
+  //   setSelectedDevice(device);
+  //   localStorage.setItem(
+  //     "ticketSelectedDevice",
+  //     device,
+  //   );
+  // };
 
   // Guard to prevent overlapping / reentrant fetches
   const isFetchingRef = useRef<boolean>(false);
 
   const fetchTickets = useCallback(
-    async (device: string, status: string): Promise<void> => {
+    async (): Promise<void> => {
       // Prevent re-entrant calls — if a fetch is already in progress, skip.
       if (isFetchingRef.current) {
         return;
@@ -152,14 +151,7 @@ export function TicketListView({
       setLoading(true);
       setItems([]); // Clear the list immediately when loading starts
       try {
-        let url: string;
-        if (device === "All") {
-          // All devices - fetch without device filter
-          url = `/tickets/recent`;
-        } else {
-          // Single device selected - use backend filtering with single status
-          url = `/tickets/recent?device=${encodeURIComponent(device)}&status=${encodeURIComponent(status)}`;
-        }
+        const url = `/tickets/recent`;
         const tickets = await api.get<TinyTicket[]>(url);
 
         setItems(tickets || []);
@@ -174,11 +166,11 @@ export function TicketListView({
     [api],
   );
 
-  // Fetch tickets when device or status changes
+  // Fetch tickets when the component mounts
   useEffect(() => {
-    fetchTickets(selectedDevice, selectedStatus);
+    fetchTickets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDevice, selectedStatus]);
+  }, []);
 
   // Reset selected index when items change
   useEffect(() => {
@@ -250,9 +242,9 @@ export function TicketListView({
   return (
     <div className="mx-auto max-w-7xl px-3 sm:px-6 py-3 sm:py-6">
       {/* Device and Status Pickers in same row */}
-      <div className="flex flex-wrap gap-4 mb-4">
+      {/* <div className="flex flex-wrap gap-4 mb-4"> */}
         {/* Device Picker - Single Select (15% wider, 10% taller) */}
-        <div className="md-card p-4 space-y-2 max-w-md">
+        {/* <div className="md-card p-4 space-y-2 max-w-md">
           <p className="text-sm font-semibold">Device:</p>
           <div className="w-full flex flex-wrap gap-1.5">
             {["All", ...DEVICES].map((device) => {
@@ -276,10 +268,10 @@ export function TicketListView({
               );
             })}
           </div>
-        </div>
+        </div> */}
 
         {/* Status Picker - Single Select (only show when specific device selected, 15% wider, 10% taller) */}
-        {selectedDevice !== "All" && (
+        {/* {selectedDevice !== "All" && (
           <div className="md-card p-4 space-y-2 max-w-xl">
             <p className="text-sm font-semibold">Status:</p>
             <div className="w-full flex flex-col gap-1.5">
@@ -312,8 +304,8 @@ export function TicketListView({
               ))}
             </div>
           </div>
-        )}
-      </div>
+        )} */}
+      {/* </div> */}
 
       <div className="md-card overflow-hidden">
         {/* Desktop table header */}

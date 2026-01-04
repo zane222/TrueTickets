@@ -14,12 +14,13 @@ use auth::{can_invite_users, is_admin_or_owner, get_user_groups_from_event};
 use handlers::{
     handle_list_users, handle_update_user_group, handle_upload_attachment, handle_user_invitation,
     handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
-    handle_create_ticket, handle_update_ticket, handle_add_ticket_comment, handle_get_recent_tickets_filtered,
+    handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
     handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_tickets_by_customer_id,
     handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix,
     handle_migrate_tickets, handle_get_store_config, handle_update_store_config, handle_update_status,
-    handle_take_payment, handle_refund_payment, handle_dont_fix_ticket
+    handle_take_payment, handle_refund_payment,
+    financials::handle_dont_fix_ticket
 };
 use models::{
     CreateTicketRequest, UpdateTicketRequest,
@@ -338,7 +339,13 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             let result = match first_parameter.as_str() { // don't add anything to this that needs any actual parameters
                 "number" => handle_get_ticket_by_number(&value, false, &dynamodb_client).await,
                 "search_by_number" => handle_get_ticket_by_number(&value, true, &dynamodb_client).await,
-                "ticket_number_last_3_digits" => handle_get_tickets_by_suffix(&value, &dynamodb_client).await,
+                "ticket_number_last_3_digits" => {
+                    let suffix_val: i64 = match value.parse() {
+                        Ok(v) => v,
+                        Err(_) => return error_response(400, "Invalid Suffix", "Suffix must be a number", None),
+                    };
+                    handle_get_tickets_by_suffix(suffix_val, &dynamodb_client).await
+                }
                 "subject_query" => handle_search_tickets_by_subject(&value, &dynamodb_client).await,
                 "customer_id" => handle_get_tickets_by_customer_id(value.to_string(), &dynamodb_client).await,
                 _ => return error_response(400, "Unknown query parameter", &format!("Unsupported query parameter: {:?}", first_parameter), None),
@@ -350,18 +357,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             }
         }
         ("/tickets/recent", "GET") => {
-            // Check for device and status filters
-            let device = event.query_string_parameters().first("device").map(|s| s.to_string());
-            let status_param = event.query_string_parameters().first("status").map(|s| s.to_string());
-
-            let result = if let (Some(d), Some(s)) = (device, status_param) {
-                // Parse status pipe separated
-                let statuses: Vec<String> = s.split('|').map(|st| st.trim().to_string()).collect();
-                handle_get_recent_tickets_filtered(d, statuses, &dynamodb_client).await
-            } else {
-                // Global recent
-                handle_get_recent_tickets(&dynamodb_client).await
-            };
+            let result = handle_get_recent_tickets(&dynamodb_client).await;
 
             match result {
                 Ok(val) => success_response(200, &val.to_string()),
