@@ -796,3 +796,98 @@ pub async fn merge_full_customers_into_tickets(
     
     Ok(tickets)
 }
+
+pub async fn handle_dont_fix_ticket(
+    ticket_number: String,
+    tech_name: String,
+    client: &Client,
+) -> Result<Value, Response<Body>> {
+    // 1. Get current ticket to get line items and device
+    let output = client.get_item()
+        .table_name("Tickets")
+        .key("ticket_number", AttributeValue::N(ticket_number.clone()))
+        .send()
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to fetch ticket for dont_fix: {:?}", e), None))?;
+
+    let item = output.item.ok_or_else(|| error_response(404, "Not Found", "Ticket not found", None))?;
+    
+    // Deserialize to check line items
+    let ticket: TicketWithoutCustomer = serde_dynamo::from_item(item.clone())
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {:?}", e), None))?;
+
+    let line_items = ticket.line_items.unwrap_or_default();
+    let device = ticket.device;
+
+    // 2. Prepare updates
+    let mut update_parts = Vec::new();
+    let mut expr_vals = HashMap::new();
+    let mut expr_names = HashMap::new();
+
+    // Archive line items to comment
+    if !line_items.is_empty() {
+        let mut items_str = String::from("[Don't fix]\nPrevious line items:\n");
+        for item in line_items {
+            items_str.push_str(&format!("- {}: ${:.2}\n", item.subject, item.price_cents as f64 / 100.0));
+        }
+
+        let author_name = format!("{} (System)", tech_name);
+
+        let comment = AttributeValue::M(
+            vec![
+                ("comment_body".to_string(), AttributeValue::S(items_str)),
+                ("tech_name".to_string(), AttributeValue::S(author_name)),
+                ("created_at".to_string(), AttributeValue::N(Utc::now().timestamp().to_string())),
+            ]
+            .into_iter().collect()
+        );
+        
+        update_parts.push("comments = list_append(if_not_exists(comments, :empty), :c)".to_string());
+        expr_vals.insert(":c".to_string(), AttributeValue::L(vec![comment]));
+        expr_vals.insert(":empty".to_string(), AttributeValue::L(vec![]));
+    }
+
+    // Clear line items
+    let mut remove_parts = Vec::new();
+    remove_parts.push("line_items".to_string());
+
+    // Update status to Ready
+    update_parts.push("#st = :st".to_string());
+    expr_vals.insert(":st".to_string(), AttributeValue::S("Ready".to_string()));
+    expr_names.insert("#st".to_string(), "status".to_string());
+
+    let status_device = format!("{}#{}", "Ready", device);
+    update_parts.push("status_device = :sd".to_string());
+    expr_vals.insert(":sd".to_string(), AttributeValue::S(status_device));
+
+    update_parts.push("last_updated = :lu".to_string());
+    expr_vals.insert(":lu".to_string(), AttributeValue::N(Utc::now().timestamp().to_string()));
+
+    // Construct Expression
+    let mut update_expr_parts = Vec::new();
+    if !update_parts.is_empty() {
+        update_expr_parts.push(format!("SET {}", update_parts.join(", ")));
+    }
+    if !remove_parts.is_empty() {
+        update_expr_parts.push(format!("REMOVE {}", remove_parts.join(", ")));
+    }
+
+    let update_expr = update_expr_parts.join(" ");
+
+    let mut request = client.update_item()
+        .table_name("Tickets")
+        .key("ticket_number", AttributeValue::N(ticket_number.clone()))
+        .update_expression(update_expr);
+
+    for (k, v) in expr_vals {
+        request = request.expression_attribute_values(k, v);
+    }
+    for (k, v) in expr_names {
+        request = request.expression_attribute_names(k, v);
+    }
+
+    request.send().await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to update ticket for dont_fix: {:?}", e), None))?;
+
+    Ok(json!({"ticket_number": ticket_number, "status": "Ready"}))
+}

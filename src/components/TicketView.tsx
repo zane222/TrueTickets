@@ -330,11 +330,11 @@ function TicketView({
     // Validation for Payment/Refund flows
     const hasLineItems = (ticket.line_items || []).length > 0;
     if (status === "Resolved" && hasLineItems) {
-      alert("Please use 'Take Payment' to resolve tickets with line items.");
+      alert("There are line items. Either use 'Take Payment' or 'Don't fix' to resolve this ticket.");
       return;
     }
-    if (ticket.status === "Resolved" && hasLineItems && status !== "Resolved") {
-      alert("Please use 'Refund' to reopen this paid ticket.");
+    if (ticket.status === "Resolved" && hasLineItems) { // the buttons are grayed out, so this should never be reached
+      alert("Please use 'Refund' to open this ticket again.");
       return;
     }
 
@@ -718,11 +718,6 @@ function TicketView({
                       <motion.button
                         key={status}
                         onClick={() => {
-                          if (status === "Resolved" && (ticket.line_items || []).length > 0) {
-                            alert("Please click 'Take Payment' or remove line items before resolving.");
-                            return;
-                          }
-                          // Since buttons are disabled when locked, this onClick shouldn't fire, but keeping for safety
                           updateTicketStatus(status);
                         }}
                         disabled={isUpdating || active || isLocked}
@@ -860,7 +855,7 @@ function TicketView({
 
                       {/* Totals Section */}
                       {(ticket.line_items || []).length > 0 && (
-                        <div className="flex flex-col items-end">
+                        <div className="flex flex-col items-start">
                           {(() => {
                             const subtotalCents = (ticket.line_items || []).reduce((acc: number, item: LineItem) => acc + (item.price_cents || 0), 0);
                             const subtotal = subtotalCents / 100;
@@ -868,51 +863,72 @@ function TicketView({
                             const total = subtotal + tax;
 
                             return (
-                              <div className="w-full max-w-[200px] space-y-2">
-                                <div className="flex justify-between text-md font-semibold">
-                                  <span>Total:</span>
-                                  <span>${total.toFixed(2)}</span>
+                              <div className="flex justify-between items-end w-full mt-4">
+                                <div className="flex-1">
+                                  {!isLocked && ticket.status !== "Resolved" && (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          await api.post(`/tickets/dont-fix?number=${ticket.ticket_number}`, {});
+                                          setRefreshKey(prev => prev + 1);
+                                        } catch (e) {
+                                          console.error(e);
+                                          _error("Failed to update", "Could not apply Don't Fix");
+                                        }
+                                      }}
+                                      className="md-btn-surface !text-red-500 py-2 px-4 text-sm font-semibold transition-all"
+                                    >
+                                      Don't fix
+                                    </button>
+                                  )}
                                 </div>
 
-                                {isLocked ? (
-                                  <button
-                                    onClick={async () => {
-                                      try {
-                                        await api.post(`/tickets/refund?ticket_number=${ticket.ticket_number}`, {});
-                                        setRefreshKey((prev) => prev + 1);
-                                      } catch (err) {
-                                        console.error(err);
-                                        _error("Refund Failed", "Failed to process refund. Ensure ticket is resolved.");
-                                      }
-                                    }}
-                                    className="w-full md-btn-surface !text-red-500 py-2 text-sm font-semibold transition-all"
-                                  >
-                                    Refund
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={async () => {
-                                      if (ticket.status === "Resolved") {
-                                        alert("Please change status from Resolved first.");
-                                        return;
-                                      }
+                                <div className="w-full max-w-[200px] space-y-2">
+                                  <div className="flex justify-between text-md font-semibold">
+                                    <span>Total:</span>
+                                    <span>${total.toFixed(2)}</span>
+                                  </div>
 
-                                      // Ensure items are saved first
-                                      await saveLineItems(ticket.line_items || []);
+                                  {isLocked ? (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          await api.post(`/tickets/refund?ticket_number=${ticket.ticket_number}`, {});
+                                          setRefreshKey((prev) => prev + 1);
+                                        } catch (err) {
+                                          console.error(err);
+                                          _error("Refund Failed", "Failed to process refund. Ensure ticket is resolved.");
+                                        }
+                                      }}
+                                      className="w-full md-btn-surface !text-red-500 py-2 text-sm font-semibold transition-all"
+                                    >
+                                      Refund
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={async () => {
+                                        if (ticket.status === "Resolved") {
+                                          alert("Please change status from Resolved first.");
+                                          return;
+                                        }
 
-                                      try {
-                                        await api.post(`/tickets/payment?ticket_number=${ticket.ticket_number}`, {});
-                                        setRefreshKey((prev) => prev + 1);
-                                      } catch (err) {
-                                        console.error(err);
-                                        _error("Payment Failed", "Failed to process payment.");
-                                      }
-                                    }}
-                                    className="w-full md-btn-primary py-2 text-sm font-semibold shadow-md hover:shadow-lg transition-all"
-                                  >
-                                    Take Payment
-                                  </button>
-                                )}
+                                        // Ensure items are saved first
+                                        await saveLineItems(ticket.line_items || []);
+
+                                        try {
+                                          await api.post(`/tickets/payment?ticket_number=${ticket.ticket_number}`, {});
+                                          setRefreshKey((prev) => prev + 1);
+                                        } catch (err) {
+                                          console.error(err);
+                                          _error("Payment Failed", "Failed to process payment.");
+                                        }
+                                      }}
+                                      className="w-full md-btn-primary py-2 text-sm font-semibold shadow-md hover:shadow-lg transition-all"
+                                    >
+                                      Take Payment
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             );
                           })()}

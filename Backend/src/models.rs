@@ -119,8 +119,6 @@ pub struct CreateTicketRequest {
     pub device: String,
 }
 
-
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UpdateTicketRequest {
     pub subject: Option<String>,

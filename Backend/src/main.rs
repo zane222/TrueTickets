@@ -19,7 +19,7 @@ use handlers::{
     handle_update_customer, handle_get_tickets_by_customer_id,
     handle_search_customers_by_name, handle_get_customer_by_id, handle_get_tickets_by_suffix,
     handle_migrate_tickets, handle_get_store_config, handle_update_store_config, handle_update_status,
-    handle_take_payment, handle_refund_payment
+    handle_take_payment, handle_refund_payment, handle_dont_fix_ticket
 };
 use models::{
     CreateTicketRequest, UpdateTicketRequest,
@@ -504,7 +504,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Ok(val) => val,
                 Err(resp) => return *resp,
             };
-            
+
             // Extract from token
             let tech_name = match auth::get_given_name_from_event(&event) {
                 Some(name) => name,
@@ -516,8 +516,25 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => resp,
             }
         }
+        ("/tickets/dont-fix", "POST") => {
+            let ticket_number: String = match event.query_string_parameters().first("number") {
+                Some(n) => n.to_string(),
+                None => return error_response(400, "Missing ticket number", "Query parameter 'number' is required", None),
+            };
+
+            let tech_name = match auth::get_given_name_from_event(&event) {
+                Some(n) => n,
+                None => return error_response(401, "Unauthorized", "Could not determine user name from token", None),
+            };
+
+            match handle_dont_fix_ticket(ticket_number, tech_name, &dynamodb_client).await {
+                Ok(val) => success_response(200, &val.to_string()),
+                Err(resp) => resp,
+            }
+        }
 
         // -------------------------
+
         // MIGRATION
         // -------------------------
         ("/migrate-tickets", "GET") => {

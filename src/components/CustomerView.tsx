@@ -14,6 +14,7 @@ import NavigationButton from "./ui/NavigationButton";
 import { LoadingSpinnerWithText } from "./ui/LoadingSpinner";
 import type { Customer, TicketWithoutCustomer } from "../types/api";
 import { InlineErrorMessage } from "./ui/InlineErrorMessage";
+import { useStoreConfig } from "../context/StoreConfigContext";
 
 interface CustomerViewProps {
   id: string;
@@ -27,6 +28,7 @@ function CustomerView({
   showSearch,
 }: CustomerViewProps): React.ReactElement {
   const api = useApi();
+  const { config } = useStoreConfig();
   const { warning: _warning, dataChanged: _dataChanged } = useAlertMethods();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -134,6 +136,27 @@ function CustomerView({
       return [];
     }
   }, [tickets]);
+
+  const readyTickets = useMemo(() => {
+    return (tickets || []).filter(
+      (t) => t.status === "Ready" && (t.line_items?.length || 0) > 0
+    );
+  }, [tickets]);
+
+  const balanceDetails = useMemo(() => {
+    let subtotalCents = 0;
+    readyTickets.forEach((ticket) => {
+      (ticket.line_items || []).forEach((item) => {
+        subtotalCents += item.price_cents || 0;
+      });
+    });
+
+    const subtotal = subtotalCents / 100;
+    const tax = subtotal * (config.tax_rate / 100);
+    const total = subtotal + tax;
+
+    return { subtotal, tax, total };
+  }, [readyTickets, config.tax_rate]);
 
   // Stabilized fetch: keep effect deps minimal by using refs + a stable callback.
   const apiRef = React.useRef(api);
@@ -389,6 +412,58 @@ function CustomerView({
           </div>
         </div>
         <div className="space-y-6">
+          {/* Balance Section */}
+          {readyTickets.length > 0 && (
+            <div className="md-card p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div className="text-lg font-semibold">Balance Due</div>
+                <div className="text-xl font-bold text-primary">
+                  ${balanceDetails.total.toFixed(2)}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {readyTickets.map((ticket) => (
+                  <div key={ticket.ticket_number} className="text-sm">
+                    <div className="font-medium flex items-center gap-2 mb-1 text-on-surface">
+                      <span className="text-outline">
+                        #{ticket.ticket_number}
+                      </span>
+                    </div>
+                    <div className="pl-6 space-y-1">
+                      {ticket.line_items?.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="flex justify-between text-outline"
+                        >
+                          <span>{item.subject}</span>
+                          <span>
+                            ${((item.price_cents || 0) / 100).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div
+                  className="border-t pt-4 mt-4 space-y-2"
+                  style={{ borderColor: "var(--md-sys-color-outline-variant)" }}
+                >
+                  <div className="flex justify-between text-sm">
+                    <span className="text-outline">Subtotal</span>
+                    <span>${balanceDetails.subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-medium">
+                    <span className="text-outline">
+                      Total ({config.tax_rate}% tax)
+                    </span>
+                    <span>${balanceDetails.total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {passwords && passwords.length > 0 && (
             <div className="md-card p-6">
               <div className="text-lg font-semibold mb-2">

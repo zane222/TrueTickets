@@ -72,7 +72,6 @@ export interface CognitoUser {
   user_status: string;
 }
 
-
 export interface PostTicket {
   customer_id: string;
   subject: string;
@@ -87,10 +86,6 @@ export interface UpdateTicket {
   items_left: string[] | null;
   line_items: LineItem[] | null;
   device: string | null;
-}
-
-export interface UpdateTicketStatus {
-  status: string;
 }
 
 export interface PostCustomer {
