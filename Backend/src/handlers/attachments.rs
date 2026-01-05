@@ -12,7 +12,16 @@ use aws_sdk_dynamodb::types::AttributeValue;
 use chrono::Utc;
 use base64::Engine;
 
-/// Handle attachment upload to ticket
+/// Uploads a file to S3 and links it to a ticket in DynamoDB.
+///
+/// # Database & Cloud Interactions
+/// 1. **S3**: `PutObject` uploads the decoded raw bytes to a structured key path (`attachments/{ticket}/{timestamp}_{id}`).
+/// 2. **DynamoDB**: `UpdateItem` on `Tickets` table to append the new S3 URL to the `attachments` list.
+///
+/// # Logic
+/// - **Base64 Decoding**: Decodes the client-side base64 string to raw binary before uploading.
+/// - **Security**: Generates a random ID and uses the file system timestamp to prevent collisions.
+/// - **Access**: Gets S3 bucket name from environment variables.
 pub async fn handle_upload_attachment(
     ticket_number: String,
     base64_data: &str,

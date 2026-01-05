@@ -1,3 +1,9 @@
+//! Main entry point for the True Tickets backend Lambda function.
+//!
+//! # Architecture
+//! - **Lambda Runtime**: Uses `lambda_runtime` to handle events.
+//! - **Routing**: Manual routing in `handle_lambda_event` based on HTTP method and path.
+//! - **State**: Initializes AWS clients (DynamoDB, S3, Cognito) once and passes them to handlers.
 mod auth;
 mod handlers;
 mod http;
@@ -318,7 +324,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 None => return error_response(401, "Unauthorized", "Could not determine user name from token", None),
             };
 
-            match handlers::handle_am_i_clocked_in(given_name, &dynamodb_client).await {
+            match handlers::handle_get_clock_status(given_name, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }

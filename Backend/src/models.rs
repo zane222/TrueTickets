@@ -1,3 +1,4 @@
+//! Shared data models and structs used across the application.
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

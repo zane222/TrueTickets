@@ -9,7 +9,17 @@ use crate::auth::{get_user_groups_from_event, is_admin_or_owner, generate_temp_p
 use crate::http::error_response;
 use crate::models::UserResponse;
 
-/// Handle user invitation
+/// Invites a new user to the system via Cognito.
+///
+/// # AWS Interactions
+/// - **Cognito**:
+///   - `AdminCreateUser`: Creates the user profile with email and temporary password.
+///   - `AdminSetUserPassword`: Immediately sets a permanent password (skipping new user flow for simplicity in this app).
+///   - `AdminAddUserToGroup`: Assigns the default "Employee" group.
+///
+/// # Logic
+/// - **Auto-Verification**: Marks email as verified immediately (password is unknown by user, so email verification is required indirectly to set up a new password)
+/// - **Group Assignment**: New users are always "Employees" by default; admins can promote them later.
 pub async fn handle_user_invitation(
     email: &str,
     first_name: &str,

@@ -1,3 +1,4 @@
+//! Customer management handlers (create, update, search).
 use chrono::Utc;
 use serde_json::{json, Value};
 use lambda_http::{Body, Response};
@@ -41,6 +42,15 @@ async fn get_customers_from_ids(customer_ids: Vec<String>, client: &Client) -> R
     Ok(json!(json_items))
 }
 
+/// Retrieves a list of consumers by phone number.
+///
+/// # Database Interactions
+/// - **`CustomerPhoneIndex` (separate table)**: Queries the table to find customer IDs associated with the phone number.
+/// - **`Customers` Table (Batch Get)**: Fetches the full customer details for the IDs found.
+///
+/// # Logic
+/// - **Reverse Lookup**: Since phone numbers are in a list within the Customer item, a separate table is used to allow searching by quickly searching by phone number.
+/// - **Batch Fetch**: Efficiently retrieves multiple customers if the phone number is shared (e.g., family members).
 pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client) -> Result<Value, Response<Body>> {
     // First query the phone index to get customer IDs
     let index_output = client.query()
@@ -62,6 +72,13 @@ pub async fn handle_get_customers_by_phone(phone_number: String, client: &Client
     get_customers_from_ids(customer_ids, client).await
 }
 
+/// Retrieves a single customer by their ID.
+///
+/// # Database Interactions
+/// - **`Customers` Table**: Direct `GetItem`.
+///
+/// # Logic
+/// - Returns 404 if the customer ID does not exist.
 pub async fn handle_get_customer_by_id(customer_id: String, client: &Client) -> Result<Value, Response<Body>> {
     let output = client.get_item()
         .table_name("Customers")
@@ -80,6 +97,16 @@ pub async fn handle_get_customer_by_id(customer_id: String, client: &Client) -> 
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize customer: {:?}", e), None))
 }
 
+/// Searches for customers by name.
+///
+/// # Database Interactions
+/// - **`Customers` Table (GSI Scan)**: Queries `CustomerSearchIndex` with `gsi_pk = "ALL"`.
+///   - Filters by `contains(full_name_lower, :word)`.
+/// - **`Customers` Table (Batch Get)**: Fetches full details for matched IDs.
+///
+/// # Logic
+/// - **Case-Insensitive Token Search**: Splits query into words and ensures the customer name contains ALL words.
+/// - **Pagination**: Scans until 15 matches are found or index is exhausted.
 pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Result<Value, Response<Body>> {
     let mut filter_exprs = Vec::new();
     let mut expr_vals = HashMap::new();
@@ -136,6 +163,17 @@ pub async fn handle_search_customers_by_name(query: &str, client: &Client) -> Re
     get_customers_from_ids(customer_ids, client).await
 }
 
+/// Creates a new customer.
+///
+/// # Database Interactions
+/// Uses `TransactWriteItems` to maintain consistency between the main table and the phone lookup table.
+/// 1. **`Customers` Table**: `PutItem` with the new customer record.
+/// 2. **`CustomerPhoneIndex` (Separate Table)**: `PutItem` for *each* phone number to enable reverse lookup.
+///
+/// # Logic
+/// - **Short ID generation**: Generates a random 8-character ID.
+/// - **Search Optimization**: Stores `full_name_lower` for efficient case-insensitive searching.
+/// - **Atomicity**: Either all records (customer + all phone table entries) are created, or none are.
 pub async fn handle_create_customer(
     full_name: String,
     email: Option<String>,
@@ -199,6 +237,20 @@ pub async fn handle_create_customer(
     Ok(json!({ "customer_id": customer_id }))
 }
 
+/// Updates an existing customer and manages their phone number lookup table entries.
+///
+/// # Database Interactions
+/// Uses `TransactWriteItems` for complex updates:
+/// - **`CustomerPhoneIndex` (Separate Table)**:
+///   - **Delete**: Removes entries for phone numbers that were removed.
+///   - **Put**: Adds entries for new phone numbers.
+/// - **`Customers` Table**:
+///   - **Update**: Modifies fields (email, name, phone list) and `last_updated` timestamp.
+///
+/// # Logic
+/// - **Table Maintenance**: Manually computes the diff between old and new phone numbers to keep the `CustomerPhoneIndex` table in sync.
+/// - **Dynamic Update**: Builds a `SET`/`REMOVE` expression based on which fields are provided.
+/// - **Case Sensitivity**: Updates `full_name_lower` whenever `full_name` changes.
 pub async fn handle_update_customer(
     customer_id: String,
     full_name: Option<String>,

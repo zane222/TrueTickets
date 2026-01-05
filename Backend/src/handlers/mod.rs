@@ -24,6 +24,6 @@ pub use store_config::{handle_get_store_config, handle_update_store_config};
 pub mod financials;
 pub use financials::{
     get_purchases, get_all_tickets_for_month_with_payments, update_purchases, handle_get_clock_logs,
-    handle_clock_in, handle_am_i_clocked_in, handle_update_user_wage, handle_update_clock_logs,
+    handle_clock_in, handle_get_clock_status, handle_update_user_wage, handle_update_clock_logs,
     handle_take_payment, handle_refund_payment
 };

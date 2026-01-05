@@ -1,3 +1,4 @@
+//! Financial operations handlers (payments, payroll, purchases).
 use serde_json::{json, Value};
 use aws_sdk_dynamodb::{Client, types::{AttributeValue, Put}};
 use lambda_http::{Body, Response};
@@ -5,6 +6,13 @@ use crate::http::error_response;
 use crate::models::{MonthPurchases, PurchaseItem, TimeEntry, TicketWithoutCustomer, LineItem};
 use chrono::Utc;
 
+/// Retrieves the list of purchases for a specific month.
+///
+/// # Database Interactions
+/// - **`Purchases` Table**: Direct `GetItem` using `YYYY-MM` string as the partition key.
+///
+/// # Logic
+/// - Returns an empty list if no purchases record exists for that month.
 pub async fn get_purchases(
     year: i32,
     month: u32,
@@ -34,6 +42,17 @@ pub async fn get_purchases(
     }))
 }
 
+/// Retrieves all tickets paid within a specific time range.
+///
+/// # Database Interactions
+/// - **`Tickets` Table (GSI Query)**: Queries `RevenueIndex` (Sparse GSI).
+///   - Key Condition: `gsi_pk = "ALL" AND paid_at BETWEEN :start AND :end`.
+///   - Filter: Only returns tickets that have a `paid_at` timestamp (implicitly done by the sparse index).
+/// - **`Customers` Table (Batch Get)**: Fetches full customer details to populate the ticket objects.
+///
+/// # Logic
+/// - **Sparse Indexing**: Efficiently queries only paid tickets without scanning the full ticket history.
+/// - **Ordering**: Returns results ordered by payment date (latest first).
 pub async fn get_all_tickets_for_month_with_payments(
     start_ts: i64,
     end_ts: i64,
@@ -84,6 +103,13 @@ pub async fn get_all_tickets_for_month_with_payments(
     Ok(result)
 }
 
+/// Updates (overwrites) the entire list of purchases for a specific month.
+///
+/// # Database Interactions
+/// - **`Purchases` Table**: `PutItem` to completely replace the record for the given `YYYY-MM`.
+///
+/// # Logic
+/// - **Overwrite Strategy**: The client sends the full state of purchases for the month; the backend replaces the existing entry.
 pub async fn update_purchases(
     year: i32,
     month: u32,
@@ -124,6 +150,15 @@ pub async fn update_purchases(
     }))
 }
 
+/// Retrieves time sheet logs for all users within a date range.
+///
+/// # Database Interactions
+/// - **`TimeEntries` Table (Query)**: Queries partition `ALL` with sort key `timestamp` in range.
+/// - **`Config` Table (Batch Get)**: Fetches wages for all unique users found in the logs.
+///
+/// # Logic
+/// - **Aggregated Response**: Returns both the raw log entries and the current wage rates for the relevant users.
+/// - **Frontend Processing**: The backend provides raw data; the frontend (IncomeTab) calculates total hours and payout.
 pub async fn handle_get_clock_logs(
     start_ts: i64,
     end_ts: i64,
@@ -191,6 +226,18 @@ pub async fn handle_get_clock_logs(
     }))
 }
 
+/// records a user clocking in or out.
+///
+/// # Database Interactions
+/// Uses `TransactWriteItems` to ensure state consistency:
+/// 1. **`TimeEntries` Table**: `PutItem` creates a new immutable log entry.
+/// 2. **`Config` Table**: `PutItem` updates the mutable `[User]#is_clocked_in` state.
+///
+/// # Logic & Consistency
+/// - **Condition Checks**:
+///   - To Clock In: User must be currently clocked OUT (or have no state).
+///   - To Clock Out: User must be currently clocked IN.
+/// - **Concurrency**: Prevents double-clocking via DynamoDB conditional writes.
 pub async fn handle_clock_in(
     given_name: String,
     clocking_in: bool,
@@ -203,20 +250,12 @@ pub async fn handle_clock_in(
 
     let clocked_in_pk = format!("{}#is_clocked_in", given_name);
 
-    // No read needed anymore. Use clocking_in param.
-    // If clocking_in is true, we expect current state to be false (or not exist).
-    // If clocking_in is false (clocking out), we expect current state to be true.
-
-    let is_clock_out = !clocking_in;
-    let action_str = if is_clock_out { "Clocked Out" } else { "Clocked In" };
-    let new_status = clocking_in;
-
     // 2. Prepare TimeEntry
     let time_entry = TimeEntry {
         pk: "ALL".to_string(),
         user_name: given_name.clone(),
         timestamp,
-        is_clock_out,
+        is_clock_out: !clocking_in,
     };
 
     let entry_item: std::collections::HashMap<String, AttributeValue> = serde_dynamo::to_item(&time_entry)
@@ -227,7 +266,7 @@ pub async fn handle_clock_in(
     let put_config_builder = Put::builder()
         .table_name("Config")
         .item("pk", AttributeValue::S(clocked_in_pk))
-        .item("clocked_in", AttributeValue::Bool(new_status))
+        .item("clocked_in", AttributeValue::Bool(clocking_in))
         .item("last_updated", AttributeValue::N(timestamp.to_string()));
 
     let put_config = if clocking_in {
@@ -260,8 +299,8 @@ pub async fn handle_clock_in(
 
     match result {
         Ok(_) => Ok(json!({
-            "message": format!("Successfully {} for {}", action_str, given_name),
-            "clocked_in": new_status,
+            "message": format!("Successfully {} for {}", if clocking_in { "Clocked In" } else { "Clocked Out" }, given_name),
+            "clocked_in": clocking_in,
             "timestamp": timestamp
         })),
         Err(e) => {
@@ -273,7 +312,14 @@ pub async fn handle_clock_in(
     }
 }
 
-pub async fn handle_am_i_clocked_in(
+/// Checks the current clock-in status of a user.
+///
+/// # Database Interactions
+/// - **`Config` Table**: Consistent Read of `[User]#is_clocked_in`.
+///
+/// # Logic
+/// - Defaults to `false` if no state record exists.
+pub async fn handle_get_clock_status(
     given_name: String,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
@@ -298,6 +344,10 @@ pub async fn handle_am_i_clocked_in(
     }))
 }
 
+/// Updates the hourly wage for a specific user.
+///
+/// # Database Interactions
+/// - **`Config` Table**: `PutItem` on `[User]#wage`.
 pub async fn handle_update_user_wage(
     given_name: String,
     wage_cents: i64,
@@ -319,6 +369,18 @@ pub async fn handle_update_user_wage(
     }))
 }
 
+/// Manually corrects time sheet entries for a user on a specific day.
+///
+/// # Database Interactions
+/// A complex transaction that "rewrites history" for a user's day:
+/// 1. **Query**: Fetches existing logs for the user/day range.
+/// 2. **Transaction**:
+///    - **Deletes** all existing entries for that user/day.
+///    - **Inserts** new entries based on the provided segments.
+///
+/// # Logic
+/// - **Destructive Update**: Completely replaces the day's logs for the user to ensure consistency without trying to diff individual timestamps.
+/// > **Note**: This has not been tested yet and still needs to be looked over carefully.
 pub async fn handle_update_clock_logs(
     req: crate::models::UpdateClockLogsRequest,
     client: &Client,
@@ -412,6 +474,17 @@ pub async fn handle_update_clock_logs(
     Ok(json!({ "success": true }))
 }
 
+/// Processes a payment for a ticket.
+///
+/// # Database Interactions
+/// 1. **Fetch**: Parallel fetch of `Tickets` (for line items) and `Config` (for tax rate).
+/// 2. **Update**: `UpdateItem` on `Tickets` table.
+///
+/// # Logic
+/// - **Calculation**: Computes total from line items + tax rate.
+/// - **Receipt Generation**: Formats a text receipt block and appends it to comments.
+/// - **State Transition**: Sets status to "Resolved", adds `paid_at` timestamp.
+/// - **Safety**: Conditional write prevents resolving a ticket that is already resolved or in an invalid state.
 pub async fn handle_take_payment(
     ticket_number: String,
     tech_name: String,
@@ -495,6 +568,16 @@ pub async fn handle_take_payment(
     }))
 }
 
+/// Refunds a payment and reopens the ticket.
+///
+/// # Database Interactions
+/// - **`Tickets` Table**: `UpdateItem` to revert status and remove payment fields.
+///
+/// # Logic
+/// - **State Transition**: Sets status back to "In Progress".
+/// - **Data Cleanup**: Removes `paid_at` and `total_paid_cents`.
+/// - **Audit**: Appends a "Payment Refunded" system comment.
+/// - **Condition**: Can only refund a ticket that is currently "Resolved".
 pub async fn handle_refund_payment(
     ticket_number: String,
     tech_name: String,
@@ -555,7 +638,7 @@ fn line_items_to_comment(
     }
     let total_fmt = format!("{:.2}", (total_paid_cents as f64) / 100.0);
     let receipt_body = format!(
-        "{}\n{}\nTotal: ${}",
+        "{}\n{}\nTotal paid: ${}",
         message,
         line_item_strings.join("\n"),
         total_fmt
@@ -579,6 +662,15 @@ fn line_items_to_comment(
     )
 }
 
+/// Marks a ticket as "Ready" (finished working on it, still needs to be picked up) and removes line items with logging them in the comments.
+///
+/// # Database Interactions
+/// 1. **Fetch**: Gets ticket to ensure line items exist (receipt generation).
+/// 2. **Update**: `UpdateItem` to set status and generate receipt.
+///
+/// # Logic
+/// - **Requirement**: Ticket must have line items.
+/// - **Action**: Generates a zero-dollar receipt/statement, clears line items (logic moved to "Comments"), and sets status to "Ready".
 pub async fn handle_dont_fix_ticket(
     ticket_number: String,
     tech_name: String,

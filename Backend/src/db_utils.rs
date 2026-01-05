@@ -1,3 +1,4 @@
+//! Shared database utilities and helper traits.
 use aws_sdk_dynamodb::{
     types::AttributeValue,
     operation::put_item::builders::PutItemInputBuilder,
@@ -47,6 +48,15 @@ impl DynamoDbBuilderExt for PutItemInputBuilder {
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use std::collections::HashMap;
 
+/// Fetches the hourly wage (in cents) for a list of users.
+///
+/// # Database Interactions
+/// - **`Config` Table (Batch Get)**: Efficiently retrieves multiple items where `pk = "[User]#wage"`.
+///
+/// # Logic
+/// - **Chunking**: Splits the request into chunks of 90 (DynamoDB limit is 100) to ensure reliable batch processing.
+/// - **Deduplication**: Removes duplicate user names to avoid wasting database IO.
+/// - **Defaults**: Returns 0 cents if no wage record is found for a user.
 pub async fn get_wages_for_users(user_names: Vec<String>, client: &DynamoDbClient) -> HashMap<String, i64> {
     if user_names.is_empty() {
         return HashMap::new();
@@ -64,8 +74,6 @@ pub async fn get_wages_for_users(user_names: Vec<String>, client: &DynamoDbClien
 
     let mut wage_map = HashMap::new();
     
-    // DynamoDB BatchGetItem limit is 100 items. 
-    // We'll process in chunks of 90 to be safe and simple.
     for chunk in unique_names.chunks(90) {
         let mut keys = vec![];
         for name in chunk {
@@ -104,6 +112,12 @@ pub async fn get_wages_for_users(user_names: Vec<String>, client: &DynamoDbClien
 use lambda_http::{Body, Response};
 use crate::http::error_response;
 
+/// Executes a `BatchGetItem` request with automatic retries for unprocessed keys.
+///
+/// # Logic
+/// - **Exponential Backoff**: Waits exponentially longer (100ms, 200ms...) between retries to respect DynamoDB throttling.
+/// - **Unprocessed Keys**: Automatically re-queues any keys that DynamoDB couldn't process in the initial batch.
+/// - **Accumulation**: Merges results from all retry attempts into a single response map.
 pub async fn execute_batch_get_with_retries(
     client: &DynamoDbClient,
     request_items: HashMap<String, aws_sdk_dynamodb::types::KeysAndAttributes>,
@@ -129,7 +143,6 @@ pub async fn execute_batch_get_with_retries(
             }
         }
 
-        // Check for unprocessed keys
         // Check for unprocessed keys
         let unprocessed = output.unprocessed_keys.unwrap_or_default();
         if unprocessed.is_empty() {

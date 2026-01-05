@@ -1,3 +1,4 @@
+//! Store configuration handlers.
 use serde_json::{json, Value};
 use lambda_http::{Body, Response};
 use aws_sdk_dynamodb::{
@@ -7,6 +8,10 @@ use aws_sdk_dynamodb::{
 use crate::http::error_response;
 use crate::models::{StoreConfig, UpdateStoreConfigRequest};
 
+/// Retrieves the global store configuration (address, taxes, contact info).
+///
+/// # Database Interactions
+/// - **`Config` Table**: Direct `GetItem` on the singleton item `pk = "config"`.
 pub async fn handle_get_store_config(client: &Client) -> Result<Value, Response<Body>> {
     let output = client.get_item()
         .table_name("Config")
@@ -26,6 +31,10 @@ pub async fn handle_get_store_config(client: &Client) -> Result<Value, Response<
     Ok(json!({ "config": config }))
 }
 
+/// Updates the global store configuration.
+///
+/// # Database Interactions
+/// - **`Config` Table**: `PutItem` (overwrite) on the singleton item `pk = "config"`.
 pub async fn handle_update_store_config(
     req: UpdateStoreConfigRequest,
     client: &Client,

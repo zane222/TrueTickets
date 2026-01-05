@@ -1,3 +1,4 @@
+//! Ticket management handlers (create, update, search, get).
 use chrono::Utc;
 use serde_json::{json, Value};
 use lambda_http::{Body, Response};
