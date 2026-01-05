@@ -13,80 +13,117 @@ use crate::models::{
 };
 use crate::db_utils::DynamoDbBuilderExt;
 
-pub async fn handle_get_ticket_by_number(
+/// Retrieves a ticket with only the necessary fields to display in search results, and gracefully handles missing tickets.
+/// # Database Interactions
+/// - **`Tickets` Table**: `GetItem` with `ProjectionExpression`.
+/// - **`Customers` Table**: `GetItem` to fetch customer name.
+///
+/// # Logic
+/// - Optimizes bandwidth by only fetching necessary fields (`ticket_number`, `subject`, `status`, etc.).
+/// - Deserializes directly into `TinyTicketWithoutCustomer`, then into `TinyTicket` by adding the customer's name
+/// - Returns `{ "ticket": TinyTicket }` or `{ "ticket": null }` if not found.
+pub async fn handle_quick_search_ticket(
     ticket_number: &str,
-    searching: bool,
+    client: &Client,
+) -> Result<Value, Response<Body>> {
+    // 1. Get partial ticket
+    let output = client.get_item()
+        .table_name("Tickets")
+        .key("ticket_number", AttributeValue::N(ticket_number.to_string()))
+        .projection_expression("ticket_number, subject, customer_id, #st, device, created_at")
+        .expression_attribute_names("#st", "status")
+        .send()
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to search ticket: {:?}", e), None))?;
+
+    let ticket_item = match output.item {
+        Some(item) => item,
+        None => return Ok(json!({ "ticket": null })),
+    };
+
+    let ticket_nocust: TinyTicketWithoutCustomer = serde_dynamo::from_item(ticket_item)
+        .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tiny ticket: {:?}", e), None))?;
+
+    // 2. Get Customer Name only
+    let customer_item = client.get_item()
+        .table_name("Customers")
+        .key("customer_id", AttributeValue::S(ticket_nocust.customer_id.clone()))
+        .projection_expression("full_name")
+        .send()
+        .await
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {:?}", e), None))?
+        .item
+        .ok_or_else(|| error_response(404, "Customer Not Found", "Ticket exists but linked customer is missing", None))?;
+
+    let customer_name = customer_item.get("full_name")
+        .and_then(|av| av.as_s().ok())
+        .cloned()
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    let tiny_ticket = TinyTicket {
+        details: ticket_nocust,
+        customer_name,
+    };
+
+    Ok(json!({ "ticket": tiny_ticket }))
+}
+
+/// Retrieves the full details of a ticket and its associated customer.
+///
+/// # Database Interactions
+/// - **`Tickets` Table**: Direct `GetItem` (fetch all attributes).
+/// - **`Customers` Table**: Direct `GetItem` (fetch all attributes).
+///
+/// # Logic
+/// - Returns `Ticket` struct (Ticket + Customer).
+/// - Returns 404 if ticket not found.
+pub async fn handle_get_ticket_details(
+    ticket_number: &str,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
     // 1. Get Ticket
-    let output = client.get_item()
+    let ticket_item = client.get_item()
         .table_name("Tickets")
         .key("ticket_number", AttributeValue::N(ticket_number.to_string()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{:?}', probably there's no ticket under that number: {:?}", ticket_number, e), None))?;
-
-    let ticket_item = match output.item {
-        Some(item) => item,
-        None => {
-            if searching {
-                return Ok(json!({ "ticket": null }));
-            } else {
-                return Err(error_response(404, "Ticket Not Found", "No ticket with that number", None));
-            }
-        }
-    };
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get ticket '{:?}', probably there's no ticket under that number: {:?}", ticket_number, e), None))?
+        .item
+        .ok_or_else(|| error_response(404, "Ticket Not Found", "No ticket with that number", None))?;
 
     let ticket_nocust: TicketWithoutCustomer = serde_dynamo::from_item(ticket_item)
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize ticket: {:?}", e), None))?;
 
     // 2. Get Customer
-    let cust_output = client.get_item()
+    let customer_item = client.get_item()
         .table_name("Customers")
         .key("customer_id", AttributeValue::S(ticket_nocust.customer_id.clone()))
         .send()
         .await
-        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {:?}", e), None))?;
-
-    let customer_item = cust_output.item
+        .map_err(|e| error_response(500, "DynamoDB Error", &format!("Failed to get customer: {:?}", e), None))?
+        .item
         .ok_or_else(|| error_response(404, "Customer Not Found", "Ticket exists but linked customer is missing", None))?;
 
     let customer: Customer = serde_dynamo::from_item(customer_item)
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize customer: {:?}", e), None))?;
 
     // 3. Compose response
-    if searching {
-        let tiny_details = TinyTicketWithoutCustomer {
-            ticket_number: ticket_nocust.ticket_number,
-            subject: ticket_nocust.subject,
-            customer_id: ticket_nocust.customer_id,
-            status: ticket_nocust.status,
-            device: ticket_nocust.device,
-            created_at: ticket_nocust.created_at,
-        };
+    let full_ticket = Ticket {
+        details: ticket_nocust,
+        customer,
+    };
 
-        let tiny_ticket = TinyTicket {
-            details: tiny_details,
-            customer_name: customer.full_name,
-        };
-
-        let val = serde_json::to_value(&tiny_ticket)
-            .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize tiny ticket: {:?}", e), None))?;
-
-        Ok(json!({ "ticket": val }))
-    } else {
-        let full_ticket = Ticket {
-            details: ticket_nocust,
-            customer,
-        };
-
-        let val = serde_json::to_value(&full_ticket)
-            .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize ticket: {:?}", e), None))?;
-
-        Ok(val)
-    }
+    serde_json::to_value(&full_ticket)
+        .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize ticket: {:?}", e), None))
 }
 
+/// Fetches all tickets belonging to a specific customer.
+///
+/// # Database Interactions
+/// - **`Tickets` Table**: Uses `Query` on the `CustomerIdIndex` GSI to retrieve all tickets for a specific customer.
+///
+/// # Logic
+/// - Returns a list of `TicketWithoutCustomer` since the caller presumably already knows the customer details.
 pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Client) -> Result<Value, Response<Body>> {
     // Query Tickets by customer id
     let output = client.query()
@@ -105,6 +142,20 @@ pub async fn handle_get_tickets_by_customer_id(customer_id: String, client: &Cli
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize tickets: {:?}", e), None))
 }
 
+/// Searches for tickets based on keywords in the subject line.
+///
+/// # Database Interactions
+/// 1. **`Tickets` Table (GSI Scan/Query)**: Queries the `TicketSearchIndex`.
+///    - Uses `gsi_pk = "ALL"` (a partition of "all tickets").
+///    - Applies a `contains(subject_lower, :word)` filter for each word in the query.
+///    - **Note**: This is effectively an inorder "scan" of all tickets, but only reading the subject_lower attribute.
+/// 2. **`Tickets` Table (Batch Get)**: After finding matching ticket numbers from the index, it performs a `BatchGetItem` to retrieve the full ticket details. This is because the GSI needs to not project extra attributes for it to be efficiently searchable.
+/// 3. **`Customers` Table (Batch Get)**: Fetches customer names for the retrieved tickets to return each ticket with its customer name.
+///
+/// # Logic
+/// - **Tokenization**: Searches for tickets in which all words in the query must be present in their subject (using subject_lower for case-insensitive search).
+/// - **Pagination**: Manually iterates 'pages' of the index query until 15 results are found or the index is exhausted.
+/// - **Batch Operation**: Merges Ticket data with Customer data in a batch operation.
 pub async fn handle_search_tickets_by_subject(
     query: &str,
     client: &Client,
@@ -205,6 +256,17 @@ pub async fn handle_search_tickets_by_subject(
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize search results: {:?}", e), None))
 }
 
+/// Retrieves the most recently created or updated tickets.
+///
+/// # Database Interactions
+/// - **`Tickets` Table**: Queries the `TicketNumberIndex` GSI.
+///   - Key Condition: `gsi_pk = "ALL"`
+///   - Sort Order: Descending (ScanIndexForward = false) to get newest first.
+///   - Limit: 30 items.
+///
+/// # Logic
+/// - Efficiently retrieves the latest tickets without scanning the entire table.
+/// - BatchGetItem join with `Customers` table to provide customer names for the UI.
 pub async fn handle_get_recent_tickets(client: &Client) -> Result<Value, Response<Body>> {
     let output = client.query()
         .table_name("Tickets")
@@ -226,6 +288,23 @@ pub async fn handle_get_recent_tickets(client: &Client) -> Result<Value, Respons
         .map_err(|e| error_response(500, "Serialization Error", &format!("Failed to serialize recent tickets: {:?}", e), None))
 }
 
+/// Creates a new ticket with a sequential ticket number.
+///
+/// # Database Interactions
+/// This function utilizes **DynamoDB Transactions** to ensure strict sequential ordering of ticket numbers.
+/// It interacts with two tables in a single atomic operation:
+/// 1. **`Config` Table**:
+///    - **Read**: Fetches the current `ticket_number_counter` (PK: "ticket_number_counter").
+///    - **Update**: Atomically increments the counter using a conditional check (`counter_value = :old`).
+/// 2. **`Tickets` Table**:
+///    - **Insert**: Creates a new ticket item with the newly generated incremented number.
+///
+/// # Logic & Concurrency
+/// - Implementation uses **Optimistic Locking** on the `Config` table counter.
+/// - If the counter has changed between the initial read and the write (due to another concurrent request), the transaction fails.
+/// - The function automatically **retries** (up to 5 times) to handle these high-concurrency partial failures without erroring to the client.
+///
+/// > **Note**: This retry mechanism has not been tested yet.
 pub async fn handle_create_ticket(
     customer_id: String,
     subject: String,
@@ -310,7 +389,16 @@ pub async fn handle_create_ticket(
     }
 }
 
-// None = no change, Some("") = remove, Some(value) = update
+/// Updates an existing ticket's details.
+///
+/// # Database Interactions
+/// - **`Tickets` Table**: Uses `UpdateItem` to modify specific attributes of a ticket identified by `ticket_number`.
+///
+/// # Logic & Dynamic Querying
+/// - **Dynamic Expression Building**: The update expression (`SET ... REMOVE ...`) is constructed at runtime based on which fields are present (`Some`) in the request.
+/// - **Partial Updates**: Only the fields provided in the `UpdateTicketRequest` are modified; others are left unchanged.
+/// - **Automatic Timestamp**: The `last_updated` field is always set to the current UTC timestamp, strictly server-side.
+/// - **Complex Types**: Handles mapping of complex structures like `line_items` (array of objects) into DynamoDB `List<Map>` format.
 pub async fn handle_update_ticket(
     ticket_number: String,
     req: UpdateTicketRequest,
@@ -378,6 +466,16 @@ pub async fn handle_update_ticket(
     Ok(json!({"ticket_number": ticket_number}))
 }
 
+/// Updates the status of a ticket.
+///
+/// # Database Interactions
+/// - **`Tickets` Table**: Uses `UpdateItem` with a Conditional Write.
+///
+/// # Logic & Consistency
+/// - **Strict Conditional Logic**: If a ticket has line items it cannot be:
+///   - Set to resolved (should use take payment) 
+///   - Set away from resolved (should use refund).
+/// - **Error Handling**: Catches the specific `ConditionalCheckFailedException` to return a 400 Bad Request with a helpful message (e.g., "Cannot update status of a resolved ticket...").
 pub async fn handle_update_status(
     ticket_number: String,
     status: String,
@@ -387,7 +485,7 @@ pub async fn handle_update_status(
         .table_name("Tickets")
         .key("ticket_number", AttributeValue::N(ticket_number.clone()))
         .update_expression("SET #st = :st, last_updated = :lu")
-        .condition_expression("attribute_not_exists(line_items) OR size(line_items) = :zero OR (#st <> :resolved AND :st <> :resolved)")
+        .condition_expression("(attribute_not_exists(line_items) OR size(line_items) = :zero) OR (#st <> :resolved AND :st <> :resolved)")
         .expression_attribute_names("#st", "status")
         .expression_attribute_values(":st", AttributeValue::S(status.clone()))
         .expression_attribute_values(":lu", AttributeValue::N(Utc::now().timestamp().to_string()))
@@ -405,6 +503,15 @@ pub async fn handle_update_status(
     Ok(json!({"ticket_number": ticket_number, "status": status}))
 }
 
+/// Appends a new comment to a ticket.
+///
+/// # Database Interactions
+/// - **`Tickets` Table**: Uses `UpdateItem` with `list_append`.
+///
+/// # Logic
+/// - **Atomic Append**: Safely adds to the `comments` list without race conditions.
+/// - **Initialization**: Uses `if_not_exists` to create the `comments` list if this is the first comment.
+/// - **Audit Trail**: Captures `tech_name` and `timestamp` server-side.
 pub async fn handle_add_ticket_comment(
     ticket_number: String,
     comment_body: String,
@@ -434,8 +541,16 @@ pub async fn handle_add_ticket_comment(
     Ok(json!({"ticket_number": ticket_number}))
 }
 
+/// Searches for recent tickets ending with a specific 3-digit number (e.g., searching for "123" finds "35123", "34123", "33123").
+///
+/// # Database Interactions
+/// 1. **`Config` Table**: Reads the current `ticket_number_counter` to determine the search range.
+/// 2. **`Tickets` Table (Batch Get)**: Gets 7 most recent potential tickets
+///
+/// # Logic
+/// - **Math-based Search**: Calculates every possible ticket number that could match the suffix starting from the current maximum ticket number.
+/// - **Optimization**: Limits results to the last 7 matches.
 pub async fn handle_get_tickets_by_suffix(suffix: i64, client: &Client) -> Result<Value, Response<Body>> {
-
     // 1. Get current counter
     let counter_output = client.get_item()
         .table_name("Config")
@@ -496,7 +611,7 @@ pub async fn handle_get_tickets_by_suffix(suffix: i64, client: &Client) -> Resul
         .map_err(|e| error_response(500, "Deserialization Error", &format!("Failed to deserialize tickets from batch result: {:?}", e), None))?;
 
     // Sort descending by ticket number (most recent first)
-    tickets_nocust.sort_by(|a, b| b.ticket_number.cmp(&a.ticket_number));
+    tickets_nocust.sort_by_key(|a| -a.ticket_number);
 
     // 4. Merge customers
     let tickets = merge_customers_into_tiny_tickets(tickets_nocust, client).await?;

@@ -13,7 +13,7 @@ use aws_sdk_s3::Client as S3Client;
 use auth::{can_invite_users, is_admin_or_owner, get_user_groups_from_event};
 use handlers::{
     handle_list_users, handle_update_user_group, handle_upload_attachment, handle_user_invitation,
-    handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
+    handle_get_ticket_details, handle_quick_search_ticket, handle_search_tickets_by_subject, handle_get_recent_tickets,
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment,
     handle_get_customers_by_phone, handle_create_customer,
     handle_update_customer, handle_get_tickets_by_customer_id,
@@ -28,7 +28,31 @@ use models::{
 };
 use http::{error_response, handle_options, success_response, parse_json_body, get_value_in_json};
 
-/// Handle the Lambda event
+#[tokio::main]
+async fn main() -> Result<(), lambda_http::Error> {
+    lambda_http::tracing::init_default_subscriber();
+    run(service_fn(function_handler)).await
+}
+
+/// Main Lambda handler function
+async fn function_handler(event: Request) -> Result<Response<Body>, lambda_http::Error> {
+    // Initialize AWS config and clients
+    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    let cognito_client = CognitoClient::new(&config);
+    let s3_client = S3Client::new(&config);
+
+    Ok(handle_lambda_event(event, &cognito_client, &s3_client).await)
+}
+
+/// The central entry point for routing all incoming HTTP requests within the Lambda environment. It parses the body and parameters before passing to the handler.
+///
+/// # Routing Logic
+/// - **Manual Routing**: Matches requests against a tuple of `(path, method)` (e.g., `("/tickets", "GET")`).
+/// - **Prefix Stripping**: Automatically removes `/Prod` or `/prod` prefixes common in AWS API Gateway stages to normalize paths.
+///
+/// # Cross-Cutting Concerns
+/// - **CORS**: Intercepts `OPTIONS` requests immediately to return preflight headers (`handle_options`).
+/// - **Method Validation**: Rejects any non-standard methods (only GET, POST, PUT allowed) before they reach logic.
 async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_client: &S3Client) -> Response<Body> {
     let method = event.method().as_str();
     let path = event.uri().path();
@@ -49,7 +73,6 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
     if !matches!(method, "GET" | "POST" | "PUT") {
         return error_response(400, "Invalid HTTP method", &format!("Method '{:?}' is not supported", method), Some("Ensure you are calling this Lambda via API Gateway"));
     }
-
 
     // Load AWS SDK config to create the DynamoDB client
     let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
@@ -337,8 +360,8 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             };
 
             let result = match first_parameter.as_str() { // don't add anything to this that needs any actual parameters
-                "number" => handle_get_ticket_by_number(&value, false, &dynamodb_client).await,
-                "search_by_number" => handle_get_ticket_by_number(&value, true, &dynamodb_client).await,
+                "number" => handle_get_ticket_details(&value, &dynamodb_client).await,
+                "search_by_number" => handle_quick_search_ticket(&value, &dynamodb_client).await,
                 "ticket_number_last_3_digits" => {
                     let suffix_val: i64 = match value.parse() {
                         Ok(v) => v,
@@ -651,23 +674,6 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
         }
         _ => error_response(405, "Method not allowed", path, Some("You're sending a request that doesn't exist.")),
     }
-}
-
-
-/// Main Lambda handler function
-async fn function_handler(event: Request) -> Result<Response<Body>, lambda_http::Error> {
-    // Initialize AWS config and clients
-    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
-    let cognito_client = CognitoClient::new(&config);
-    let s3_client = S3Client::new(&config);
-
-    Ok(handle_lambda_event(event, &cognito_client, &s3_client).await)
-}
-
-#[tokio::main]
-async fn main() -> Result<(), lambda_http::Error> {
-    lambda_http::tracing::init_default_subscriber();
-    run(service_fn(function_handler)).await
 }
 
 #[cfg(test)]

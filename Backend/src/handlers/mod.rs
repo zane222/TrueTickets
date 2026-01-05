@@ -11,7 +11,7 @@ pub mod store_config;
 pub use user_management::{handle_list_users, handle_update_user_group, handle_user_invitation};
 pub use attachments::handle_upload_attachment;
 pub use tickets::{
-    handle_get_ticket_by_number, handle_search_tickets_by_subject, handle_get_recent_tickets,
+    handle_get_ticket_details, handle_quick_search_ticket, handle_search_tickets_by_subject, handle_get_recent_tickets,
     handle_create_ticket, handle_update_ticket, handle_add_ticket_comment, handle_get_tickets_by_suffix,
     handle_get_tickets_by_customer_id, handle_update_status
 };
