@@ -173,13 +173,17 @@ pub struct UpdateStoreConfigRequest {
 pub struct PurchaseItem {
     pub name: String,
     pub amount_cents: i64,
-    pub timestamp: i64,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MonthPurchases {
     pub month_year: String, // PK: YYYY-MM
     pub items: Vec<PurchaseItem>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdatePurchasesRequest {
+    pub purchases: Vec<PurchaseItem>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

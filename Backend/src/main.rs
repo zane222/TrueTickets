@@ -268,7 +268,12 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
                 Err(resp) => return *resp,
             };
 
-            match handlers::update_purchases(year, month, body, &dynamodb_client).await {
+            let purchases: Vec<models::PurchaseItem> = match serde_json::from_value::<models::UpdatePurchasesRequest>(body) {
+                Ok(r) => r.purchases,
+                Err(e) => return error_response(400, "Invalid Request Body", &format!("Failed to parse purchases update request: {:?}", e), None),
+            };
+
+            match handlers::update_purchases(year, month, purchases, &dynamodb_client).await {
                 Ok(val) => success_response(200, &val.to_string()),
                 Err(resp) => resp,
             }

@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use aws_sdk_dynamodb::{Client, types::{AttributeValue, Put}};
 use lambda_http::{Body, Response};
 use crate::http::error_response;
-use crate::models::{MonthPurchases, PurchaseItem, TimeEntry, TicketWithoutCustomer, LineItem};
+use crate::models::{MonthPurchases, TimeEntry, TicketWithoutCustomer, LineItem};
 use chrono::Utc;
 
 /// Retrieves the list of purchases for a specific month.
@@ -113,25 +113,12 @@ pub async fn get_all_tickets_for_month_with_payments(
 pub async fn update_purchases(
     year: i32,
     month: u32,
-    body: Value,
+    purchases: Vec<crate::models::PurchaseItem>,
     client: &Client,
 ) -> Result<Value, Response<Body>> {
-    let month_year_pk = format!("{:04}-{:02}", year, month);
-
-    let items_array = if let Some(arr) = body.get("purchases").and_then(|v| v.as_array()) {
-        arr
-    } else if let Some(arr) = body.as_array() {
-        arr
-    } else {
-        return Err(error_response(400, "Invalid Request", "Expected array of purchases", None));
-    };
-
-    let items: Vec<PurchaseItem> = serde_json::from_value(Value::Array(items_array.clone()))
-        .map_err(|e| error_response(400, "Deserialization Error", &format!("Failed to parse purchases: {:?}", e), None))?;
-
     let month_purchases = MonthPurchases {
-        month_year: month_year_pk.clone(),
-        items,
+        month_year: format!("{:04}-{:02}", year, month),
+        items: purchases,
     };
 
     let item_value = serde_dynamo::to_item(month_purchases)
