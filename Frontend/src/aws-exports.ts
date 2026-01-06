@@ -1,23 +1,14 @@
-// AWS Amplify Configuration
-// Uses environment variables
+import { ResourcesConfig } from 'aws-amplify';
 
-const awsconfig = {
+const awsconfig: ResourcesConfig = {
     Auth: {
         Cognito: {
-            // REQUIRED - Amazon Cognito Region
-            region: import.meta.env.VITE_AWS_REGION || 'us-east-2',
-
-            // REQUIRED - Amazon Cognito User Pool ID
-            userPoolId: import.meta.env.VITE_USER_POOL_ID,
-
-            // REQUIRED - Amazon Cognito Web Client ID
-            userPoolClientId: import.meta.env.VITE_USER_POOL_WEB_CLIENT_ID,
-
-            // OPTIONAL - Login with email
+            userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID,
+            userPoolClientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
             loginWith: {
-                email: true
-            }
-        }
+                email: true,
+            },
+        },
     },
 };
 

@@ -78,8 +78,8 @@ import type { ApiContextValue } from "./types/components";
 // Configure Amplify
 try {
   if (
-    awsconfig.Auth.Cognito.userPoolId &&
-    awsconfig.Auth.Cognito.userPoolClientId
+    awsconfig.Auth?.Cognito?.userPoolId &&
+    awsconfig.Auth?.Cognito?.userPoolClientId
   ) {
     try {
       Amplify.configure(awsconfig);
