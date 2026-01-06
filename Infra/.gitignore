@@ -1,0 +1,35 @@
+# --- OpenTofu / Terraform ---
+
+# Local OpenTofu working directory
+**/.terraform/
+
+# State files (contain secrets)
+**/terraform.tfstate
+**/terraform.tfstate.*
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Override files (local-only)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI config files
+.terraformrc
+terraform.rc
+
+# Variable files that often contain secrets
+*.tfvars
+*.tfvars.json
+
+# Plan files
+*.tfplan
+
+# --- OS / Editor noise ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
