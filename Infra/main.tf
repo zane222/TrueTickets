@@ -1,10 +1,11 @@
 # The IaC is not complete. For this to work with one store it still needs:
 # - DynamoDB tables with their correct keys and GSIs
 # - Add an authorizer to the HTTP API Gateway
+#
+# These would be some good things to fix soon, but are not immediate:
 # - The S3 bucket is set to publicly readable, which we should probably correct before deploying. We would have to change some stuff with the backend for the bucket to not need to be publicly readable. It's not a huge problem though because only authenticated users will be getting the attachment links in the first place, and worst case senario people can read images that probably aren't that sensitive, but it should still be fixed.
-# - Uploading to Amplify for website hosting
-# -----------------------------
-# After all that, we still have to make this work for multiple stores to where each store has their own Cognito groups, S3 bucket, and dynamodb tables. This will also require changes to the backend
+# - It makes an Amplify branch and zips the output, but you have to upload the zip file in the console
+# - We still have to make this work for multiple stores to where each store has their own Cognito groups, S3 bucket, and dynamodb tables. This will also require changes to the backend
 
 terraform {
   required_providers {
@@ -106,6 +107,28 @@ resource "aws_cognito_user_group" "StoreEmployee" {
   name         = "StoreEmployee"
   description  = "For Employees"
   precedence   = 15
+}
+
+resource "aws_cognito_user" "admin" {
+  user_pool_id = aws_cognito_user_pool.this.id
+  username     = var.admin_email
+  password     = var.admin_password
+
+  attributes = {
+    email          = var.admin_email
+    email_verified = "true"
+    given_name     = var.admin_name
+  }
+
+  lifecycle {
+    ignore_changes = [attributes]
+  }
+}
+
+resource "aws_cognito_user_in_group" "admin_group_membership" {
+  user_pool_id = aws_cognito_user_pool.this.id
+  username     = aws_cognito_user.admin.username
+  group_name   = aws_cognito_user_group.TrueTicketsAdmin.name
 }
 
 #------------------------------S3 with Public Read Access------------------------------#
@@ -307,14 +330,44 @@ resource "aws_apigatewayv2_route" "this" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
+#-------------Amplify---------------
+data "archive_file" "frontend_build" {
+  type        = "zip"
+  source_dir  = "${path.module}/../Frontend/dist"
+  output_path = "${path.module}/../Frontend/dist.zip"
+}
+
+resource "aws_amplify_app" "frontend" {
+  name     = "TrueTicketsWebsite"
+  platform = "WEB"
+
+  # manual deploys, no repo integration
+  enable_branch_auto_build = false
+}
+
+resource "aws_amplify_branch" "main" {
+  app_id = aws_amplify_app.frontend.id
+  branch_name = "TrueTickets"
+  enable_auto_build = false
+
+  # Deploy using S3 artifact
+  framework = "React" # or your framework, optional
+}
+
 #-------------Generate a .env file---------------
 resource "local_file" "env_file" {
-  filename = "${path.module}/.env"
+  filename = "${path.module}/../Frontend/.env"
 
   content = <<EOT
-AWS_REGION=${local.region}
-COGNITO_USER_POOL_ID=${aws_cognito_user_pool.this.id}
-COGNITO_CLIENT_ID=${aws_cognito_user_pool_client.client.id}
-API_GATEWAY_URL=${aws_apigatewayv2_stage.prod.invoke_url}
+VITE_AWS_REGION=${local.region}
+VITE_COGNITO_USER_POOL_ID=${aws_cognito_user_pool.this.id}
+VITE_COGNITO_CLIENT_ID=${aws_cognito_user_pool_client.client.id}
+VITE_API_GATEWAY_URL=${aws_apigatewayv2_stage.prod.invoke_url}
+VITE_COOKIE_DOMAIN=.${aws_amplify_app.frontend.default_domain}
 EOT
+}
+
+#--------------Notification to Upload to Amplify-----------
+output "important_note" {
+  value       = "Everything has been done automatically (assuming you already built the front and backend 'npm run build' and 'cargo lambda build --release --arm64'), execpt the only thing you need to do is deploy /Frontend/dist.zip to the Amplify branch in the AWS console"
 }
