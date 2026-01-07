@@ -92,7 +92,6 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
               : [];
 
           const name =
-            (payload?.["custom:given_name"] as string | undefined) ??
             (payload?.["given_name"] as string | undefined) ??
             (payload?.["name"] as string | undefined) ??
             currentUser?.username ??
@@ -140,7 +139,6 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
           const payload = getIdTokenPayload(session);
           const groups = parseGroups(payload?.["cognito:groups"]);
           const name =
-            (payload?.["custom:given_name"] as string | undefined) ??
             (payload?.["given_name"] as string | undefined) ??
             (payload?.["name"] as string | undefined) ??
             userArg?.username ??
@@ -175,7 +173,6 @@ export function AuthWrapper({ children }: { children: React.ReactNode }) {
       const payload = getIdTokenPayload(session);
       const groups = parseGroups(payload?.["cognito:groups"]);
       const name =
-        (payload?.["custom:given_name"] as string | undefined) ??
         (payload?.["given_name"] as string | undefined) ??
         (payload?.["name"] as string | undefined) ??
         user?.username ??

@@ -66,7 +66,7 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
                 const unknownAttrs = attrs as Record<string, unknown>;
                 const getString = (key: string) => typeof unknownAttrs[key] === 'string' ? unknownAttrs[key] as string : undefined;
 
-                const name = getString('name') || getString('custom:given_name') || getString('given_name') || user.username || "User";
+                const name = getString('given_name') || getString('name') || user.username || "User";
                 const email = getString('email') || "";
 
                 setUserInfo({ name, email });
@@ -74,7 +74,6 @@ export default function SettingsPage({ goTo }: SettingsPageProps) {
                 console.error("Failed to load user info", e);
             }
         };
-        loadUser();
         loadUser();
     }, []);
 

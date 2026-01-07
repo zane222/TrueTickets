@@ -53,7 +53,7 @@ pub async fn handle_user_invitation(
     if !first_name.is_empty() {
         user_attributes.push(
             AttributeType::builder()
-                .name("custom:given_name")
+                .name("given_name")
                 .value(first_name)
                 .build()
                 .map_err(|e| error_response(500, "Builder Error", &format!("Failed to build given_name attribute: {:?}", e), None))?,
@@ -102,7 +102,7 @@ pub async fn handle_user_invitation(
         .admin_add_user_to_group()
         .user_pool_id(&user_pool_id)
         .username(email)
-        .group_name("TrueTickets-Cacell-Employee")
+        .group_name("StoreEmployee")
         .send()
         .await;
 
@@ -127,7 +127,7 @@ pub async fn handle_list_users(
     // Check user permissions
     let user_groups = get_user_groups_from_event(event);
     if !is_admin_or_owner(&user_groups) {
-        return Err(error_response(403, "Insufficient Permissions", &format!("You do not have permission to view users, you are a {:?}", user_groups), Some("Only ApplicationAdmin and Owner can view users")));
+        return Err(error_response(403, "Insufficient Permissions", &format!("You do not have permission to view users, you are a {:?}", user_groups), Some("Only TrueTicketsAdmin and StoreOwner can view users")));
     }
 
     let user_pool_id = std::env::var("USER_POOL_ID")
@@ -174,7 +174,7 @@ pub async fn handle_list_users(
         for attr in user.attributes() {
             if attr.name() == "email" {
                 email = attr.value().map(|s| s.to_string());
-            } else if attr.name() == "custom:given_name" {
+            } else if attr.name() == "given_name" {
                 given_name = attr.value().map(|s| s.to_string());
             }
         }

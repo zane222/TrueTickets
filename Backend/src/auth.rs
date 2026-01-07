@@ -64,9 +64,9 @@ fn parse_jwt_payload(token: &str) -> Option<Value> {
 /// Check if user can invite other users
 pub fn can_invite_users(user_groups: &[String]) -> bool {
     let allowed_groups = [
-        "TrueTickets-Cacell-ApplicationAdmin",
-        "TrueTickets-Cacell-Owner",
-        "TrueTickets-Cacell-Manager",
+        "TrueTicketsAdmin",
+        "StoreOwner",
+        "StoreManager",
     ];
     user_groups
         .iter()
@@ -75,7 +75,7 @@ pub fn can_invite_users(user_groups: &[String]) -> bool {
 
 /// Check if user can manage users
 pub fn is_admin_or_owner(user_groups: &[String]) -> bool {
-    let allowed_groups = ["TrueTickets-Cacell-ApplicationAdmin", "TrueTickets-Cacell-Owner"];
+    let allowed_groups = ["TrueTicketsAdmin", "StoreOwner"];
     user_groups
         .iter()
         .any(|group| allowed_groups.contains(&group.as_str()))
@@ -99,7 +99,7 @@ pub fn get_given_name_from_event(event: &Request) -> Option<String> {
     if let Some(auth_str) = event.headers().get("Authorization").and_then(|h| h.to_str().ok()) {
         let token = auth_str.strip_prefix("Bearer ").unwrap_or(auth_str);
         if let Some(claims) = parse_jwt_payload(token) {
-             if let Some(name) = claims.get("given_name").or(claims.get("custom:given_name")) {
+             if let Some(name) = claims.get("given_name") {
                  return name.as_str().map(|s| s.to_string());
              }
              if let Some(username) = claims.get("username").or(claims.get("cognito:username")) {

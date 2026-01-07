@@ -104,7 +104,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !can_invite_users(&user_groups) {
-                return error_response(403, "Insufficient permissions", "You do not have permission to invite users", Some("Only ApplicationAdmin, Owner, and Manager can invite users"));
+                return error_response(403, "Insufficient permissions", "You do not have permission to invite users", Some("Only TrueTicketsAdmin, StoreOwner, and StoreManager can invite users"));
             }
 
             match handle_user_invitation(&email, &first_name, cognito_client).await {
@@ -136,7 +136,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !is_admin_or_owner(&user_groups) {
-                return error_response(403, "Insufficient permissions", "You do not have permission to manage users", Some("Only ApplicationAdmin and Owner can manage users"));
+                return error_response(403, "Insufficient permissions", "You do not have permission to manage users", Some("Only TrueTicketsAdmin and StoreOwner can manage users"));
             }
 
             match handle_update_user_group(&username, &new_group, cognito_client).await {
@@ -184,7 +184,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !is_admin_or_owner(&user_groups) {
-                return error_response(403, "Insufficient permissions", "You do not have permission to view clock logs", Some("Only ApplicationAdmin and Owner can view clock logs"));
+                return error_response(403, "Insufficient permissions", "You do not have permission to view clock logs", Some("Only TrueTicketsAdmin and StoreOwner can view clock logs"));
             }
 
             let params = event.query_string_parameters();
@@ -206,7 +206,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !is_admin_or_owner(&user_groups) {
-                return error_response(403, "Insufficient permissions", "You do not have permission to view financials", Some("Only ApplicationAdmin and Owner can view financials"));
+                return error_response(403, "Insufficient permissions", "You do not have permission to view financials", Some("Only TrueTicketsAdmin and StoreOwner can view financials"));
             }
 
             let params = event.query_string_parameters();
@@ -228,7 +228,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !is_admin_or_owner(&user_groups) {
-                return error_response(403, "Insufficient permissions", "You do not have permission to view tickets", Some("Only ApplicationAdmin and Owner can view tickets"));
+                return error_response(403, "Insufficient permissions", "You do not have permission to view tickets", Some("Only TrueTicketsAdmin and StoreOwner can view tickets"));
             }
 
             let params = event.query_string_parameters();
@@ -250,7 +250,7 @@ async fn handle_lambda_event(event: Request, cognito_client: &CognitoClient, s3_
             // Check user permissions
             let user_groups = get_user_groups_from_event(&event);
             if !is_admin_or_owner(&user_groups) {
-                return error_response(403, "Insufficient permissions", "You do not have permission to manage financials", Some("Only ApplicationAdmin and Owner can manage financials"));
+                return error_response(403, "Insufficient permissions", "You do not have permission to manage financials", Some("Only TrueTicketsAdmin and StoreOwner can manage financials"));
             }
 
             let params = event.query_string_parameters();
@@ -729,25 +729,25 @@ mod tests {
 
     #[test]
     fn test_can_invite_users() {
-        let admin_groups = vec!["TrueTickets-Cacell-ApplicationAdmin".to_string()];
+        let admin_groups = vec!["TrueTicketsAdmin".to_string()];
         assert!(can_invite_users(&admin_groups));
 
-        let manager_groups = vec!["TrueTickets-Cacell-Manager".to_string()];
+        let manager_groups = vec!["StoreManager".to_string()];
         assert!(can_invite_users(&manager_groups));
 
-        let employee_groups = vec!["TrueTickets-Cacell-Employee".to_string()];
+        let employee_groups = vec!["StoreEmployee".to_string()];
         assert!(!can_invite_users(&employee_groups));
     }
 
     #[test]
     fn test_is_admin_or_owner() {
-        let admin_groups = vec!["TrueTickets-Cacell-ApplicationAdmin".to_string()];
+        let admin_groups = vec!["TrueTicketsAdmin".to_string()];
         assert!(is_admin_or_owner(&admin_groups));
 
-        let owner_groups = vec!["TrueTickets-Cacell-Owner".to_string()];
+        let owner_groups = vec!["StoreOwner".to_string()];
         assert!(is_admin_or_owner(&owner_groups));
 
-        let manager_groups = vec!["TrueTickets-Cacell-Manager".to_string()];
+        let manager_groups = vec!["StoreManager".to_string()];
         assert!(!is_admin_or_owner(&manager_groups));
     }
 

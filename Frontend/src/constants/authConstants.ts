@@ -1,9 +1,9 @@
 // User group identifiers (Cognito group names)
 export const USER_GROUP_IDS = {
-  EMPLOYEE: "TrueTickets-Cacell-Employee",
-  MANAGER: "TrueTickets-Cacell-Manager",
-  OWNER: "TrueTickets-Cacell-Owner",
-  APPLICATION_ADMIN: "TrueTickets-Cacell-ApplicationAdmin",
+  EMPLOYEE: "StoreEmployee",
+  MANAGER: "StoreManager",
+  OWNER: "StoreOwner",
+  APPLICATION_ADMIN: "TrueTicketsAdmin",
 };
 
 // User group display names

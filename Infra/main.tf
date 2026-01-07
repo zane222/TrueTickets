@@ -1,5 +1,4 @@
 # The IaC is not complete. For this to work with one store it still needs:
-# - DynamoDB tables with their correct keys and GSIs
 # - Add an authorizer to the HTTP API Gateway
 #
 # These would be some good things to fix soon, but are not immediate:
@@ -131,6 +130,172 @@ resource "aws_cognito_user_in_group" "admin_group_membership" {
   group_name   = aws_cognito_user_group.TrueTicketsAdmin.name
 }
 
+#------------------------------DynamoDB Tables------------------------------#
+
+resource "aws_dynamodb_table" "customers" {
+  name         = "Customers"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "customer_id"
+
+  attribute {
+    name = "customer_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "gsi_pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "created_at"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name               = "CustomerSearchIndex"
+    hash_key           = "gsi_pk"
+    range_key          = "created_at"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["full_name_lower", "customer_id"]
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "customer_phone_index" {
+  name         = "CustomerPhoneIndex"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "phone_number"
+  range_key    = "customer_id"
+
+  attribute {
+    name = "phone_number"
+    type = "S"
+  }
+
+  attribute {
+    name = "customer_id"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "tickets" {
+  name         = "Tickets"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "ticket_number"
+
+  attribute {
+    name = "ticket_number"
+    type = "N"
+  }
+
+  attribute {
+    name = "gsi_pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "customer_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "paid_at"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name               = "TicketSearchIndex"
+    hash_key           = "gsi_pk"
+    range_key          = "ticket_number"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["subject_lower"]
+  }
+
+  global_secondary_index {
+    name               = "TicketNumberIndex"
+    hash_key           = "gsi_pk"
+    range_key          = "ticket_number"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["subject", "customer_id", "status", "device", "created_at"]
+  }
+
+  global_secondary_index {
+    name               = "CustomerIdIndex"
+    hash_key           = "customer_id"
+    projection_type    = "ALL"
+  }
+
+  global_secondary_index {
+    name               = "RevenueIndex"
+    hash_key           = "gsi_pk"
+    range_key          = "paid_at"
+    projection_type    = "ALL"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "config" {
+  name         = "Config"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "pk"
+
+  attribute {
+    name = "pk"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "time_entries" {
+  name         = "TimeEntries"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "pk"
+  range_key    = "timestamp"
+
+  attribute {
+    name = "pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "N"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "purchases" {
+  name         = "Purchases"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "month_year"
+
+  attribute {
+    name = "month_year"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
 #------------------------------S3 with Public Read Access------------------------------#
 resource "aws_s3_bucket" "public_bucket" {
   bucket = "attachments-true-tickets"
@@ -221,7 +386,7 @@ resource "aws_iam_role_policy" "lambda_s3_cognito_dynamodb" {
             "cognito-idp:AdminDisableUser",
             "cognito-idp:AdminEnableUser"
         ],
-        Resource: "arn:aws:cognito-idp:${local.region}:${data.aws_caller_identity.current.account_id}:userpool/${local.region}_COGNITO_ID"
+        Resource: "arn:aws:cognito-idp:${local.region}:${data.aws_caller_identity.current.account_id}:userpool/${aws_cognito_user_pool.this.id}"
       },
   		{
   			Effect: "Allow",
@@ -272,7 +437,8 @@ resource "aws_lambda_function" "lambda_function" {
 
   environment {
     variables = {
-      ENVIRONMENT = "production"
+      S3_BUCKET_NAME = aws_s3_bucket.public_bucket.bucket
+      USER_POOL_ID = aws_cognito_user_pool.this.id
     }
   }
 
@@ -297,6 +463,16 @@ resource "aws_apigatewayv2_integration" "lambda" {
   api_id           = aws_apigatewayv2_api.http_api.id
   integration_type = "AWS_PROXY"
   integration_uri  = aws_lambda_function.lambda_function.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_lambda_permission" "api_gw" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.lambda_function.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  source_arn = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
 }
 
 resource "aws_apigatewayv2_route" "this" {
@@ -369,5 +545,5 @@ EOT
 
 #--------------Notification to Upload to Amplify-----------
 output "important_note" {
-  value       = "Everything has been done automatically (assuming you already built the front and backend 'npm run build' and 'cargo lambda build --release --arm64'), execpt the only thing you need to do is deploy /Frontend/dist.zip to the Amplify branch in the AWS console"
+  value       = "Everything has been done automatically except you need to deploy /Frontend/dist.zip to the Amplify App in the AWS console. Also you need to set the ticket counter to 1000 in dynamodb"
 }
